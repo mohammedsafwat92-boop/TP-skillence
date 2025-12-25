@@ -1,0 +1,7 @@
+{
+  "name": "Copy of TP Skillence Language & Culture & Sales Coach",
+  "description": "A comprehensive training program for call center agents to enhance language profiles and cultural understanding, featuring interactive modules and AI-generated worksheets.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
