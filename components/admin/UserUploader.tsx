@@ -65,25 +65,25 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
 
   return (
     <div className="bg-white rounded-3xl border border-dashed border-gray-200 p-6 md:p-8 transition-all hover:border-tp-purple/40">
-      <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest mb-6 flex items-center">
-        <ClipboardListIcon className="w-5 h-5 mr-3 text-tp-red" />
+      <h3 className="font-black text-tp-purple uppercase text-base md:text-lg tracking-widest mb-6 flex items-center">
+        <ClipboardListIcon className="w-6 h-6 mr-3 text-tp-red" />
         Smart {currentUser.role === 'coach' ? 'Team' : 'Agent'} Onboarding
       </h3>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
         <div>
-          <p className="text-gray-500 text-xs font-medium mb-6 leading-relaxed">
+          <p className="text-gray-700 text-sm md:text-base font-medium mb-6 leading-relaxed">
             Upload an agent's evaluation file. Skillence AI will automatically parse metrics, create an account, and assign them to 
             <span className="text-tp-purple font-black ml-1">{currentUser.role === 'coach' ? 'your roster' : 'the selected team'}.</span>
           </p>
 
           {currentUser.role === 'admin' && (
             <div className="space-y-2 mb-6">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Assign to Roster</label>
+              <label className="text-xs font-black text-gray-700 uppercase tracking-widest">Assign to Roster</label>
               <select 
                 value={selectedRoster} 
                 onChange={(e) => setSelectedRoster(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-tp-red"
+                className="w-full bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 text-sm md:text-base outline-none transition-all focus:ring-2 focus:ring-tp-red"
               >
                 {rosters.map(r => (
                   <option key={r.id} value={r.id}>{r.name}</option>
@@ -95,11 +95,11 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
           <button 
             disabled={isProcessing}
             onClick={() => fileInputRef.current?.click()}
-            className="w-full bg-tp-purple text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs shadow-xl hover:bg-tp-navy transition-all min-h-[50px] flex items-center justify-center"
+            className="w-full bg-tp-purple text-white py-4 rounded-2xl font-black uppercase tracking-widest text-xs md:text-sm shadow-xl hover:bg-tp-navy transition-all min-h-[50px] flex items-center justify-center"
           >
             {isProcessing ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
-            ) : <PlusIcon className="mr-3" />}
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin mr-3"></div>
+            ) : <PlusIcon className="mr-3 w-5 h-5" />}
             {isProcessing ? 'Parsing File...' : 'Select Evaluation File'}
           </button>
           <input type="file" ref={fileInputRef} className="hidden" accept=".pdf,.csv" onChange={(e) => e.target.files?.[0] && processFile(e.target.files[0])} />
@@ -111,10 +111,10 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
           onDrop={handleDrop}
           className={`aspect-square md:aspect-auto md:h-full flex flex-col items-center justify-center rounded-2xl border-2 border-dashed transition-all ${isDragging ? 'bg-tp-purple/5 border-tp-purple scale-95' : 'bg-gray-50 border-gray-100'}`}
         >
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all ${isDragging ? 'bg-tp-purple text-white' : 'bg-white text-gray-400 shadow-sm'}`}>
-            <DownloadIcon />
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 transition-all ${isDragging ? 'bg-tp-purple text-white' : 'bg-white text-gray-500 shadow-sm'}`}>
+            <DownloadIcon className="w-8 h-8" />
           </div>
-          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">{isDragging ? 'Release to Start' : 'Drag & Drop File'}</p>
+          <p className="text-xs md:text-sm font-black uppercase tracking-[0.2em] text-gray-500">{isDragging ? 'Release to Start' : 'Drag & Drop File'}</p>
         </div>
       </div>
     </div>

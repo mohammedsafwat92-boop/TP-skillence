@@ -147,7 +147,7 @@ const App: React.FC = () => {
         {/* Mobile Header */}
         <div className="flex items-center justify-between lg:hidden mb-6 bg-white/80 backdrop-blur-md p-3 rounded-2xl shadow-sm border border-white/50">
             <button onClick={() => setIsSidebarOpen(true)} className="p-2 text-tp-purple hover:bg-tp-purple/5 rounded-xl transition-colors"><MenuIcon /></button>
-            <div className="text-center"><p className="text-[10px] font-black text-tp-purple uppercase tracking-[0.2em]">Skillence</p></div>
+            <div className="text-center"><p className="text-xs font-black text-tp-purple uppercase tracking-[0.2em]">Skillence</p></div>
             <div className="w-10" />
         </div>
 
@@ -157,15 +157,15 @@ const App: React.FC = () => {
                 <div className="bg-white/50 backdrop-blur-md p-1.5 rounded-2xl border border-white/50 shadow-sm flex gap-2">
                     <button 
                         onClick={() => { setCoachMode('team'); handleNavigate({type: 'dashboard'}); }}
-                        className={`flex items-center px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${coachMode === 'team' ? 'bg-tp-purple text-white shadow-lg' : 'text-gray-400 hover:text-tp-purple'}`}
+                        className={`flex items-center px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${coachMode === 'team' ? 'bg-tp-purple text-white shadow-lg' : 'text-gray-600 hover:text-tp-purple'}`}
                     >
-                        <ChartBarIcon className="w-3.5 h-3.5 mr-2" /> Team Dashboard
+                        <ChartBarIcon className="w-4 h-4 mr-2" /> Team Dashboard
                     </button>
                     <button 
                         onClick={() => { setCoachMode('personal'); handleNavigate({type: 'dashboard'}); }}
-                        className={`flex items-center px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${coachMode === 'personal' ? 'bg-tp-red text-white shadow-lg' : 'text-gray-400 hover:text-tp-red'}`}
+                        className={`flex items-center px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${coachMode === 'personal' ? 'bg-tp-red text-white shadow-lg' : 'text-gray-600 hover:text-tp-red'}`}
                     >
-                        <DashboardIcon className="w-3.5 h-3.5 mr-2" /> My Learning
+                        <DashboardIcon className="w-4 h-4 mr-2" /> My Learning
                     </button>
                 </div>
             </div>
@@ -177,7 +177,7 @@ const App: React.FC = () => {
              <div className="w-10 h-10 bg-tp-purple/5 p-2 rounded-xl mr-4 text-tp-purple flex items-center justify-center"><UserIcon /></div>
              <div>
                  <p className="text-sm font-black text-tp-purple">{currentUser?.name}</p>
-                 <div className="flex items-center space-x-2"><span className="text-[10px] text-white bg-tp-red px-1.5 py-0.5 rounded font-bold uppercase">{currentUser?.role}</span></div>
+                 <div className="flex items-center space-x-2"><span className="text-xs text-white bg-tp-red px-1.5 py-0.5 rounded font-bold uppercase">{currentUser?.role}</span></div>
              </div>
         </div>
 
