@@ -13,6 +13,7 @@ interface WorksheetProps {
   progress: UserProgress;
   onToggleLesson: (lessonTitle: string) => void;
   onQuizComplete: (quizId: string, score: number) => void;
+  onOpenLesson: (lesson: Lesson) => void;
   userLevel?: string;
 }
 
@@ -20,8 +21,8 @@ const LessonCard: React.FC<{
     lesson: Lesson; 
     isCompleted: boolean; 
     onToggle: (title: string) => void;
-}> = ({ lesson, isCompleted, onToggle }) => {
-    const isClickable = !!lesson.link;
+    onOpen: (lesson: Lesson) => void;
+}> = ({ lesson, isCompleted, onToggle, onOpen }) => {
     
     const handleToggleClick = (e: React.MouseEvent) => {
         e.preventDefault();
@@ -29,45 +30,49 @@ const LessonCard: React.FC<{
         onToggle(lesson.title);
     };
 
-    const content = (
-        <div className={`glass-card p-5 rounded-2xl border transition-all duration-300 ${isClickable ? 'hover:shadow-xl hover:-translate-y-1 hover:border-tp-red cursor-pointer' : ''} ${isCompleted ? 'opacity-60 bg-gray-50/50' : 'bg-white shadow-lg shadow-tp-purple/5'}`}>
-             <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
-                    <h3 className={`font-bold text-lg leading-tight ${isCompleted ? 'text-gray-400 line-through font-medium' : 'text-tp-purple'}`}>
-                        {lesson.title}
-                    </h3>
-                    <div className="flex items-center text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-2 space-x-3">
-                        <span className={`px-2 py-0.5 rounded ${lesson.isCustom ? 'bg-tp-red/10 text-tp-red border border-tp-red/20' : 'bg-gray-100 text-gray-400'}`}>
-                            {lesson.level}
-                        </span>
-                        {lesson.duration && <span className="flex items-center"><svg className="w-3 h-3 mr-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>{lesson.duration}</span>}
+    const handleCardClick = () => {
+        onOpen(lesson);
+    };
+
+    return (
+        <div 
+            onClick={handleCardClick}
+            className={`glass-card p-5 rounded-2xl border transition-all duration-300 hover:shadow-xl hover:-translate-y-1 hover:border-tp-red cursor-pointer min-h-[140px] flex flex-col justify-between ${isCompleted ? 'opacity-60 bg-gray-50/50' : 'bg-white shadow-lg shadow-tp-purple/5'}`}
+        >
+             <div>
+                 <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                        <h3 className={`font-bold text-lg leading-tight ${isCompleted ? 'text-gray-400 line-through font-medium' : 'text-tp-purple'}`}>
+                            {lesson.title}
+                        </h3>
+                        <div className="flex flex-wrap items-center text-[10px] font-bold uppercase tracking-widest text-gray-500 mt-2 gap-3">
+                            <span className={`px-2 py-0.5 rounded whitespace-nowrap ${lesson.isCustom ? 'bg-tp-red/10 text-tp-red border border-tp-red/20' : 'bg-gray-100 text-gray-400'}`}>
+                                {lesson.level}
+                            </span>
+                            {lesson.duration && <span className="flex items-center whitespace-nowrap"><svg className="w-3 h-3 mr-1 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>{lesson.duration}</span>}
+                        </div>
                     </div>
+                    <button 
+                        onClick={handleToggleClick} 
+                        className={`ml-4 p-3 rounded-xl transition-all ${isCompleted ? 'bg-green-50 text-green-500 shadow-inner' : 'bg-gray-50 text-gray-300 hover:text-tp-red hover:bg-tp-red/5'}`}
+                        aria-label="Toggle Complete"
+                    >
+                        <CheckCircleIcon filled={isCompleted} />
+                    </button>
                 </div>
-                <button 
-                    onClick={handleToggleClick} 
-                    className={`ml-4 p-2 rounded-xl transition-all ${isCompleted ? 'bg-green-50 text-green-500 shadow-inner' : 'bg-gray-50 text-gray-300 hover:text-tp-red hover:bg-tp-red/5'}`}
-                >
-                    <CheckCircleIcon filled={isCompleted} />
-                </button>
-            </div>
-             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
-                 {lesson.objective ? (
-                     <p className="text-xs text-gray-500 font-medium italic flex-1 pr-4">"{lesson.objective.split('-')[0]}"</p>
-                 ) : <span className="flex-1" />}
-                 
-                 <div className="flex items-center px-3 py-1 bg-tp-purple/5 text-tp-purple rounded-full text-[10px] font-black uppercase tracking-widest">
+                {lesson.objective && (
+                    <p className="text-xs text-gray-500 font-medium italic mt-2 line-clamp-2">"{lesson.objective.split('-')[0]}"</p>
+                )}
+             </div>
+             
+             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-end items-center">
+                 <div className="flex items-center px-3 py-1.5 bg-tp-purple/5 text-tp-purple rounded-full text-[10px] font-black uppercase tracking-widest">
                     <span className="scale-75 mr-1.5 opacity-80">{getResourceTypeIcon(lesson.type)}</span>
                     {lesson.type}
                 </div>
              </div>
         </div>
     );
-
-    if (isClickable) {
-        return <a href={lesson.link} target="_blank" rel="noopener noreferrer" className="block h-full">{content}</a>;
-    }
-    
-    return <div className="h-full">{content}</div>;
 };
 
 const getResourceTypeIcon = (type: ResourceType) => {
@@ -101,8 +106,8 @@ const ActivityChart: React.FC<{ history: ActivityLog[] }> = ({ history }) => {
     const gap = 12;
 
     return (
-        <div className="flex flex-col items-center">
-            <svg width="100%" height={height + 30} viewBox={`0 0 ${days.length * (barWidth + gap)} ${height + 30}`}>
+        <div className="flex flex-col items-center w-full">
+            <svg width="100%" height={height + 30} viewBox={`0 0 ${days.length * (barWidth + gap)} ${height + 30}`} preserveAspectRatio="xMidYMid meet">
                 {counts.map((count, i) => {
                     const barHeight = (count / maxCount) * height;
                     const x = i * (barWidth + gap);
@@ -150,7 +155,7 @@ const PerformanceChart: React.FC<{ history: ActivityLog[] }> = ({ history }) => 
 
     return (
         <div className="flex flex-col items-center w-full">
-            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
+            <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} className="overflow-visible" preserveAspectRatio="xMidYMid meet">
                 <line x1={padding} y1={padding} x2={width-padding} y2={padding} stroke="#f1f5f9" strokeWidth="2" />
                 <line x1={padding} y1={height/2} x2={width-padding} y2={height/2} stroke="#f1f5f9" strokeWidth="2" />
                 <line x1={padding} y1={height-padding} x2={width-padding} y2={height-padding} stroke="#f1f5f9" strokeWidth="2" />
@@ -191,68 +196,68 @@ const DashboardView: React.FC<{
     });
 
     return (
-        <div className="space-y-10">
+        <div className="space-y-6 md:space-y-10">
             <div>
-                <h1 className="text-4xl font-black text-tp-purple tracking-tight">Agent Hub</h1>
+                <h1 className="text-3xl md:text-4xl font-black text-tp-purple tracking-tight">Agent Hub</h1>
                 <div className="flex items-center mt-2">
                     <div className="h-1.5 w-12 bg-tp-red rounded-full mr-3"></div>
-                    <p className="text-gray-500 font-bold uppercase tracking-[0.3em] text-[10px]">Empowering Interaction • {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
+                    <p className="text-gray-500 font-bold uppercase tracking-[0.2em] md:tracking-[0.3em] text-[10px]">Empowering Interaction • {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}</p>
                 </div>
             </div>
             
             {/* KPI Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                <div className="glass-card p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 md:gap-8">
+                <div className="glass-card p-6 md:p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-tp-purple/5 rounded-bl-full -mr-8 -mt-8 group-hover:bg-tp-red/5 transition-colors"></div>
                     <div className="flex items-center mb-4">
                         <div className="p-3 rounded-2xl bg-tp-purple/5 text-tp-purple">
                             <TrendingUpIcon />
                         </div>
-                        <p className="ml-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Progress</p>
+                        <p className="ml-4 text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">Progress</p>
                     </div>
-                    <p className="text-4xl font-black text-tp-purple">{completedPercentage}%</p>
-                    <p className="text-xs text-gray-500 font-medium mt-1">{completedLessonsCount} Lessons Mastered</p>
+                    <p className="text-3xl md:text-4xl font-black text-tp-purple">{completedPercentage}%</p>
+                    <p className="text-[10px] md:text-xs text-gray-500 font-medium mt-1">{completedLessonsCount} Lessons Mastered</p>
                     <div className="w-full h-1.5 bg-gray-100 rounded-full mt-4 overflow-hidden">
                         <div className="h-full bg-tp-purple transition-all duration-1000" style={{ width: `${completedPercentage}%` }}></div>
                     </div>
                 </div>
 
-                <div className="glass-card p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
+                <div className="glass-card p-6 md:p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-tp-red/5 rounded-bl-full -mr-8 -mt-8"></div>
                     <div className="flex items-center mb-4">
                         <div className="p-3 rounded-2xl bg-tp-red/5 text-tp-red">
                             <BadgeIcon className="w-6 h-6" />
                         </div>
-                        <p className="ml-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Efficiency</p>
+                        <p className="ml-4 text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">Efficiency</p>
                     </div>
-                    <p className="text-4xl font-black text-tp-purple">{averageScore}%</p>
-                    <p className="text-xs text-gray-500 font-medium mt-1">Average Proficiency</p>
+                    <p className="text-3xl md:text-4xl font-black text-tp-purple">{averageScore}%</p>
+                    <p className="text-[10px] md:text-xs text-gray-500 font-medium mt-1">Average Proficiency</p>
                 </div>
 
-                <div className="glass-card p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
+                <div className="glass-card p-6 md:p-8 rounded-3xl shadow-xl shadow-tp-purple/5 border border-white/50 relative overflow-hidden group">
                     <div className="absolute top-0 right-0 w-24 h-24 bg-tp-purple/5 rounded-bl-full -mr-8 -mt-8"></div>
                     <div className="flex items-center mb-4">
                         <div className="p-3 rounded-2xl bg-tp-purple/5 text-tp-purple">
                             <WorksheetIcon className="w-6 h-6" />
                         </div>
-                        <p className="ml-4 text-xs font-bold text-gray-400 uppercase tracking-widest">Assessments</p>
+                        <p className="ml-4 text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-widest">Assessments</p>
                     </div>
-                    <p className="text-4xl font-black text-tp-purple">{completedQuizzes}</p>
-                    <p className="text-xs text-gray-500 font-medium mt-1">Tests Successfully Taken</p>
+                    <p className="text-3xl md:text-4xl font-black text-tp-purple">{completedQuizzes}</p>
+                    <p className="text-[10px] md:text-xs text-gray-500 font-medium mt-1">Tests Successfully Taken</p>
                 </div>
             </div>
 
             {/* Specialized Plan Overlay */}
             {personalPlan.length > 0 && (
-                <div className="bg-tp-purple rounded-3xl p-8 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/40">
+                <div className="bg-tp-purple rounded-3xl p-6 md:p-8 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/40">
                     <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/5 rounded-full blur-3xl"></div>
                     <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-tp-red/20 rounded-full blur-3xl"></div>
                     <div className="relative z-10">
-                        <h2 className="text-2xl font-black mb-6 flex items-center">
+                        <h2 className="text-xl md:text-2xl font-black mb-6 flex items-center">
                             <span className="bg-tp-red text-white p-2 rounded-xl mr-4 shadow-lg"><ExclamationCircleIcon /></span>
                             Targeted Remedial Path
                         </h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                             {personalPlan.map((item, idx) => (
                                 <div 
                                     key={idx} 
@@ -272,16 +277,16 @@ const DashboardView: React.FC<{
             )}
 
             {/* Analytics Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="glass-card p-8 rounded-3xl shadow-xl border border-white/50">
-                    <div className="flex items-center mb-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-8">
+                <div className="glass-card p-6 md:p-8 rounded-3xl shadow-xl border border-white/50">
+                    <div className="flex items-center mb-6 md:mb-8">
                         <div className="w-1.5 h-6 bg-tp-red rounded-full mr-4"></div>
                         <h2 className="text-xl font-black text-tp-purple">Engagement Pulse</h2>
                     </div>
                     <ActivityChart history={progress.activityHistory || []} />
                 </div>
-                <div className="glass-card p-8 rounded-3xl shadow-xl border border-white/50">
-                    <div className="flex items-center mb-8">
+                <div className="glass-card p-6 md:p-8 rounded-3xl shadow-xl border border-white/50">
+                    <div className="flex items-center mb-6 md:mb-8">
                         <div className="w-1.5 h-6 bg-tp-purple rounded-full mr-4"></div>
                         <h2 className="text-xl font-black text-tp-purple">Skill Progression</h2>
                     </div>
@@ -291,11 +296,11 @@ const DashboardView: React.FC<{
 
             {/* Modules Grid */}
             <div>
-                <div className="flex items-center justify-between mb-8">
-                    <h2 className="text-2xl font-black text-tp-purple">Learning Tracks</h2>
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{Object.values(modules).length} Paths Active</span>
+                <div className="flex items-center justify-between mb-8 px-2">
+                    <h2 className="text-xl md:text-2xl font-black text-tp-purple">Learning Tracks</h2>
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest hidden sm:inline">{Object.values(modules).length} Paths Active</span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-8">
                     {Object.values(modules).map((module: Module) => {
                          const modTotal = module.lessons.length;
                          const modCompleted = module.lessons.filter(l => progress.completedLessons.includes(l.title)).length;
@@ -306,19 +311,19 @@ const DashboardView: React.FC<{
                         <div 
                             key={module.id} 
                             onClick={() => onNavigate({type: 'module', moduleId: module.id})} 
-                            className={`glass-card p-8 rounded-3xl shadow-lg border transition-all cursor-pointer hover:shadow-2xl hover:-translate-y-1 group relative overflow-hidden ${isComplete ? 'border-tp-red/20 bg-tp-red/[0.02]' : 'border-white/50'}`}
+                            className={`glass-card p-6 md:p-8 rounded-3xl shadow-lg border transition-all cursor-pointer hover:shadow-2xl hover:-translate-y-1 group relative overflow-hidden ${isComplete ? 'border-tp-red/20 bg-tp-red/[0.02]' : 'border-white/50'}`}
                         >
                             <div className="flex items-center relative z-10">
-                                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-all ${isComplete ? 'bg-tp-red text-white' : 'bg-tp-purple/5 text-tp-purple group-hover:bg-tp-purple group-hover:text-white'}`}>
+                                <div className={`w-12 h-12 md:w-16 md:h-16 rounded-2xl flex items-center justify-center transition-all ${isComplete ? 'bg-tp-red text-white' : 'bg-tp-purple/5 text-tp-purple group-hover:bg-tp-purple group-hover:text-white'}`}>
                                     {module.icon}
                                 </div>
-                                <div className="ml-6 flex-1">
-                                    <h3 className="font-black text-xl text-tp-purple">{module.title}</h3>
+                                <div className="ml-4 md:ml-6 flex-1">
+                                    <h3 className="font-black text-lg md:text-xl text-tp-purple truncate">{module.title}</h3>
                                     <div className="flex items-center justify-between mt-4">
-                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{modCompleted} / {modTotal} Lessons</span>
+                                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{modCompleted}/{modTotal}</span>
                                         <span className={`text-[10px] font-black ${isComplete ? 'text-tp-red' : 'text-tp-purple'}`}>{modPercent}%</span>
                                     </div>
-                                    <div className="w-full h-1.5 bg-gray-100 rounded-full mt-2 overflow-hidden">
+                                    <div className="w-full h-1 bg-gray-100 rounded-full mt-2 overflow-hidden">
                                         <div className={`h-full transition-all duration-700 ${isComplete ? 'bg-tp-red' : 'bg-tp-purple'}`} style={{ width: `${modPercent}%` }}></div>
                                     </div>
                                 </div>
@@ -336,7 +341,8 @@ const ModuleView: React.FC<{
     progress: UserProgress;
     onToggleLesson: (title: string) => void;
     onNavigate: (view: View) => void;
-}> = ({ module, progress, onToggleLesson, onNavigate }) => {
+    onOpenLesson: (lesson: Lesson) => void;
+}> = ({ module, progress, onToggleLesson, onNavigate, onOpenLesson }) => {
     const totalLessons = module.lessons.length;
     const completedCount = module.lessons.filter(l => progress.completedLessons.includes(l.title)).length;
     const isComplete = totalLessons > 0 && completedCount === totalLessons;
@@ -359,30 +365,30 @@ const ModuleView: React.FC<{
     });
 
     return (
-        <div className="max-w-5xl mx-auto pb-20">
-            <div className="flex items-center justify-between mb-12">
-                <div className="flex items-center">
-                    <div className="w-20 h-20 bg-tp-purple text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-tp-purple/30">
+        <div className="max-w-5xl mx-auto pb-10 md:pb-20">
+            <div className="flex flex-col md:flex-row items-center md:items-center justify-between mb-8 md:mb-12 gap-6 text-center md:text-left">
+                <div className="flex flex-col md:flex-row items-center">
+                    <div className="w-20 h-20 md:w-24 md:h-24 bg-tp-purple text-white rounded-3xl flex items-center justify-center shadow-2xl shadow-tp-purple/30">
                         {module.icon}
                     </div>
-                    <div className="ml-8">
-                        <h1 className="text-4xl font-black text-tp-purple tracking-tight">{module.title}</h1>
+                    <div className="md:ml-8 mt-4 md:mt-0">
+                        <h1 className="text-3xl md:text-4xl font-black text-tp-purple tracking-tight">{module.title}</h1>
                         <p className="text-gray-500 font-medium mt-1">{module.description}</p>
                     </div>
                 </div>
-                <div className="text-right">
-                    <div className="text-5xl font-black text-tp-red drop-shadow-sm">{percent}%</div>
-                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] mt-2">Proficiency</div>
+                <div className="text-center md:text-right bg-white p-4 rounded-2xl border border-gray-100 shadow-sm md:bg-transparent md:p-0 md:border-0 md:shadow-none">
+                    <div className="text-4xl md:text-5xl font-black text-tp-red drop-shadow-sm">{percent}%</div>
+                    <div className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] md:tracking-[0.3em] mt-2">Proficiency</div>
                 </div>
             </div>
 
             {isComplete && (
-                <div className="bg-gradient-to-r from-tp-red/5 to-tp-purple/5 border-2 border-tp-red p-8 mb-12 rounded-3xl flex items-center justify-between shadow-xl">
-                    <div className="flex items-center">
-                        <BadgeIcon className="w-12 h-12 text-tp-red mr-6" />
+                <div className="bg-gradient-to-r from-tp-red/5 to-tp-purple/5 border-2 border-tp-red p-6 md:p-8 mb-10 md:mb-12 rounded-3xl flex flex-col md:flex-row items-center justify-between shadow-xl gap-6 text-center md:text-left">
+                    <div className="flex flex-col md:flex-row items-center">
+                        <BadgeIcon className="w-12 h-12 text-tp-red md:mr-6 mb-4 md:mb-0" />
                         <div>
-                            <h3 className="text-2xl font-black text-tp-purple uppercase tracking-tight">Certification Standard Achieved</h3>
-                            <p className="text-gray-600 font-medium">This agent has completed all required coursework for this track.</p>
+                            <h3 className="text-xl md:text-2xl font-black text-tp-purple uppercase tracking-tight">Certification Standard Achieved</h3>
+                            <p className="text-gray-600 font-medium">All required coursework for this track is complete.</p>
                         </div>
                     </div>
                 </div>
@@ -391,18 +397,19 @@ const ModuleView: React.FC<{
             {Object.entries(categorizedLessons).map(([category, lessons]) => {
                 if (lessons.length === 0) return null;
                 return (
-                    <div key={category} className="mb-14">
+                    <div key={category} className="mb-10 md:mb-14">
                         <div className="flex items-center mb-6">
                             <div className="h-0.5 w-6 bg-tp-red rounded-full mr-3"></div>
-                            <h3 className="text-sm font-black text-gray-400 uppercase tracking-[0.3em]">{category}</h3>
+                            <h3 className="text-[10px] md:text-sm font-black text-gray-400 uppercase tracking-[0.2em] md:tracking-[0.3em]">{category}</h3>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6">
                             {lessons.map((lesson, index) => (
                                 <LessonCard 
                                     key={index} 
                                     lesson={lesson} 
                                     isCompleted={progress.completedLessons.includes(lesson.title)}
                                     onToggle={onToggleLesson}
+                                    onOpen={onOpenLesson}
                                 />
                             ))}
                         </div>
@@ -451,26 +458,26 @@ const QuizComponent: React.FC<{
     }, [quiz.id]);
     
     if (isLoading) return (
-        <div className="flex flex-col items-center justify-center h-[60vh]">
+        <div className="flex flex-col items-center justify-center h-[60vh] p-6 text-center">
           <div className="w-16 h-16 border-4 border-tp-red border-t-transparent rounded-full animate-spin mb-8"></div>
-          <h2 className="text-2xl font-black text-tp-purple">Calibrating Assessment Engine</h2>
+          <h2 className="text-xl md:text-2xl font-black text-tp-purple">Calibrating Assessment Engine</h2>
           <p className="text-gray-400 font-bold uppercase tracking-widest text-[10px] mt-2">Tailoring questions to your profile...</p>
         </div>
     );
 
     if (viewState === 'start' || error) return (
-        <div className="max-w-2xl mx-auto mt-20 text-center glass-card p-12 rounded-3xl shadow-2xl border border-white/50">
-            <div className="mx-auto flex items-center justify-center h-24 w-24 rounded-3xl bg-tp-purple/5 mb-8 text-tp-purple shadow-inner">
-                <WorksheetIcon className="w-12 h-12" />
+        <div className="max-w-2xl mx-auto mt-10 md:mt-20 text-center glass-card p-6 md:p-12 rounded-3xl shadow-2xl border border-white/50">
+            <div className="mx-auto flex items-center justify-center h-20 w-20 md:h-24 md:w-24 rounded-3xl bg-tp-purple/5 mb-6 md:mb-8 text-tp-purple shadow-inner">
+                <WorksheetIcon className="w-10 h-10 md:w-12 md:h-12" />
             </div>
-            <h1 className="text-3xl font-black text-tp-purple mb-4 tracking-tight uppercase">{quiz.title}</h1>
-            <p className="text-gray-500 font-medium mb-10 leading-relaxed px-10">{quiz.description}</p>
+            <h1 className="text-2xl md:text-3xl font-black text-tp-purple mb-4 tracking-tight uppercase">{quiz.title}</h1>
+            <p className="text-sm md:text-gray-500 font-medium mb-8 md:mb-10 leading-relaxed px-4 md:px-10">{quiz.description}</p>
             
-            {error && <p className="text-tp-red mb-6 text-xs font-bold uppercase tracking-widest">⚠️ {error}</p>}
+            {error && <p className="text-tp-red mb-6 text-[10px] font-bold uppercase tracking-widest">⚠️ {error}</p>}
             
             <button
                 onClick={handleStartQuiz}
-                className="bg-tp-purple text-white font-black py-4 px-12 rounded-2xl hover:bg-tp-navy hover:scale-105 transition-all shadow-xl shadow-tp-purple/20 uppercase tracking-[0.2em] text-sm"
+                className="w-full sm:w-auto bg-tp-purple text-white font-black py-4 px-12 rounded-2xl hover:bg-tp-navy hover:scale-105 transition-all shadow-xl shadow-tp-purple/20 uppercase tracking-[0.2em] text-xs md:text-sm min-h-[50px]"
             >
                 Initiate Test
             </button>
@@ -503,57 +510,57 @@ const QuizComponent: React.FC<{
         };
 
         return (
-            <div className="max-w-3xl mx-auto mt-12 pb-20">
+            <div className="max-w-3xl mx-auto mt-6 md:mt-12 pb-10 md:pb-20">
                 <div className="glass-card rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
-                    <div className="bg-tp-purple px-10 py-6 flex justify-between items-center">
-                        <h2 className="font-black text-white uppercase tracking-widest text-sm">Calibration Session</h2>
-                        <span className="text-[10px] font-black text-tp-red bg-white/10 px-3 py-1 rounded-full uppercase tracking-widest">Question {currentQuestionIndex + 1} / {questions.length}</span>
+                    <div className="bg-tp-purple px-6 md:px-10 py-5 md:py-6 flex flex-col sm:flex-row justify-between items-center gap-2">
+                        <h2 className="font-black text-white uppercase tracking-widest text-[10px] md:text-sm">Calibration Session</h2>
+                        <span className="text-[10px] font-black text-tp-red bg-white/10 px-3 py-1 rounded-full uppercase tracking-widest">Q {currentQuestionIndex + 1} / {questions.length}</span>
                     </div>
                     
-                    <div className="p-10">
+                    <div className="p-6 md:p-10">
                         {/* Question Specific UI */}
                         {currentQuestion.type === 'listening' && (
-                            <div className="mb-10 p-6 bg-tp-purple/5 rounded-3xl border border-tp-purple/10">
-                                <div className="flex items-center mb-4 text-tp-purple font-black uppercase text-xs tracking-widest">
+                            <div className="mb-6 md:mb-10 p-5 md:p-6 bg-tp-purple/5 rounded-3xl border border-tp-purple/10">
+                                <div className="flex items-center mb-4 text-tp-purple font-black uppercase text-[10px] tracking-widest">
                                     <ListenIcon /> <span className="ml-3">Audio Analysis</span>
                                 </div>
-                                <div className="flex space-x-4">
-                                    <button className="flex-1 bg-tp-purple text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-tp-navy transition-colors flex items-center justify-center">
+                                <div className="flex flex-col sm:flex-row space-y-3 sm:space-y-0 sm:space-x-4">
+                                    <button className="flex-1 bg-tp-purple text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-tp-navy transition-colors flex items-center justify-center min-h-[44px]">
                                         <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg> Play Audio
                                     </button>
                                     <button 
                                         onClick={() => setShowTranscript(!showTranscript)}
-                                        className="flex-1 bg-white border border-tp-purple/20 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-tp-purple hover:bg-tp-purple/5 transition-colors"
+                                        className="flex-1 bg-white border border-tp-purple/20 py-3 rounded-xl font-bold text-xs uppercase tracking-widest text-tp-purple hover:bg-tp-purple/5 transition-colors min-h-[44px]"
                                     >
                                         {showTranscript ? 'Hide' : 'Show'} Transcript
                                     </button>
                                 </div>
                                 {showTranscript && (
-                                    <div className="mt-6 p-5 bg-white rounded-2xl border border-gray-100 text-sm text-gray-700 italic leading-relaxed">
+                                    <div className="mt-6 p-5 bg-white rounded-2xl border border-gray-100 text-sm text-gray-700 italic leading-relaxed max-h-40 overflow-y-auto">
                                         "{currentQuestion.context}"
                                     </div>
                                 )}
                             </div>
                         )}
                         {currentQuestion.type === 'reading' && (
-                            <div className="mb-10 p-6 bg-tp-purple/5 rounded-3xl border border-tp-purple/10">
-                                <div className="flex items-center mb-4 text-tp-purple font-black uppercase text-xs tracking-widest">
+                            <div className="mb-6 md:mb-10 p-5 md:p-6 bg-tp-purple/5 rounded-3xl border border-tp-purple/10">
+                                <div className="flex items-center mb-4 text-tp-purple font-black uppercase text-[10px] tracking-widest">
                                     <ReadIcon /> <span className="ml-3">Contextual Analysis</span>
                                 </div>
-                                <div className="p-6 bg-white rounded-2xl border border-gray-100 text-sm text-gray-800 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar">
+                                <div className="p-4 md:p-6 bg-white rounded-2xl border border-gray-100 text-sm text-gray-800 leading-relaxed max-h-48 overflow-y-auto custom-scrollbar">
                                     {currentQuestion.context}
                                 </div>
                             </div>
                         )}
                         {currentQuestion.type === 'speaking' && (
-                            <div className="mb-10 p-8 bg-tp-red/5 rounded-3xl border border-tp-red/10">
-                                <div className="flex items-center mb-6 text-tp-red font-black uppercase text-xs tracking-widest">
+                            <div className="mb-6 md:mb-10 p-6 md:p-8 bg-tp-red/5 rounded-3xl border border-tp-red/10">
+                                <div className="flex items-center mb-6 text-tp-red font-black uppercase text-[10px] tracking-widest">
                                     <SpeakingIcon /> <span className="ml-3">Verbal Articulation</span>
                                 </div>
-                                <p className="text-xl font-bold text-tp-purple mb-8 leading-tight">{currentQuestion.speakingPrompt}</p>
-                                <div className="flex justify-center py-12 bg-white rounded-3xl border-2 border-dashed border-tp-red/20 group hover:border-tp-red transition-colors cursor-pointer">
+                                <p className="text-lg md:text-xl font-bold text-tp-purple mb-6 md:mb-8 leading-tight">{currentQuestion.speakingPrompt}</p>
+                                <div className="flex justify-center py-10 md:py-12 bg-white rounded-3xl border-2 border-dashed border-tp-red/20 group hover:border-tp-red transition-colors cursor-pointer">
                                     <button className="flex flex-col items-center text-gray-300 group-hover:text-tp-red transition-colors">
-                                        <div className="h-16 w-16 rounded-full border-4 border-current flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
+                                        <div className="h-14 w-14 md:h-16 md:w-16 rounded-full border-4 border-current flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
                                             <div className="h-4 w-4 bg-current rounded-full animate-pulse"></div>
                                         </div>
                                         <span className="text-[10px] font-black uppercase tracking-widest">Capture Response</span>
@@ -562,12 +569,12 @@ const QuizComponent: React.FC<{
                             </div>
                         )}
                         
-                        <p className="text-2xl font-black text-tp-purple mb-8 tracking-tight leading-tight">{currentQuestion.question}</p>
+                        <p className="text-xl md:text-2xl font-black text-tp-purple mb-6 md:mb-8 tracking-tight leading-tight">{currentQuestion.question}</p>
                         
                         {currentQuestion.type === 'speaking' ? (
                              <button
                                 onClick={() => handleAnswerSelect(0)}
-                                className={`w-full text-center py-5 rounded-2xl border-2 font-black uppercase tracking-widest text-sm transition-all ${
+                                className={`w-full text-center py-5 rounded-2xl border-2 font-black uppercase tracking-widest text-[10px] md:text-sm transition-all min-h-[54px] ${
                                     userAnswers[currentQuestionIndex] === 0
                                     ? 'bg-tp-purple text-white border-tp-purple shadow-xl shadow-tp-purple/20'
                                     : 'bg-white border-gray-100 hover:border-tp-red text-gray-400'
@@ -576,24 +583,24 @@ const QuizComponent: React.FC<{
                                 {userAnswers[currentQuestionIndex] === 0 ? "Response Locked" : "Finalize Articulation"}
                             </button>
                         ) : (
-                            <div className="space-y-4">
+                            <div className="grid grid-cols-1 gap-3 md:gap-4">
                                 {currentQuestion.options?.map((option, index) => (
                                     <button
                                     key={index}
                                     onClick={() => handleAnswerSelect(index)}
-                                    className={`w-full text-left p-6 rounded-2xl border-2 transition-all group ${
+                                    className={`w-full text-left p-4 md:p-6 rounded-2xl border-2 transition-all group min-h-[64px] ${
                                         userAnswers[currentQuestionIndex] === index
                                         ? 'bg-tp-purple text-white border-tp-purple shadow-xl shadow-tp-purple/20'
                                         : 'bg-white border-gray-100 hover:border-tp-purple/20 hover:bg-tp-purple/[0.02] text-gray-600'
                                     }`}
                                     >
                                     <div className="flex items-center">
-                                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center mr-5 text-sm font-black transition-colors ${
+                                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl flex items-center justify-center mr-4 md:mr-5 text-sm font-black transition-colors flex-shrink-0 ${
                                             userAnswers[currentQuestionIndex] === index ? 'bg-tp-red text-white' : 'bg-gray-100 text-gray-400 group-hover:bg-tp-purple/10 group-hover:text-tp-purple'
                                         }`}>
                                             {String.fromCharCode(65 + index)}
                                         </div>
-                                        <span className="font-bold">{option}</span>
+                                        <span className="font-bold text-sm md:text-base leading-snug">{option}</span>
                                     </div>
                                     </button>
                                 ))}
@@ -601,18 +608,18 @@ const QuizComponent: React.FC<{
                         )}
                     </div>
 
-                    <div className="bg-gray-50/50 px-10 py-8 border-t border-gray-100 flex justify-between">
+                    <div className="bg-gray-50/50 px-6 md:px-10 py-6 md:py-8 border-t border-gray-100 flex justify-between gap-4">
                         <button 
                             onClick={handlePrevious} 
                             disabled={currentQuestionIndex === 0} 
-                            className="px-6 py-3 text-gray-400 font-black uppercase tracking-widest text-xs hover:text-tp-purple disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                            className="px-4 py-3 text-gray-400 font-black uppercase tracking-widest text-[10px] hover:text-tp-purple disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
                             Back
                         </button>
                         {currentQuestionIndex === questions.length - 1 ? (
-                            <button onClick={handleSubmit} className="bg-tp-red text-white font-black py-3 px-10 rounded-xl hover:bg-red-700 shadow-lg shadow-tp-red/20 uppercase tracking-widest text-xs">Execute Final Submit</button>
+                            <button onClick={handleSubmit} className="flex-1 sm:flex-none bg-tp-red text-white font-black py-3 px-6 md:px-10 rounded-xl hover:bg-red-700 shadow-lg shadow-tp-red/20 uppercase tracking-widest text-[10px] min-h-[44px]">Execute Submit</button>
                         ) : (
-                            <button onClick={handleNext} className="bg-tp-purple text-white font-black py-3 px-10 rounded-xl hover:bg-tp-navy shadow-lg shadow-tp-purple/20 uppercase tracking-widest text-xs">Next Phase</button>
+                            <button onClick={handleNext} className="flex-1 sm:flex-none bg-tp-purple text-white font-black py-3 px-6 md:px-10 rounded-xl hover:bg-tp-navy shadow-lg shadow-tp-purple/20 uppercase tracking-widest text-[10px] min-h-[44px]">Next Phase</button>
                         )}
                     </div>
                 </div>
@@ -628,16 +635,16 @@ const QuizComponent: React.FC<{
       const passed = (score / questions.length) >= 0.7;
 
       return (
-        <div className="max-w-xl mx-auto mt-20 text-center glass-card p-12 rounded-3xl shadow-2xl border border-white/50">
-          <div className={`mx-auto flex items-center justify-center h-24 w-24 rounded-3xl mb-8 shadow-inner ${passed ? 'bg-green-100 text-green-600' : 'bg-tp-red/10 text-tp-red'}`}>
-            {passed ? <BadgeIcon className="w-12 h-12" /> : <ExclamationCircleIcon />}
+        <div className="max-w-xl mx-auto mt-10 md:mt-20 text-center glass-card p-8 md:p-12 rounded-3xl shadow-2xl border border-white/50">
+          <div className={`mx-auto flex items-center justify-center h-20 w-20 md:h-24 md:w-24 rounded-3xl mb-8 shadow-inner ${passed ? 'bg-green-100 text-green-600' : 'bg-tp-red/10 text-tp-red'}`}>
+            {passed ? <BadgeIcon className="w-10 h-10 md:w-12 md:h-12" /> : <ExclamationCircleIcon />}
           </div>
           
-          <h2 className="text-3xl font-black text-tp-purple mb-4 tracking-tight uppercase">{passed ? 'Excellence Certified' : 'Maintenance Required'}</h2>
-          <p className="text-gray-500 font-medium mb-10 leading-relaxed">Agent has achieved an overall proficiency of <span className="font-black text-tp-purple text-xl">{Math.round((score/questions.length)*100)}%</span> across all test dimensions.</p>
+          <h2 className="text-2xl md:text-3xl font-black text-tp-purple mb-4 tracking-tight uppercase">{passed ? 'Excellence Certified' : 'Maintenance Required'}</h2>
+          <p className="text-sm md:text-gray-500 font-medium mb-8 md:mb-10 leading-relaxed">Overall proficiency of <span className="font-black text-tp-purple text-xl">{Math.round((score/questions.length)*100)}%</span> across dimensions.</p>
 
-          <button onClick={() => onNavigate({type: 'dashboard'})} className="bg-tp-purple text-white font-black py-4 px-12 rounded-2xl hover:bg-tp-navy shadow-xl shadow-tp-purple/20 uppercase tracking-widest text-sm">
-            Return to Command Center
+          <button onClick={() => onNavigate({type: 'dashboard'})} className="w-full sm:w-auto bg-tp-purple text-white font-black py-4 px-12 rounded-2xl hover:bg-tp-navy shadow-xl shadow-tp-purple/20 uppercase tracking-widest text-xs md:text-sm min-h-[50px]">
+            Return to Dashboard
           </button>
         </div>
       );
@@ -646,18 +653,18 @@ const QuizComponent: React.FC<{
     return null;
 }
 
-const Worksheet: React.FC<WorksheetProps & { userLevel?: string }> = ({ modules, view, onNavigate, progress, onToggleLesson, onQuizComplete, userLevel }) => {
+const Worksheet: React.FC<WorksheetProps & { userLevel?: string }> = ({ modules, view, onNavigate, progress, onToggleLesson, onQuizComplete, onOpenLesson, userLevel }) => {
     switch(view.type) {
         case 'dashboard':
             return <DashboardView modules={modules} onNavigate={onNavigate} progress={progress} />;
         case 'module':
             const module = modules[view.moduleId];
-            return module ? <ModuleView module={module} progress={progress} onToggleLesson={onToggleLesson} onNavigate={onNavigate} /> : <div>Path not found.</div>;
+            return module ? <ModuleView module={module} progress={progress} onToggleLesson={onToggleLesson} onNavigate={onNavigate} onOpenLesson={onOpenLesson} /> : <div className="p-10 text-center text-gray-400">Path not found.</div>;
         case 'quiz':
             const quiz = quizzes.find(q => q.id === view.quizId);
-            return quiz ? <QuizComponent quiz={quiz} onNavigate={onNavigate} modules={modules} onQuizComplete={onQuizComplete} userLevel={userLevel} /> : <div>Assessment not found.</div>;
+            return quiz ? <QuizComponent quiz={quiz} onNavigate={onNavigate} modules={modules} onQuizComplete={onQuizComplete} userLevel={userLevel} /> : <div className="p-10 text-center text-gray-400">Assessment not found.</div>;
         default:
-            return <div>System ready.</div>
+            return <div className="p-10 text-center text-gray-400 uppercase font-black tracking-widest text-xs">System ready.</div>
     }
 };
 

@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 import { quizModuleMapping, allTrainingModules } from '../data/trainingData';
-import type { QuizQuestion, Module } from '../types';
+import type { QuizQuestion, Module, UserProfile } from '../types';
 
 export const generateWorksheetQuestions = async (quizId: string, userLevel: string = 'B1'): Promise<QuizQuestion[]> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -100,4 +100,48 @@ export const generateWorksheetQuestions = async (quizId: string, userLevel: stri
     console.error("Error generating worksheet:", error);
     throw new Error("Failed to generate worksheet. Please try again.");
   }
+};
+
+export const generatePersonalizedAssignment = async (user: UserProfile, availableModules: Module[]): Promise<{ recommendedModuleIds: string[], reasoning: string }> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    const moduleList = availableModules.map(m => `${m.id}: ${m.title} - ${m.description}`).join('\n');
+    
+    const prompt = `Analyze this agent profile and recommend exactly 3 modules from the list that will best support their growth.
+    
+    Agent Profile:
+    Name: ${user.name}
+    Role: ${user.role}
+    Language Level: ${user.languageLevel}
+    
+    Available Modules:
+    ${moduleList}`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: prompt,
+            config: {
+                systemInstruction: "You are a Training Director at Teleperformance Egypt. Your goal is to optimize agent performance through targeted training assignments based on their role and CEFR proficiency level.",
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        recommendedModuleIds: {
+                            type: Type.ARRAY,
+                            items: { type: Type.STRING }
+                        },
+                        reasoning: { type: Type.STRING }
+                    },
+                    required: ['recommendedModuleIds', 'reasoning']
+                }
+            }
+        });
+
+        const result = JSON.parse(response.text.trim());
+        return result;
+    } catch (error) {
+        console.error("AI Auto-Assign Error:", error);
+        throw new Error("Failed to generate AI recommendations.");
+    }
 };

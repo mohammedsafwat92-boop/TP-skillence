@@ -16,8 +16,8 @@ export interface Lesson {
   link?: string;
   objective?: string;
   duration?: string;
-  isCustom?: boolean; // Flag to identify admin-added lessons
-  assignedTo?: string; // User ID if assigned to a specific person
+  isCustom?: boolean;
+  assignedTo?: string;
 }
 
 export interface Module {
@@ -34,35 +34,63 @@ export interface QuizQuestion {
   id: string;
   type: QuestionType;
   question: string;
-  context?: string; // For reading passages or listening transcripts
-  options?: string[]; // For MC, Listening, Reading
-  correctAnswer?: number; // Index for MC
-  speakingPrompt?: string; // Specific prompt for speaking tasks
+  context?: string;
+  options?: string[];
+  correctAnswer?: number;
+  speakingPrompt?: string;
 }
 
 export interface Quiz {
     id: string;
     title: string;
     description: string;
-    isAdaptive?: boolean; // Flag for the new generated tests
+    isAdaptive?: boolean;
+}
+
+export interface UserPerformanceData {
+  writing: number;
+  fluency: number;
+  grammar: number;
+  listening: number;
+  pronunciation: number;
+  understanding: number;
+  analytical: number;
+  content?: number;
+  testDate?: string;
+}
+
+export interface UserCredentials {
+  tempId: string;
+  accessCode: string;
+}
+
+export interface Roster {
+  id: string;
+  name: string;
+  assignedCoachId?: string;
 }
 
 export interface UserProfile {
   id: string;
   name: string;
-  role: 'admin' | 'agent';
+  role: 'admin' | 'coach' | 'agent';
   languageLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
-  assignedModules: string[]; // List of Module IDs visible to this user
+  assignedModules: string[];
+  rosterId: string;
+  assignedCoachId?: string; // Direct link to a coach
+  performanceData?: UserPerformanceData;
+  generatedCredentials?: UserCredentials;
 }
 
 export type View = 
   | { type: 'dashboard' }
   | { type: 'module'; moduleId: string }
   | { type: 'quiz'; quizId: string }
-  | { type: 'admin' };
+  | { type: 'admin' }
+  | { type: 'lesson'; lesson: Lesson; fromModuleId?: string };
 
 export interface ActivityLog {
-  date: string; // ISO string
+  date: string;
   type: 'lesson' | 'quiz';
   itemId: string;
   score?: number;
