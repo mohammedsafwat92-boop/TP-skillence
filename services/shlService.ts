@@ -1,5 +1,6 @@
 
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjs } from 'react-pdf'; // or pdfjs-dist
+pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`;
 import { geminiService } from './geminiService';
 import { googleSheetService } from './googleSheetService';
 

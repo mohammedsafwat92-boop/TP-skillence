@@ -8,9 +8,20 @@ export const geminiService = {
   analyzeSHLData: async (rawText: string): Promise<SHLReport> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Extract technical scores and candidate details from this SHL Assessment text.
+      contents: `Extract ONLY language proficiency scores and candidate details from this SHL Assessment text.
+      IGNORE all sections regarding Personality, Typing Speed, or Cognitive/Analytical ability.
+      
       Return JSON only. Format: 
-      { "candidateName": "string", "email": "string", "cefrLevel": "A1-C1", "grammar": 0-100, "vocabulary": 0-100, "fluency": 0-100, "pronunciation": 0-100 }.
+      { 
+        "candidateName": "string", 
+        "email": "string", 
+        "cefrLevel": "A1-C1", 
+        "grammar": 0-100, 
+        "vocabulary": 0-100, 
+        "fluency": 0-100, 
+        "pronunciation": 0-100,
+        "overallSpokenScore": 0-100
+      }.
       If a value is missing, use "Unknown" or 0.
       Text: ${rawText}`,
       config: { responseMimeType: "application/json" }
@@ -21,11 +32,11 @@ export const geminiService = {
   analyzeResourceUrl: async (url: string) => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Analyze this learning URL: ${url}. 
+      contents: `Analyze this language learning URL: ${url}. 
       Determine: 
       1. Short catchy title.
       2. CEFR Level (A1, A2, B1, B2, C1).
-      3. Primary skill tag (Grammar, Listening, Speaking, Sales, Culture).
+      3. Primary skill tag (Grammar, Listening, Speaking, Vocabulary, Fluency).
       4. Brief learning objective.
       Return as JSON.`,
       config: { responseMimeType: "application/json" }
@@ -36,7 +47,7 @@ export const geminiService = {
   generateQuizForResource: async (title: string, description: string): Promise<QuizQuestion[]> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate 5 multiple-choice questions for a professional training quiz.
+      contents: `Generate 5 multiple-choice questions for a professional language training quiz.
       Topic: ${title}. 
       Context: ${description}.
       Level: Intermediate Professional.
@@ -60,7 +71,6 @@ export const geminiService = {
     return JSON.parse(response.text);
   },
 
-  // Fix: Added missing generateWorksheetQuestions for quiz components
   generateWorksheetQuestions: async (quizId: string, level?: string): Promise<QuizQuestion[]> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",

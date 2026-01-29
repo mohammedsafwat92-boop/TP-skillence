@@ -27,15 +27,6 @@ export interface Resource {
   progress: ResourceProgress;
 }
 
-export interface User {
-  uid: string;
-  email: string;
-  name: string;
-  role: 'admin' | 'coach' | 'agent';
-  cefrLevel: string;
-  rosterId: string;
-}
-
 export interface SHLReport {
   candidateName: string;
   email: string;
@@ -44,36 +35,35 @@ export interface SHLReport {
   vocabulary: number;
   fluency: number;
   pronunciation: number;
-}
-
-export interface ActivityLog {
-  date: string;
-  type: 'lesson' | 'quiz';
-  title: string;
-  score?: number;
-}
-
-export interface UserProgress {
-  completedLessons: string[];
-  quizScores: { [quizId: string]: number };
-  activityHistory?: ActivityLog[];
+  overallSpokenScore: number;
 }
 
 export interface UserPerformanceData {
-  writing: number;
-  fluency: number;
   grammar: number;
-  listening: number;
+  vocabulary: number;
+  fluency: number;
   pronunciation: number;
-  understanding: number;
-  analytical: number;
-  content?: number;
+  overallSpoken: number;
   testDate: string;
+  // Added fields used in various parts of the application
+  writing?: number;
+  listening?: number;
+  understanding?: number;
+  analytical?: number;
+  content?: number;
 }
 
+// Added to support user onboarding and credentials management
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
+}
+
+// Added to support roster management
+export interface Roster {
+  id: string;
+  name: string;
+  assignedCoachId?: string;
 }
 
 export interface UserProfile {
@@ -83,8 +73,9 @@ export interface UserProfile {
   languageLevel: string;
   rosterId: string;
   assignedModules: string[];
-  assignedCoachId?: string;
   performanceData?: UserPerformanceData;
+  // Added fields to support team structure and initial access
+  assignedCoachId?: string;
   generatedCredentials?: UserCredentials;
 }
 
@@ -96,6 +87,7 @@ export interface Lesson {
   duration?: string;
   objective?: string;
   isCustom?: boolean;
+  // Added to support personalized learning paths
   assignedTo?: string;
 }
 
@@ -111,16 +103,8 @@ export interface Quiz {
   id: string;
   title: string;
   description: string;
-  isAdaptive?: boolean;
 }
 
-export interface Roster {
-  id: string;
-  name: string;
-  assignedCoachId?: string;
-}
-
-// Updated View type to use resource: Resource for type: 'lesson' to resolve type mismatches in App.tsx
 export type View = 
   | { type: 'dashboard' }
   | { type: 'module'; moduleId: string }
@@ -136,4 +120,19 @@ export interface QuizQuestion {
   type?: 'listening' | 'reading' | 'speaking';
   context?: string;
   speakingPrompt?: string;
+}
+
+// Added to support activity tracking and analytics
+export interface ActivityLog {
+  date: string;
+  type: 'lesson' | 'quiz';
+  score?: number;
+  title?: string;
+}
+
+// Added to support unified progress state management
+export interface UserProgress {
+  completedLessons: string[];
+  quizScores: Record<string, number>;
+  activityHistory: ActivityLog[];
 }

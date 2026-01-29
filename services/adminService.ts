@@ -7,8 +7,17 @@ const CUSTOM_LESSONS_KEY = 'tp_skillence_custom_lessons';
 
 const defaultModules = ['listening', 'speaking', 'reading', 'sales', 'global_culture', 'airline', 'telecom'];
 
+// Fix: Ensure all required fields in UserPerformanceData are initialized
 const mockPerformance = (overrides: Partial<UserPerformanceData> = {}): UserPerformanceData => ({
-  writing: 60, fluency: 60, grammar: 60, listening: 60, pronunciation: 60, understanding: 60, analytical: 60,
+  grammar: 60,
+  vocabulary: 60,
+  fluency: 60,
+  pronunciation: 60,
+  overallSpoken: 60,
+  writing: 60,
+  listening: 60,
+  understanding: 60,
+  analytical: 60,
   testDate: 'May 2025',
   ...overrides
 });
@@ -53,7 +62,17 @@ const initialUsers: UserProfile[] = [
     rosterId: 'roster_A',
     assignedCoachId: 'coach-tp-01',
     assignedModules: defaultModules,
-    performanceData: mockPerformance({ writing: 5, fluency: 57, grammar: 100, listening: 85, pronunciation: 87, understanding: 60, analytical: 84 })
+    performanceData: mockPerformance({ 
+      writing: 5, 
+      fluency: 57, 
+      grammar: 100, 
+      listening: 85, 
+      pronunciation: 87, 
+      understanding: 60, 
+      analytical: 84,
+      vocabulary: 75,
+      overallSpoken: 82
+    })
   },
   {
     id: '1773984511',
@@ -63,7 +82,18 @@ const initialUsers: UserProfile[] = [
     rosterId: 'roster_A',
     assignedCoachId: 'coach-tp-01',
     assignedModules: defaultModules,
-    performanceData: mockPerformance({ writing: 58, fluency: 58, grammar: 89, listening: 85, pronunciation: 43, understanding: 80, analytical: 74, content: 45 })
+    performanceData: mockPerformance({ 
+      writing: 58, 
+      fluency: 58, 
+      grammar: 89, 
+      listening: 85, 
+      pronunciation: 43, 
+      understanding: 80, 
+      analytical: 74, 
+      content: 45,
+      vocabulary: 80,
+      overallSpoken: 70
+    })
   },
   {
     id: '177398451122501',
@@ -73,7 +103,18 @@ const initialUsers: UserProfile[] = [
     rosterId: 'roster_B',
     assignedCoachId: 'coach-tp-02',
     assignedModules: defaultModules,
-    performanceData: mockPerformance({ writing: 36, fluency: 57, grammar: 67, listening: 78, pronunciation: 87, understanding: 60, analytical: 84, content: 5 })
+    performanceData: mockPerformance({ 
+      writing: 36, 
+      fluency: 57, 
+      grammar: 67, 
+      listening: 78, 
+      pronunciation: 87, 
+      understanding: 60, 
+      analytical: 84, 
+      content: 5,
+      vocabulary: 70,
+      overallSpoken: 75
+    })
   },
   {
     id: '177398451069724',
@@ -83,7 +124,18 @@ const initialUsers: UserProfile[] = [
     rosterId: 'roster_B',
     assignedCoachId: 'coach-tp-02',
     assignedModules: defaultModules,
-    performanceData: mockPerformance({ writing: 5, fluency: 65, grammar: 5, listening: 86, pronunciation: 47, understanding: 60, analytical: 37, content: 5 })
+    performanceData: mockPerformance({ 
+      writing: 5, 
+      fluency: 65, 
+      grammar: 5, 
+      listening: 86, 
+      pronunciation: 47, 
+      understanding: 60, 
+      analytical: 37, 
+      content: 5,
+      vocabulary: 50,
+      overallSpoken: 55
+    })
   },
   {
     id: '177398451165673',
@@ -93,7 +145,17 @@ const initialUsers: UserProfile[] = [
     rosterId: 'roster_A',
     assignedCoachId: 'coach-tp-01',
     assignedModules: defaultModules,
-    performanceData: mockPerformance({ writing: 55, fluency: 57, grammar: 46, listening: 78, pronunciation: 62, understanding: 40, analytical: 84 })
+    performanceData: mockPerformance({ 
+      writing: 55, 
+      fluency: 57, 
+      grammar: 46, 
+      listening: 78, 
+      pronunciation: 62, 
+      understanding: 40, 
+      analytical: 84,
+      vocabulary: 65,
+      overallSpoken: 60
+    })
   }
 ];
 

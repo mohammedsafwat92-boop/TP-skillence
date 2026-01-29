@@ -3,8 +3,8 @@ import React, { useState, useEffect } from 'react';
 import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, TableIcon, LightningIcon } from './Icons';
-import type { UserProfile, Module, Resource } from '../types';
+import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon } from './Icons';
+import type { UserProfile } from '../types';
 
 interface AdminPanelProps {
   onUpdateContent: () => void;
@@ -12,17 +12,16 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('onboarding');
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [userList, setUserList] = useState<any[]>([]);
-  const [unlockId, setUnlockId] = useState('');
 
   const fetchUsers = async () => {
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      setUserList(users);
+      setUserList(users || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -41,7 +40,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
     setIsProcessing(true);
     try {
       await shlService.processAndRegister(file);
-      alert(`Success! Candidate profile initialized from SHL report.`);
+      alert(`Success! Profile mapped.`);
       onUpdateContent();
     } catch (err) {
       alert("Parsing Failed: " + (err as Error).message);
@@ -63,7 +62,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
         type: 'Hyperlink',
         url: urlInput 
       });
-      alert("Resource analyzed by AI and deployed to Registry.");
+      alert("Resource analyzed and deployed.");
       setUrlInput('');
       onUpdateContent();
     } catch (err) {
@@ -74,17 +73,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
   };
 
   const exportCsv = () => {
-    const headers = ['UID', 'Name', 'Email', 'Level', 'Grammar', 'Fluency', 'Listening'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'CEFR', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
     const rows = userList.map(u => [
       u.uid, u.name, u.email, u.cefrLevel, 
-      u.shlData?.grammar || 0, u.shlData?.fluency || 0, u.shlData?.listening || 0
+      u.shlData?.grammar || 0, u.shlData?.fluency || 0, u.shlData?.vocabulary || 0, u.shlData?.pronunciation || 0
     ].join(',')).join('\n');
     
     const blob = new Blob([`${headers}\n${rows}`], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `TP_Skillence_Registry_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `Skillence_Language_Registry_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
   };
 
@@ -94,7 +93,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
     setIsProcessing(true);
     try {
       await googleSheetService.unlockResource(uid, resourceId);
-      alert("Resource Unlocked for Agent.");
+      alert("Resource Unlocked.");
       fetchUsers();
     } catch (err) {
       alert("Unlock failed.");
@@ -106,8 +105,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
   return (
     <div className="bg-white rounded-3xl shadow-xl p-8 max-w-6xl mx-auto border border-gray-100 animate-fadeIn">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-10 gap-6">
-        <h1 className="text-3xl font-black text-tp-purple flex items-center tracking-tight">
-          <BrainIcon className="mr-4 text-tp-red" /> Command Center
+        <h1 className="text-3xl font-black text-tp-purple flex items-center tracking-tight uppercase">
+          <BrainIcon className="mr-4 text-tp-red" /> Academy Management
         </h1>
         <div className="flex bg-tp-purple/5 p-1 rounded-2xl">
           {['onboarding', 'content', 'users'].map((tab) => (
@@ -125,7 +124,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
       {activeTab === 'users' && (
         <div className="space-y-6 animate-fadeIn">
           <div className="flex justify-between items-center">
-            <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Agent Performance Registry</h3>
+            <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Linguistic Registry</h3>
             <button 
               onClick={exportCsv}
               className="flex items-center gap-2 bg-tp-navy text-white px-5 py-2.5 rounded-xl text-xs font-black uppercase hover:bg-tp-purple transition-all"
@@ -138,9 +137,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
               <thead>
                 <tr className="bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest">
                   <th className="px-6 py-4">Agent Name</th>
-                  <th className="px-6 py-4">Level</th>
-                  <th className="px-6 py-4">Technical Scores</th>
-                  <th className="px-6 py-4">Actions</th>
+                  <th className="px-6 py-4">CEFR</th>
+                  <th className="px-6 py-4">Language Scores</th>
+                  <th className="px-6 py-4">Operations</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -152,10 +151,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
                     </td>
                     <td className="px-6 py-4 font-black text-tp-red text-sm">{user.cefrLevel}</td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
-                        {['grammar', 'fluency', 'listening'].map(skill => (
-                          <div key={skill} className="bg-gray-100 px-2 py-1 rounded text-[10px] font-black text-gray-600">
-                            {skill.charAt(0).toUpperCase()}: {user.shlData?.[skill] || 0}%
+                      <div className="flex flex-wrap gap-2">
+                        {['grammar', 'fluency', 'pronunciation'].map(skill => (
+                          <div key={skill} className="bg-gray-100 px-2 py-1 rounded text-[10px] font-black text-gray-600 uppercase">
+                            {skill}: {user.shlData?.[skill] || 0}%
                           </div>
                         ))}
                       </div>
@@ -165,7 +164,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
                         onClick={() => handleUnlock(user.uid)}
                         className="text-[10px] font-black uppercase text-tp-purple border border-tp-purple/20 px-3 py-1.5 rounded-lg hover:bg-tp-purple hover:text-white transition-all"
                       >
-                        Unlock
+                        Reset Lock
                       </button>
                     </td>
                   </tr>
@@ -179,13 +178,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
       {activeTab === 'onboarding' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="border-4 border-dashed border-tp-purple/5 rounded-3xl p-16 text-center hover:border-tp-purple/20 transition-all group bg-gray-50/50">
-            <div className="w-20 h-20 bg-tp-purple text-white rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-2xl shadow-tp-purple/20">
-              <DownloadIcon className="w-10 h-10" />
+            <div className="w-20 h-20 bg-tp-purple text-white rounded-3xl flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform shadow-2xl">
+              <ClipboardListIcon className="w-10 h-10" />
             </div>
-            <h3 className="text-2xl font-black text-tp-purple mb-3">AI Evaluation Upload</h3>
-            <p className="text-sm text-gray-500 mb-8 max-w-sm mx-auto font-medium">Drop the SHL PDF here. Skillence will map scores and auto-generate the growth plan.</p>
-            <label className="bg-tp-purple text-white px-10 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer hover:bg-tp-navy transition-all shadow-2xl shadow-tp-purple/30">
-              {isProcessing ? 'Processing Metrics...' : 'Select Report PDF'}
+            <h3 className="text-2xl font-black text-tp-purple mb-3">Language Audit Import</h3>
+            <p className="text-sm text-gray-500 mb-8 max-w-sm mx-auto font-medium">Upload SHL PDFs. Skillence extracts CEFR levels and sub-scores to build the agent's profile.</p>
+            <label className="bg-tp-purple text-white px-10 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer hover:bg-tp-navy transition-all shadow-xl">
+              {isProcessing ? 'Synchronizing...' : 'Upload PDF'}
               <input type="file" className="hidden" accept=".pdf" onChange={handlePdfUpload} disabled={isProcessing} />
             </label>
           </div>
@@ -196,14 +195,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
         <div className="space-y-8 animate-fadeIn">
           <div className="bg-tp-navy text-white rounded-3xl p-10 relative overflow-hidden">
             <div className="absolute top-0 right-0 p-10 opacity-10"><PlusIcon className="w-40 h-40" /></div>
-            <h3 className="text-2xl font-black mb-4 flex items-center">
-              <LightningIcon className="mr-3 text-tp-red" /> AI Curriculum Builder
+            <h3 className="text-2xl font-black mb-4 flex items-center uppercase">
+              <LightningIcon className="mr-3 text-tp-red" /> Content Aggregator
             </h3>
-            <p className="text-gray-400 mb-8 max-w-md font-medium">Paste any learning URL. Gemini will categorize it by level and skill-set for your team.</p>
+            <p className="text-gray-400 mb-8 max-w-md font-medium">Add learning URLs. AI will auto-tag them for the registry based on level and skill.</p>
             <div className="flex flex-col sm:flex-row gap-4">
               <input 
                 type="text" 
-                placeholder="YouTube, Article, or Resource Link..." 
+                placeholder="Paste URL..." 
                 className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-6 py-4 text-white outline-none focus:ring-2 focus:ring-tp-red placeholder-white/30"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
@@ -211,9 +210,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
               <button 
                 onClick={handleUrlAnalysis}
                 disabled={isProcessing}
-                className="bg-tp-red text-white px-10 py-4 rounded-2xl font-black uppercase text-xs hover:bg-red-700 transition-all shadow-2xl shadow-tp-red/40"
+                className="bg-tp-red text-white px-10 py-4 rounded-2xl font-black uppercase text-xs hover:bg-red-700 transition-all shadow-xl"
               >
-                {isProcessing ? 'Analyzing...' : 'Auto-Deploy'}
+                {isProcessing ? 'Analyzing...' : 'Auto-Import'}
               </button>
             </div>
           </div>

@@ -29,6 +29,7 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
     const fileName = file.name.split('.')[0].replace(/_/g, ' ');
     const name = fileName.charAt(0).toUpperCase() + fileName.slice(1);
     
+    // Fix: Added missing required properties 'vocabulary' and 'overallSpoken' to satisfy UserPerformanceData type
     const mockPerf: UserPerformanceData = {
       writing: Math.floor(Math.random() * 40) + 50,
       fluency: Math.floor(Math.random() * 40) + 50,
@@ -37,6 +38,8 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
       pronunciation: Math.floor(Math.random() * 40) + 50,
       understanding: Math.floor(Math.random() * 40) + 50,
       analytical: Math.floor(Math.random() * 40) + 50,
+      vocabulary: Math.floor(Math.random() * 40) + 50,
+      overallSpoken: Math.floor(Math.random() * 40) + 50,
       testDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
     };
 
