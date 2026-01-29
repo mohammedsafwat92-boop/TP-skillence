@@ -1,31 +1,54 @@
 
-import React, { useState } from 'react';
-import type { Lesson, QuizQuestion } from '../types';
+import React, { useState, useEffect } from 'react';
+import type { Resource, QuizQuestion } from '../types';
 import { geminiService } from '../services/geminiService';
-import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon } from './Icons';
+import { googleSheetService } from '../services/googleSheetService';
+import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon, BrainIcon } from './Icons';
 
 interface LessonViewerProps {
-  lesson: Lesson;
-  onComplete: () => void;
+  resource: Resource;
+  uid: string;
   onClose: () => void;
+  onMasteryAchieved: () => void;
 }
 
-const LessonViewer: React.FC<LessonViewerProps> = ({ lesson, onComplete, onClose }) => {
+const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onMasteryAchieved }) => {
   const [view, setView] = useState<'content' | 'quiz' | 'result'>('content');
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<number[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [score, setScore] = useState(0);
+  const [backendStatus, setBackendStatus] = useState<'open' | 'locked' | 'completed'>(resource.progress.status);
+
+  // Hard block for locked status
+  if (backendStatus === 'locked') {
+    return (
+      <div className="fixed inset-0 z-[100] bg-tp-navy/98 backdrop-blur-2xl flex items-center justify-center p-8 animate-fadeIn">
+        <div className="bg-white rounded-[40px] p-12 max-w-md text-center shadow-2xl border-t-8 border-tp-red">
+          <div className="w-24 h-24 bg-tp-red/10 rounded-full flex items-center justify-center mx-auto mb-8 text-tp-red animate-pulse">
+            <ExclamationCircleIcon className="w-12 h-12" />
+          </div>
+          <h2 className="text-3xl font-black text-tp-purple mb-4 uppercase tracking-tight">Access Denied</h2>
+          <p className="text-gray-600 mb-10 leading-relaxed font-medium">You have exhausted the maximum assessment attempts for this resource. Mastery not achieved.</p>
+          <div className="bg-gray-50 p-6 rounded-3xl mb-10 text-left">
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Status Report</p>
+            <p className="text-sm font-bold text-tp-purple italic">"Please consult your Quality Coach for a manual override and remedial coaching."</p>
+          </div>
+          <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-tp-purple transition-all shadow-xl">Back to Training Registry</button>
+        </div>
+      </div>
+    );
+  }
 
   const startQuiz = async () => {
     setIsGenerating(true);
     try {
-      const questions = await geminiService.generateQuizForResource(lesson.title, lesson.objective || '');
+      const questions = await geminiService.generateQuizForResource(resource.title, resource.objective || '');
       setQuizQuestions(questions);
       setAnswers(new Array(questions.length).fill(-1));
       setView('quiz');
     } catch (err) {
-      alert("Failed to load quiz.");
+      alert("AI Calibration failed. Check connection.");
     } finally {
       setIsGenerating(false);
     }
@@ -34,62 +57,76 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ lesson, onComplete, onClose
   const submitQuiz = async () => {
     const correctCount = quizQuestions.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
     const finalScore = Math.round((correctCount / quizQuestions.length) * 100);
+    const passed = correctCount >= 3;
     
     setScore(finalScore);
-    if (finalScore >= 60) {
-      onComplete();
+    setIsGenerating(true);
+    try {
+      const response = await googleSheetService.submitQuizResult(uid, resource.id, passed, finalScore);
+      setBackendStatus(response.status); // Sync with backend state immediately
+      if (passed) onMasteryAchieved();
+      setView('result');
+    } catch (err) {
+      alert("Progress sync failed.");
+    } finally {
+      setIsGenerating(false);
     }
-    setView('result');
   };
 
   return (
     <div className="fixed inset-0 z-50 bg-tp-navy/95 backdrop-blur-xl flex flex-col animate-fadeIn">
-      <header className="flex items-center justify-between px-8 py-4 bg-tp-purple border-b border-white/10">
-        <div>
-          <h2 className="text-white font-black text-xl tracking-tight uppercase">{lesson.title}</h2>
-          <p className="text-xs text-gray-300 font-bold uppercase tracking-widest">{lesson.level} Mastery Track</p>
+      <header className="flex items-center justify-between px-10 py-6 bg-tp-purple border-b border-white/5">
+        <div className="flex items-center">
+            <BrainIcon className="w-10 h-10 text-tp-red mr-4" />
+            <div>
+                <h2 className="text-white font-black text-2xl tracking-tight uppercase leading-none">{resource.title}</h2>
+                <div className="flex items-center gap-3 mt-1.5">
+                    <span className="text-[10px] text-white/50 font-black uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded">Level {resource.level}</span>
+                    <span className="text-[10px] text-tp-red font-black uppercase tracking-widest">Skill: {resource.tags[0]}</span>
+                </div>
+            </div>
         </div>
-        <button onClick={onClose} className="p-3 text-white hover:bg-white/10 rounded-full transition-all"><ExitIcon className="w-6 h-6" /></button>
+        <button onClick={onClose} className="p-4 text-white/50 hover:text-white hover:bg-white/5 rounded-full transition-all"><ExitIcon className="w-7 h-7" /></button>
       </header>
 
       <div className="flex-1 relative bg-white overflow-hidden">
         {view === 'content' && (
           <div className="w-full h-full flex flex-col">
-            {lesson.link ? (
-              <iframe src={lesson.link} className="flex-1 w-full border-none" allowFullScreen />
-            ) : (
-              <div className="flex-1 flex items-center justify-center p-12 text-center">
-                 <div>
-                    <h3 className="text-2xl font-black text-tp-purple mb-4">Objective</h3>
-                    <p className="text-gray-600 max-w-lg mx-auto leading-relaxed">{lesson.objective}</p>
-                 </div>
+            <iframe src={resource.url} className="flex-1 w-full border-none shadow-inner" allowFullScreen />
+            <div className="px-10 py-8 bg-tp-navy/10 backdrop-blur-md border-t border-gray-100 flex justify-between items-center">
+              <div>
+                <p className="text-xs font-black text-tp-purple uppercase tracking-widest">Learning Objective</p>
+                <p className="text-sm font-medium text-gray-600 italic">"{resource.objective || 'Complete the content to unlock assessment.'}"</p>
               </div>
-            )}
-            <div className="p-8 bg-tp-navy flex justify-center">
               <button 
                 onClick={startQuiz}
                 disabled={isGenerating}
-                className="bg-tp-red text-white font-black py-4 px-16 rounded-2xl hover:bg-red-700 transition-all shadow-2xl shadow-tp-red/40 uppercase tracking-widest text-sm flex items-center"
+                className="bg-tp-red text-white font-black py-4 px-12 rounded-2xl hover:bg-red-700 transition-all shadow-2xl shadow-tp-red/30 uppercase tracking-widest text-xs flex items-center group"
               >
-                {isGenerating ? 'AI Generating Quiz...' : 'Take Certification Quiz'}
+                {isGenerating ? 'AI Calibrating Quiz...' : 'Initiate Mastery Assessment'}
+                <span className="ml-3 group-hover:translate-x-1 transition-transform">→</span>
               </button>
             </div>
           </div>
         )}
 
         {view === 'quiz' && (
-          <div className="max-w-3xl mx-auto p-12 overflow-y-auto h-full custom-scrollbar">
-            <h3 className="text-2xl font-black text-tp-purple mb-8 uppercase tracking-tight">Competency Check</h3>
-            <div className="space-y-10">
+          <div className="max-w-4xl mx-auto p-12 overflow-y-auto h-full custom-scrollbar">
+            <div className="mb-12">
+                <h3 className="text-3xl font-black text-tp-purple uppercase tracking-tight mb-2">Technical Proficiency Check</h3>
+                <p className="text-sm text-gray-500 font-medium">Achieve 60% (3/5) to certify completion and unlock next module.</p>
+            </div>
+            <div className="space-y-12">
               {quizQuestions.map((q, i) => (
-                <div key={i} className="space-y-4">
-                  <p className="font-bold text-lg text-gray-800">{i + 1}. {q.question}</p>
-                  <div className="grid grid-cols-1 gap-3">
+                <div key={i} className="bg-gray-50 p-8 rounded-[32px] border border-gray-100 relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-tp-purple opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                  <p className="font-bold text-xl text-tp-purple mb-6">{i + 1}. {q.question}</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {q.options.map((opt, optIdx) => (
                       <button 
                         key={optIdx}
                         onClick={() => { const n = [...answers]; n[i] = optIdx; setAnswers(n); }}
-                        className={`text-left p-4 rounded-xl border-2 transition-all font-medium ${answers[i] === optIdx ? 'border-tp-purple bg-tp-purple/5 text-tp-purple' : 'border-gray-100 hover:border-gray-200 text-gray-600'}`}
+                        className={`text-left px-6 py-4 rounded-2xl border-2 transition-all font-bold text-sm ${answers[i] === optIdx ? 'border-tp-purple bg-tp-purple text-white shadow-xl' : 'border-white bg-white hover:border-tp-purple/20 text-gray-600 shadow-sm'}`}
                       >
                         {opt}
                       </button>
@@ -97,27 +134,33 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ lesson, onComplete, onClose
                   </div>
                 </div>
               ))}
-              <button 
-                onClick={submitQuiz}
-                className="w-full bg-tp-purple text-white py-5 rounded-2xl font-black uppercase text-sm tracking-widest hover:bg-tp-navy transition-all shadow-xl shadow-tp-purple/20"
-              >
-                Submit Assessment
-              </button>
+              <div className="pt-10">
+                <button 
+                    onClick={submitQuiz}
+                    disabled={isGenerating || answers.includes(-1)}
+                    className="w-full bg-tp-purple text-white py-6 rounded-3xl font-black uppercase text-sm tracking-[0.2em] hover:bg-tp-navy transition-all shadow-2xl shadow-tp-purple/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    {isGenerating ? 'Evaluating Performance...' : 'Submit Certification Assessment'}
+                </button>
+              </div>
             </div>
           </div>
         )}
 
         {view === 'result' && (
-          <div className="h-full flex items-center justify-center p-8">
-            <div className="bg-white rounded-3xl p-12 max-w-md text-center shadow-2xl border border-gray-100">
-              <div className={`w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 ${score >= 60 ? 'bg-green-100 text-green-600' : 'bg-tp-red/10 text-tp-red'}`}>
-                {/* Fix: Added filled prop to CheckCircleIcon */}
-                {score >= 60 ? <CheckCircleIcon filled={true} className="w-12 h-12" /> : <ExclamationCircleIcon className="w-12 h-12" />}
+          <div className="h-full flex items-center justify-center p-8 bg-gray-50/50">
+            <div className="bg-white rounded-[40px] p-16 max-w-lg w-full text-center shadow-2xl border border-gray-100 relative overflow-hidden">
+              <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center mb-10 shadow-inner ${score >= 60 ? 'bg-green-100 text-green-600' : 'bg-tp-red/10 text-tp-red'}`}>
+                {score >= 60 ? <CheckCircleIcon className="w-14 h-14" filled /> : <ExclamationCircleIcon className="w-14 h-14" />}
               </div>
-              <h2 className="text-3xl font-black text-tp-purple mb-2 uppercase">{score >= 60 ? 'Passed' : 'Not Yet'}</h2>
-              <p className="text-4xl font-black text-tp-purple mb-6">{score}%</p>
-              <p className="text-gray-600 mb-8">{score >= 60 ? 'Excellent work! Your progress has been synced to the team registry.' : 'You need 60% to pass. Please review the material and try again.'}</p>
-              <button onClick={onClose} className="w-full bg-tp-navy text-white py-4 rounded-2xl font-black uppercase text-xs tracking-widest">Return to Dashboard</button>
+              <h2 className="text-4xl font-black text-tp-purple mb-2 uppercase tracking-tight">{score >= 60 ? 'Certified' : 'Calibration Required'}</h2>
+              <p className="text-6xl font-black text-tp-purple mb-8">{score}%</p>
+              <div className="bg-tp-purple/5 p-6 rounded-3xl mb-12">
+                <p className="text-gray-600 font-medium text-lg italic">
+                    {score >= 60 ? 'Strategy Successfully Mastered. Metrics updated in floor registry.' : 'Target score not met. Review material and re-engage for second attempt.'}
+                </p>
+              </div>
+              <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-tp-purple transition-all">Close Viewer</button>
             </div>
           </div>
         )}

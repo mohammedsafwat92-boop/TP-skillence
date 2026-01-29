@@ -1,25 +1,50 @@
 
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxmOWRBHkNy6dgvj_HA8QnEQl4TEkDLHgPlSAsvQ_FqeuLDmT4dS_MaTys3Y81E7xdI/exec";
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
 
 async function callApi(action: string, payload: any = {}) {
   try {
+    // Using 'text/plain' is the gold standard for Google Apps Script 
+    // to avoid CORS 'OPTIONS' pre-flight triggers that often fail.
     const response = await fetch(WEB_APP_URL, {
       method: 'POST',
-      mode: 'cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, ...payload })
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify({ 
+        action, 
+        timestamp: new Date().toISOString(),
+        ...payload 
+      }),
+      redirect: 'follow'
     });
+
+    if (!response.ok) {
+      throw new Error(`NETWORK_UNAVAILABLE: HTTP ${response.status}`);
+    }
+
     const result = await response.json();
-    if (!result.success) throw new Error(result.message || 'API Error');
+    
+    if (!result.success) {
+      const msg = result.message || '';
+      
+      // Specifically target the exact error reported by the user
+      if (msg.includes("destructure property 'email'") || msg.includes("destructure property 'action'")) {
+        throw new Error("BACKEND_PARSING_ERROR: The Google Script is failing to read the 'email' field. You must use the 'Universal Backend Script' provided in the Diagnostic Wizard to handle incoming data safely.");
+      }
+      
+      if (msg.includes("openById") || msg.includes("SpreadsheetApp")) {
+        throw new Error("SPREADSHEET_ACCESS_DENIED: The script exists, but it cannot open the Spreadsheet ID. Ensure the ID is correct and you have clicked 'Run' once in the script editor to authorize.");
+      }
+
+      throw new Error(result.message || 'GENERAL_BACKEND_FAULT');
+    }
+    
     return result.data;
   } catch (error) {
-    console.error(`Backend Error [${action}]:`, error);
+    console.error(`[Lufthansa Skillence API Failure] Action: ${action}`, error);
     throw error;
   }
 }
-
-// Fix: Export named submitToSheet for backward compatibility/direct use
-export const submitToSheet = (data: any) => callApi('submit_progress_log', data);
 
 export const googleSheetService = {
   login: (email: string, pass: string) => 
@@ -31,7 +56,6 @@ export const googleSheetService = {
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number) =>
     callApi('submit_progress', { uid, resourceId, passed, score }),
     
-  // Admin Actions
   createUser: (userData: any) => 
     callApi('create_user', userData),
     

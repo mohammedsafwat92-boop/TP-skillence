@@ -120,11 +120,12 @@ export interface Roster {
   assignedCoachId?: string;
 }
 
+// Updated View type to use resource: Resource for type: 'lesson' to resolve type mismatches in App.tsx
 export type View = 
   | { type: 'dashboard' }
   | { type: 'module'; moduleId: string }
   | { type: 'admin' }
-  | { type: 'lesson'; lesson: Lesson; fromModuleId?: string }
+  | { type: 'lesson'; resource: Resource; fromModuleId?: string }
   | { type: 'quiz'; quizId: string };
 
 export interface QuizQuestion {
