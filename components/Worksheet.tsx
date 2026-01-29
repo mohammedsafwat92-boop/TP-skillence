@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
-import { generateWorksheetQuestions } from '../services/geminiService';
+import { geminiService } from '../services/geminiService';
 import type { QuizQuestion, Lesson, Module, View, Quiz, UserProgress, ActivityLog } from '../types';
 import { ResourceType } from '../types';
 import { quizzes } from '../data/trainingData';
@@ -439,7 +439,8 @@ const QuizComponent: React.FC<{
         setIsLoading(true);
         setError(null);
         try {
-            const generatedQuestions = await generateWorksheetQuestions(quiz.id, userLevel);
+            // Fix: Use geminiService.generateWorksheetQuestions
+            const generatedQuestions = await geminiService.generateWorksheetQuestions(quiz.id, userLevel);
             setQuestions(generatedQuestions);
             setUserAnswers(new Array(generatedQuestions.length).fill(-1));
             setViewState('quiz');

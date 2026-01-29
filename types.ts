@@ -1,5 +1,5 @@
 
-import type { ReactElement } from 'react';
+import type { ReactNode } from 'react';
 
 export enum ResourceType {
   Watch = 'Watch',
@@ -9,42 +9,54 @@ export enum ResourceType {
   Practice = 'Practice',
 }
 
-export interface Lesson {
+export interface ResourceProgress {
+  status: 'locked' | 'open' | 'completed';
+  attempts: number;
+  score: number;
+  lastAttempt?: string;
+}
+
+export interface Resource {
+  id: string;
   title: string;
-  level: string;
+  url: string;
   type: ResourceType;
-  link?: string;
+  tags: string[];
+  level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
   objective?: string;
-  duration?: string;
-  isCustom?: boolean;
-  assignedTo?: string;
+  progress: ResourceProgress;
 }
 
-export interface Module {
-  id: string;
+export interface User {
+  uid: string;
+  email: string;
+  name: string;
+  role: 'admin' | 'coach' | 'agent';
+  cefrLevel: string;
+  rosterId: string;
+}
+
+export interface SHLReport {
+  candidateName: string;
+  email: string;
+  cefrLevel: string;
+  grammar: number;
+  vocabulary: number;
+  fluency: number;
+  pronunciation: number;
+}
+
+export interface ActivityLog {
+  date: string;
+  type: 'lesson' | 'quiz';
   title: string;
-  icon: ReactElement;
-  description: string;
-  lessons: Lesson[];
+  score?: number;
 }
 
-export type QuestionType = 'multiple_choice' | 'listening' | 'reading' | 'speaking';
-
-export interface QuizQuestion {
-  id: string;
-  type: QuestionType;
-  question: string;
-  context?: string;
-  options?: string[];
-  correctAnswer?: number;
-  speakingPrompt?: string;
-}
-
-export interface Quiz {
-    id: string;
-    title: string;
-    description: string;
-    isAdaptive?: boolean;
+export interface UserProgress {
+  completedLessons: string[];
+  quizScores: { [quizId: string]: number };
+  activityHistory?: ActivityLog[];
 }
 
 export interface UserPerformanceData {
@@ -56,12 +68,50 @@ export interface UserPerformanceData {
   understanding: number;
   analytical: number;
   content?: number;
-  testDate?: string;
+  testDate: string;
 }
 
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
+}
+
+export interface UserProfile {
+  id: string;
+  name: string;
+  role: 'admin' | 'coach' | 'agent';
+  languageLevel: string;
+  rosterId: string;
+  assignedModules: string[];
+  assignedCoachId?: string;
+  performanceData?: UserPerformanceData;
+  generatedCredentials?: UserCredentials;
+}
+
+export interface Lesson {
+  title: string;
+  level: string;
+  type: ResourceType;
+  link?: string;
+  duration?: string;
+  objective?: string;
+  isCustom?: boolean;
+  assignedTo?: string;
+}
+
+export interface Module {
+  id: string;
+  title: string;
+  icon: ReactNode;
+  description: string;
+  lessons: Lesson[];
+}
+
+export interface Quiz {
+  id: string;
+  title: string;
+  description: string;
+  isAdaptive?: boolean;
 }
 
 export interface Roster {
@@ -70,34 +120,19 @@ export interface Roster {
   assignedCoachId?: string;
 }
 
-export interface UserProfile {
-  id: string;
-  name: string;
-  role: 'admin' | 'coach' | 'agent';
-  languageLevel: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
-  assignedModules: string[];
-  rosterId: string;
-  assignedCoachId?: string; // Direct link to a coach
-  performanceData?: UserPerformanceData;
-  generatedCredentials?: UserCredentials;
-}
-
 export type View = 
   | { type: 'dashboard' }
   | { type: 'module'; moduleId: string }
-  | { type: 'quiz'; quizId: string }
   | { type: 'admin' }
-  | { type: 'lesson'; lesson: Lesson; fromModuleId?: string };
+  | { type: 'lesson'; lesson: Lesson; fromModuleId?: string }
+  | { type: 'quiz'; quizId: string };
 
-export interface ActivityLog {
-  date: string;
-  type: 'lesson' | 'quiz';
-  itemId: string;
-  score?: number;
-}
-
-export interface UserProgress {
-  completedLessons: string[];
-  quizScores: { [quizId: string]: number };
-  activityHistory: ActivityLog[];
+export interface QuizQuestion {
+  question: string;
+  options: string[];
+  correctAnswer: number;
+  explanation?: string;
+  type?: 'listening' | 'reading' | 'speaking';
+  context?: string;
+  speakingPrompt?: string;
 }
