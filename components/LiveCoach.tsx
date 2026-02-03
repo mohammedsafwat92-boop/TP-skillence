@@ -19,7 +19,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
 
-  // Helper: Base64 Decoding
   const decodeBase64 = (base64: string) => {
     const binaryString = atob(base64);
     const bytes = new Uint8Array(binaryString.length);
@@ -29,7 +28,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
     return bytes;
   };
 
-  // Helper: PCM Decoding
   const decodeAudioData = async (data: Uint8Array, ctx: AudioContext) => {
     const dataInt16 = new Int16Array(data.buffer);
     const frameCount = dataInt16.length;
@@ -41,7 +39,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
     return buffer;
   };
 
-  // Helper: PCM Encoding
   const createBlob = (data: Float32Array): Blob => {
     const int16 = new Int16Array(data.length);
     for (let i = 0; i < data.length; i++) {
@@ -119,7 +116,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
           },
           onerror: (e) => {
             console.error("Live API Error", e);
-            setError("Connection Interrupted. Please check your network.");
+            setError("Connection Lost.");
           },
           onclose: () => setIsConnected(false),
         },
@@ -130,21 +127,17 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
           },
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          systemInstruction: `You are an expert Language and Culture Coach for Lufthansa call center agents. 
+          systemInstruction: `You are an expert Professional Language Coach for corporate support agents. 
           Your goal is to simulate realistic customer scenarios. 
-          Be professional but direct, mirroring German cultural directness when acting as a German passenger.
-          Provide brief feedback on:
-          1. Lufthansa service standards (politeness, naming the passenger).
-          2. Upselling Miles & More where appropriate.
-          3. Correct English usage for airline operations (Gate, Lounge, Rebooking).
-          Initiate the conversation by greeting the agent as a passenger calling to complain about a delayed flight from Frankfurt.`,
+          Provide real-time feedback on English usage, tone, and professional directness.
+          Initiate the conversation by greeting the agent as a customer calling with a complex inquiry about their service subscription.`,
         },
       });
 
       sessionRef.current = await sessionPromise;
     } catch (err) {
       console.error(err);
-      setError("Mic permission denied or API key invalid.");
+      setError("Mic access denied or API configuration error.");
     }
   };
 
@@ -166,7 +159,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
         <XIcon className="w-8 h-8" />
       </button>
 
-      {/* Lufthansa Premium Background Decor */}
       <div className="absolute inset-0 pointer-events-none opacity-20">
         <div className="absolute top-1/4 left-1/4 w-[600px] h-[600px] bg-tp-red/20 rounded-full blur-[120px] animate-pulse"></div>
         <div className="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-tp-purple/20 rounded-full blur-[100px]"></div>
@@ -178,27 +170,18 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
             <SpeakingIcon className="w-10 h-10 text-tp-purple" />
           </div>
           <div className="text-left">
-            <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Lufthansa Live Coach</h1>
-            <p className="text-tp-red font-black text-[10px] uppercase tracking-[0.4em]">Real-time Calibration Session</p>
+            <h1 className="text-3xl font-black text-white uppercase tracking-tighter">Pro Language Coach</h1>
+            <p className="text-tp-red font-black text-[10px] uppercase tracking-[0.4em]">Active Calibration Session</p>
           </div>
         </div>
 
-        {/* The Interaction Orb */}
         <div className="relative mb-16">
           <div className={`w-48 h-48 md:w-64 md:h-64 rounded-full flex items-center justify-center transition-all duration-500 border-4 ${isConnected ? 'border-tp-red shadow-[0_0_80px_rgba(226,0,26,0.3)]' : 'border-white/10'}`}>
              <div className={`absolute inset-0 rounded-full border-2 border-tp-red/30 animate-ping ${isSpeaking ? 'opacity-100' : 'opacity-0'}`}></div>
              <div className={`w-32 h-32 md:w-40 md:h-40 bg-white/5 rounded-full flex items-center justify-center relative overflow-hidden`}>
                 <BrainIcon className={`w-16 h-16 transition-all duration-300 ${isConnected ? 'text-white' : 'text-white/20'}`} />
-                {isConnected && (
-                  <div className="absolute inset-0 bg-gradient-to-t from-tp-red/20 to-transparent"></div>
-                )}
              </div>
           </div>
-          {!isConnected && !error && (
-             <div className="absolute top-full mt-6 left-1/2 -translate-x-1/2 text-white/40 font-black uppercase text-[10px] tracking-widest animate-pulse">
-               Connecting to Academy Hub...
-             </div>
-          )}
         </div>
 
         {error && (
@@ -208,11 +191,10 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
           </div>
         )}
 
-        {/* Live Transcription Box */}
-        <div className="w-full max-w-2xl bg-white/5 backdrop-blur-md border border-white/10 rounded-[40px] p-8 md:p-10 shadow-2xl min-h-[220px] flex flex-col justify-end">
+        <div className="w-full max-w-2xl bg-white/5 backdrop-blur-md border border-white/10 rounded-[40px] p-10 shadow-2xl min-h-[220px] flex flex-col justify-end">
           <div className="space-y-4">
             {transcription.length === 0 ? (
-               <p className="text-white/20 italic font-medium text-lg">"The Coach is listening for your opening statement..."</p>
+               <p className="text-white/20 italic font-medium text-lg">"The Coach is listening..."</p>
             ) : (
                transcription.map((line, i) => (
                  <p key={i} className={`text-lg md:text-xl font-bold leading-tight animate-fadeIn ${line.startsWith('You:') ? 'text-tp-red' : 'text-white'}`}>
@@ -224,13 +206,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose }) => {
           <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
               <span className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] flex items-center">
                 <div className={`w-2 h-2 rounded-full mr-3 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
-                Session: {isConnected ? 'Active Practice' : 'Offline'}
+                Registry Link: {isConnected ? 'Synchronized' : 'Offline'}
               </span>
-              <div className="flex gap-2">
-                 <div className={`w-1 h-4 rounded-full ${isSpeaking ? 'bg-tp-red animate-bounce' : 'bg-white/10'}`}></div>
-                 <div className={`w-1 h-4 rounded-full ${isSpeaking ? 'bg-tp-red animate-bounce delay-75' : 'bg-white/10'}`}></div>
-                 <div className={`w-1 h-4 rounded-full ${isSpeaking ? 'bg-tp-red animate-bounce delay-150' : 'bg-white/10'}`}></div>
-              </div>
           </div>
         </div>
       </div>

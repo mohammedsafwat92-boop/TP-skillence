@@ -1,10 +1,12 @@
 
 const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
 
+/**
+ * Communicates with Google Apps Script Web App.
+ * Uses 'text/plain' Content-Type to avoid CORS preflight (OPTIONS) triggers.
+ */
 async function callApi(action: string, payload: any = {}) {
   try {
-    // Using 'text/plain' is the gold standard for Google Apps Script 
-    // to avoid CORS 'OPTIONS' pre-flight triggers that often fail.
     const response = await fetch(WEB_APP_URL, {
       method: 'POST',
       headers: {
@@ -25,23 +27,12 @@ async function callApi(action: string, payload: any = {}) {
     const result = await response.json();
     
     if (!result.success) {
-      const msg = result.message || '';
-      
-      // Specifically target the exact error reported by the user
-      if (msg.includes("destructure property 'email'") || msg.includes("destructure property 'action'")) {
-        throw new Error("BACKEND_PARSING_ERROR: The Google Script is failing to read the 'email' field. You must use the 'Universal Backend Script' provided in the Diagnostic Wizard to handle incoming data safely.");
-      }
-      
-      if (msg.includes("openById") || msg.includes("SpreadsheetApp")) {
-        throw new Error("SPREADSHEET_ACCESS_DENIED: The script exists, but it cannot open the Spreadsheet ID. Ensure the ID is correct and you have clicked 'Run' once in the script editor to authorize.");
-      }
-
       throw new Error(result.message || 'GENERAL_BACKEND_FAULT');
     }
     
     return result.data;
   } catch (error) {
-    console.error(`[Lufthansa Skillence API Failure] Action: ${action}`, error);
+    console.error(`[Academy API Failure] Action: ${action}`, error);
     throw error;
   }
 }

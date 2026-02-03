@@ -20,7 +20,7 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   const [score, setScore] = useState(0);
   const [backendStatus, setBackendStatus] = useState<'open' | 'locked' | 'completed'>(resource.progress.status);
 
-  // HARD BLOCK FOR LOCKED STATUS
+  // CRITICAL: Block access if module is locked due to failure
   if (backendStatus === 'locked') {
     return (
       <div className="fixed inset-0 z-[100] bg-tp-navy/98 backdrop-blur-2xl flex items-center justify-center p-8 animate-fadeIn">
@@ -29,12 +29,12 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
             <ExclamationCircleIcon className="w-12 h-12" />
           </div>
           <h2 className="text-3xl font-black text-tp-purple mb-4 uppercase tracking-tight">Access Locked</h2>
-          <p className="text-gray-600 mb-10 leading-relaxed font-medium">You have exceeded the maximum assessment attempts for this module. Mastery threshold not reached.</p>
+          <p className="text-gray-600 mb-10 leading-relaxed font-medium">Attempt limit exceeded. You failed to reach the mastery threshold of 60%.</p>
           <div className="bg-gray-50 p-6 rounded-3xl mb-10 text-left">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Academy Protocol</p>
-            <p className="text-sm font-bold text-tp-purple italic">"Please contact your Language Coach for a manual unlock and direct coaching session."</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">System Notice</p>
+            <p className="text-sm font-bold text-tp-purple italic">"Please contact your Learning Coach for a manual unlock and evaluation session."</p>
           </div>
-          <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-tp-purple transition-all shadow-xl">Exit Training</button>
+          <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] hover:bg-tp-purple transition-all shadow-xl">Back to Dashboard</button>
         </div>
       </div>
     );
@@ -48,7 +48,7 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
       setAnswers(new Array(questions.length).fill(-1));
       setView('quiz');
     } catch (err) {
-      alert("AI Calibration failed. Check connection.");
+      alert("Assessment Engine initialization failed. Retrying...");
     } finally {
       setIsGenerating(false);
     }
@@ -57,18 +57,18 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   const submitQuiz = async () => {
     const correctCount = quizQuestions.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
     const finalScore = Math.round((correctCount / quizQuestions.length) * 100);
-    const passed = finalScore >= 60;
+    const passed = finalScore >= 60; // Mastery = 60%+
     
     setScore(finalScore);
     setIsGenerating(true);
     try {
-      // BACKEND SYNC
+      // Sync with Registry
       const response = await googleSheetService.submitQuizResult(uid, resource.id, passed, finalScore);
       setBackendStatus(response.status); 
       if (passed) onMasteryAchieved();
       setView('result');
     } catch (err) {
-      alert("Progress sync failed. Results might not be saved.");
+      console.error("Registry Sync Failure", err);
       setView('result');
     } finally {
       setIsGenerating(false);
@@ -82,10 +82,7 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
             <BrainIcon className="w-10 h-10 text-tp-red mr-4" />
             <div>
                 <h2 className="text-white font-black text-2xl tracking-tight uppercase leading-none">{resource.title}</h2>
-                <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-[10px] text-white/50 font-black uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded">{resource.level}</span>
-                    <span className="text-[10px] text-tp-red font-black uppercase tracking-widest">{resource.tags[0]}</span>
-                </div>
+                <span className="text-[10px] text-white/50 font-black uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded mt-1.5 inline-block">{resource.level} Proficiency</span>
             </div>
         </div>
         <button onClick={onClose} className="p-4 text-white/50 hover:text-white hover:bg-white/5 rounded-full transition-all"><ExitIcon className="w-7 h-7" /></button>
@@ -94,19 +91,19 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
       <div className="flex-1 relative bg-white overflow-hidden">
         {view === 'content' && (
           <div className="w-full h-full flex flex-col">
-            <iframe src={resource.url} className="flex-1 w-full border-none shadow-inner" allowFullScreen />
+            <iframe src={resource.url} className="flex-1 w-full border-none shadow-inner" title="Lesson Content" />
             <div className="px-10 py-8 bg-tp-navy/10 backdrop-blur-md border-t border-gray-100 flex justify-between items-center">
               <div>
-                <p className="text-xs font-black text-tp-purple uppercase tracking-widest">Objective</p>
-                <p className="text-sm font-medium text-gray-600 italic">"{resource.objective || 'Complete the lesson to unlock assessment.'}"</p>
+                <p className="text-xs font-black text-tp-purple uppercase tracking-widest">Training Objective</p>
+                <p className="text-sm font-medium text-gray-600 italic">"{resource.objective || 'Complete module to unlock assessment.'}"</p>
               </div>
               <button 
                 onClick={startQuiz}
-                disabled={isGenerating}
-                className="bg-tp-red text-white font-black py-4 px-12 rounded-2xl hover:bg-red-700 transition-all shadow-2xl shadow-tp-red/30 uppercase tracking-widest text-xs flex items-center group"
+                disabled={isGenerating || backendStatus === 'completed'}
+                className="bg-tp-red text-white font-black py-4 px-12 rounded-2xl hover:bg-red-700 transition-all shadow-2xl shadow-tp-red/30 uppercase tracking-widest text-xs flex items-center group disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isGenerating ? 'AI Calibrating...' : 'Launch Assessment'}
-                <span className="ml-3 group-hover:translate-x-1 transition-transform">→</span>
+                {backendStatus === 'completed' ? 'Module Certified' : isGenerating ? 'Preparing Quiz...' : 'Final Mastery Check'}
+                {backendStatus !== 'completed' && <span className="ml-3 group-hover:translate-x-1 transition-transform">→</span>}
               </button>
             </div>
           </div>
@@ -115,8 +112,8 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
         {view === 'quiz' && (
           <div className="max-w-4xl mx-auto p-12 overflow-y-auto h-full custom-scrollbar">
             <div className="mb-12">
-                <h3 className="text-3xl font-black text-tp-purple uppercase tracking-tight mb-2">Mastery Check</h3>
-                <p className="text-sm text-gray-500 font-medium">Achieve 60% (3/5) to certify proficiency.</p>
+                <h3 className="text-3xl font-black text-tp-purple uppercase tracking-tight mb-2">Certification Phase</h3>
+                <p className="text-sm text-gray-500 font-medium">Answer 5 questions based on the lesson. Score 60% to certify.</p>
             </div>
             <div className="space-y-12">
               {quizQuestions.map((q, i) => (
@@ -140,9 +137,9 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
                 <button 
                     onClick={submitQuiz}
                     disabled={isGenerating || answers.includes(-1)}
-                    className="w-full bg-tp-purple text-white py-6 rounded-3xl font-black uppercase text-sm tracking-[0.2em] hover:bg-tp-navy transition-all shadow-2xl"
+                    className="w-full bg-tp-purple text-white py-6 rounded-3xl font-black uppercase text-sm tracking-[0.2em] hover:bg-tp-navy transition-all shadow-2xl disabled:opacity-50"
                 >
-                    {isGenerating ? 'Evaluating...' : 'Complete Assessment'}
+                    {isGenerating ? 'Analyzing Responses...' : 'Submit to Registry'}
                 </button>
               </div>
             </div>
@@ -155,14 +152,14 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
               <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center mb-10 shadow-inner ${score >= 60 ? 'bg-green-100 text-green-600' : 'bg-tp-red/10 text-tp-red'}`}>
                 {score >= 60 ? <CheckCircleIcon className="w-14 h-14" filled /> : <ExclamationCircleIcon className="w-14 h-14" />}
               </div>
-              <h2 className="text-4xl font-black text-tp-purple mb-2 uppercase tracking-tight">{score >= 60 ? 'Certified' : 'Failed'}</h2>
+              <h2 className="text-4xl font-black text-tp-purple mb-2 uppercase tracking-tight">{score >= 60 ? 'Certified' : 'Retry Required'}</h2>
               <p className="text-6xl font-black text-tp-purple mb-8">{score}%</p>
               <div className="bg-tp-purple/5 p-6 rounded-3xl mb-12">
                 <p className="text-gray-600 font-medium text-lg italic">
-                    {score >= 60 ? 'Academy metrics updated. Level proficiency confirmed.' : 'Target score not reached. Please review the material carefully before retrying.'}
+                    {score >= 60 ? 'Module mastery logged. Your curriculum has been updated.' : 'Performance below threshold. Your attempts have been recorded.'}
                 </p>
               </div>
-              <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-tp-purple transition-all">Back to Dashboard</button>
+              <button onClick={onClose} className="w-full bg-tp-navy text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-tp-purple transition-all">Continue Journey</button>
             </div>
           </div>
         )}

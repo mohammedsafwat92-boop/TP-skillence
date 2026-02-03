@@ -5,68 +5,68 @@ import { ListeningIcon, SpeakingIcon, ReadingIcon, AirlineIcon, GlobeIcon, Phone
 import { ResourceType } from '../types';
 
 const listeningLessons: Lesson[] = [
-    { title: 'Lufthansa Premium Phonetics', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep50', duration: '15 min', objective: 'Mastering the airline\'s specific greeting and phonetic alphabet usage.' },
-    { title: 'Complex Itinerary Active Listening', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep68', duration: '20 min', objective: 'Handling multi-city bookings and complex schedule changes.' },
-    { title: 'Crisis Management & Empathy', level: 'B2', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep15', duration: '25 min', objective: 'De-escalating frustrated passengers during flight delays.' },
+    { title: 'Global Business Phonetics', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep50', duration: '15 min', objective: 'Mastering professional greetings and phonetic clarity.' },
+    { title: 'Active Listening for Client Care', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep68', duration: '20 min', objective: 'Handling complex multi-part requests and technical details.' },
+    { title: 'De-escalation & Empathy Skills', level: 'B2', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep15', duration: '25 min', objective: 'Managing frustrated clients with high-stakes communication.' },
 ];
 
 const cultureLessons: Lesson[] = [
-    { title: 'German Business Directness', level: 'All', type: ResourceType.Read, duration: '15 min', objective: 'Understanding "Efficiency First" communication with German travelers.' },
-    { title: 'The FORD Method in Travel', level: 'All', type: ResourceType.Read, duration: '10 min', objective: 'Building rapport through Family, Occupation, Recreation, and Dreams.' },
-    { title: 'European Dining & Travel Etiquette', level: 'B1', type: ResourceType.Watch, link: 'https://www.youtube.com/watch?v=_kItsPSG4tI', duration: '15 min', objective: 'Nuances of hospitality for premium cabin guests.' },
+    { title: 'Professional Directness & Efficiency', level: 'All', type: ResourceType.Read, duration: '15 min', objective: 'Understanding culture-specific communication styles in business.' },
+    { title: 'The FORD Method for Rapport', level: 'All', type: ResourceType.Read, duration: '10 min', objective: 'Building deep rapport through targeted small talk.' },
+    { title: 'Dining & Etiquette for Client Support', level: 'B1', type: ResourceType.Watch, link: 'https://www.youtube.com/watch?v=_kItsPSG4tI', duration: '15 min', objective: 'Mastering the nuances of high-end service hospitality.' },
 ];
 
 const salesLessons: Lesson[] = [
-    { title: 'Upselling Miles & More', level: 'B1', type: ResourceType.Practice, duration: '20 min', objective: 'Demonstrating the value of the loyalty program to infrequent flyers.' },
-    { title: 'The Premium Economy Pivot', level: 'B2', type: ResourceType.Watch, duration: '12 min', objective: 'Converting Economy passengers to Premium Economy using value-based selling.' },
-    { title: 'Handling Cost Objections', level: 'B1', type: ResourceType.Practice, duration: '15 min', objective: 'Turning price resistance into a benefit-focused conversation.' },
+    { title: 'Value-Based Upselling', level: 'B1', type: ResourceType.Practice, duration: '20 min', objective: 'Converting standard support into revenue opportunities.' },
+    { title: 'Premium Upgrade Logic', level: 'B2', type: ResourceType.Watch, duration: '12 min', objective: 'Selling benefits rather than features for premium accounts.' },
+    { title: 'Mastering Cost Objections', level: 'B1', type: ResourceType.Practice, duration: '15 min', objective: 'Turning price sensitivity into a focus on value.' },
 ];
 
-const airlineLessons: Lesson[] = [
-    { title: 'Star Alliance Network Mastery', level: 'B1', type: ResourceType.Watch, link: 'https://www.youtube.com/shorts/Ugwy4Q2143s', duration: '10 min', objective: 'Understanding codeshare agreements and lounge access rules.' },
-    { title: 'IATA Airport Codes & Geography', level: 'A2', type: ResourceType.Practice, duration: '20 min', objective: 'Memorizing key European hubs and transit times.' },
+const languageLessons: Lesson[] = [
+    { title: 'Advanced Grammar Structures', level: 'B2', type: ResourceType.Practice, duration: '20 min', objective: 'Mastering conditional and future-perfect tenses for business.' },
+    { title: 'Professional Vocabulary Expansion', level: 'A2', type: ResourceType.Read, duration: '20 min', objective: 'Building a robust bank of industry-standard professional terms.' },
 ];
 
 export const allTrainingModules: { [id: string]: Module } = {
-  airline: {
-    id: 'airline',
-    title: 'Lufthansa Standards',
-    icon: React.createElement(AirlineIcon),
-    description: 'Master the technical specifics of the Lufthansa fleet and service standards.',
-    lessons: airlineLessons,
+  language: {
+    id: 'language',
+    title: 'Core Proficiency',
+    icon: React.createElement(ReadingIcon),
+    description: 'Master the fundamental grammar and vocabulary required for professional use.',
+    lessons: languageLessons,
   },
-  global_culture: {
-    id: 'global_culture',
+  culture: {
+    id: 'culture',
     title: 'Cultural Intelligence',
     icon: React.createElement(GlobeIcon),
-    description: "Bridging the gap between Middle Eastern hospitality and European expectations.",
+    description: "Bridging communication gaps and managing client expectations.",
     lessons: cultureLessons,
   },
   sales: {
     id: 'sales',
-    title: 'Travel Sales & Upselling',
+    title: 'Consultative Sales',
     icon: React.createElement(ChartBarIcon),
-    description: 'Transform support calls into revenue-generating opportunities.',
+    description: 'Transforming interactions into revenue-generating conversations.',
     lessons: salesLessons,
   },
   listening: {
     id: 'listening',
     title: 'Active Listening',
     icon: React.createElement(ListeningIcon),
-    description: 'Precision listening for complex passenger requests and emotions.',
+    description: 'Precision listening for complex requests and emotional intelligence.',
     lessons: listeningLessons,
   }
 };
 
 export const quizzes: Quiz[] = [
     {
-        id: 'lufthansa_core',
-        title: 'Lufthansa Core Proficiency',
-        description: 'Testing technical airline knowledge and service etiquette.',
+        id: 'core_proficiency',
+        title: 'Academy Core Calibration',
+        description: 'Verifying language fundamentals and service etiquette.',
     },
     {
         id: 'sales_mastery',
-        title: 'Premium Sales Assessment',
-        description: 'Evaluating upselling techniques and objection handling.',
+        title: 'Strategic Sales Assessment',
+        description: 'Evaluating upselling techniques and value positioning.',
     }
 ];
