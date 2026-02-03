@@ -45,7 +45,6 @@ export interface UserPerformanceData {
   pronunciation: number;
   overallSpoken: number;
   testDate: string;
-  // Added fields used in various parts of the application
   writing?: number;
   listening?: number;
   understanding?: number;
@@ -53,13 +52,11 @@ export interface UserPerformanceData {
   content?: number;
 }
 
-// Added to support user onboarding and credentials management
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
 }
 
-// Added to support roster management
 export interface Roster {
   id: string;
   name: string;
@@ -74,7 +71,6 @@ export interface UserProfile {
   rosterId: string;
   assignedModules: string[];
   performanceData?: UserPerformanceData;
-  // Added fields to support team structure and initial access
   assignedCoachId?: string;
   generatedCredentials?: UserCredentials;
 }
@@ -87,7 +83,6 @@ export interface Lesson {
   duration?: string;
   objective?: string;
   isCustom?: boolean;
-  // Added to support personalized learning paths
   assignedTo?: string;
 }
 
@@ -110,7 +105,8 @@ export type View =
   | { type: 'module'; moduleId: string }
   | { type: 'admin' }
   | { type: 'lesson'; resource: Resource; fromModuleId?: string }
-  | { type: 'quiz'; quizId: string };
+  | { type: 'quiz'; quizId: string }
+  | { type: 'live-coach' };
 
 export interface QuizQuestion {
   question: string;
@@ -122,15 +118,13 @@ export interface QuizQuestion {
   speakingPrompt?: string;
 }
 
-// Added to support activity tracking and analytics
 export interface ActivityLog {
   date: string;
-  type: 'lesson' | 'quiz';
+  type: 'lesson' | 'quiz' | 'live-session';
   score?: number;
   title?: string;
 }
 
-// Added to support unified progress state management
 export interface UserProgress {
   completedLessons: string[];
   quizScores: Record<string, number>;

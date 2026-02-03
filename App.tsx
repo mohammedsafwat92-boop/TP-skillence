@@ -4,6 +4,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
 import LessonViewer from './components/LessonViewer';
+import LiveCoach from './components/LiveCoach';
 import { googleSheetService } from './services/googleSheetService';
 import { getUsers } from './services/adminService';
 import { allTrainingModules } from './data/trainingData';
@@ -169,6 +170,10 @@ function doPost(e) {
         />
     );
 
+    if (view.type === 'live-coach') return (
+      <LiveCoach onClose={() => setView({ type: 'dashboard' })} />
+    );
+
     return (
         <Dashboard 
             user={currentUser} 
@@ -208,8 +213,8 @@ function doPost(e) {
             <div className="w-16"></div>
         </div>
 
-        {currentUser && (
-          <div className="hidden lg:flex absolute top-12 right-12 items-center bg-white px-8 py-5 rounded-[40px] shadow-sm border border-gray-50 z-10 animate-fadeIn">
+        {currentUser && view.type !== 'live-coach' && (
+          <div className="hidden lg:flex absolute top-12 right-12 items-center bg-white px-8 py-5 rounded-[40px] shadow-sm border border-gray-100 z-10 animate-fadeIn">
               <div className="w-14 h-14 bg-tp-navy text-white rounded-2xl mr-6 flex items-center justify-center shadow-xl"><UserIcon className="w-7 h-7" /></div>
               <div>
                   <p className="text-lg font-black text-tp-purple leading-tight">{currentUser.name}</p>

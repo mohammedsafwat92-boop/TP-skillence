@@ -1,7 +1,7 @@
 
 import React from 'react';
 import type { UserProfile, Resource, View } from '../types';
-import { TrendingUpIcon, TargetIcon, BadgeIcon, WorksheetIcon, CheckCircleIcon, BrainIcon } from './Icons';
+import { TrendingUpIcon, TargetIcon, BadgeIcon, WorksheetIcon, CheckCircleIcon, BrainIcon, SpeakingIcon } from './Icons';
 
 interface DashboardProps {
   user: UserProfile;
@@ -16,7 +16,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
   const completedCount = safeResources.filter(r => r.progress.status === 'completed').length;
   const progressPercent = safeResources.length > 0 ? Math.round((completedCount / safeResources.length) * 100) : 0;
 
-  // GAP ANALYSIS LOGIC
   const PASS_MARK = 75;
   const focusSkills: string[] = [];
   if (user.performanceData) {
@@ -28,7 +27,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
 
   const recommendedResources = safeResources.filter(res => {
     if (res.progress.status === 'completed') return false;
-    // Match against user's focus skills
     return res.tags.some(tag => focusSkills.includes(tag)) || res.level === user.languageLevel;
   }).slice(0, 4);
 
@@ -52,15 +50,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
         </div>
 
         <div className="flex gap-4">
+            <button 
+              onClick={() => onNavigate({ type: 'live-coach' })}
+              className="bg-tp-navy text-white px-8 py-5 rounded-[32px] font-black uppercase text-[10px] tracking-[0.3em] shadow-xl hover:bg-tp-purple transition-all flex items-center group"
+            >
+              <SpeakingIcon className="w-5 h-5 mr-3 text-tp-red group-hover:animate-pulse" />
+              Live AI Practice
+            </button>
             <div className="bg-white px-8 py-5 rounded-[32px] shadow-[0_20px_40px_rgba(46,8,84,0.05)] border border-gray-100 flex items-center gap-6">
                 <div className="text-center">
                     <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
                     <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Proficiency</p>
-                </div>
-                <div className="w-px h-10 bg-gray-100"></div>
-                <div className="text-center">
-                    <p className="text-3xl font-black text-tp-red leading-none">{completedCount}</p>
-                    <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Certified</p>
                 </div>
             </div>
         </div>
