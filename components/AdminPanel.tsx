@@ -10,9 +10,10 @@ import type { UserProfile } from '../types';
 interface AdminPanelProps {
   onUpdateContent: () => void;
   currentUser: UserProfile;
+  onFileProcessed?: (file: File) => Promise<void>;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed }) => {
   const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -39,18 +40,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setIsProcessing(true);
-    try {
-      const result = await shlService.processAndRegister(file);
-      alert(`Success! Registry updated for ${result.shlData.candidateName}.`);
-      onUpdateContent();
-      if (activeTab === 'users') fetchUsers();
-    } catch (err) {
-      alert("Multimodal Registration Failed: " + (err as Error).message);
-    } finally {
-      setIsProcessing(false);
-      if (e.target) e.target.value = "";
+    if (onFileProcessed) {
+      // Use the Atomic Handler from App.tsx
+      await onFileProcessed(file);
+    } else {
+      // Legacy Fallback
+      setIsProcessing(true);
+      try {
+        const result = await shlService.processAndRegister(file);
+        alert(`Success! Registry updated for ${result.shlData.candidateName}.`);
+        onUpdateContent();
+        if (activeTab === 'users') fetchUsers();
+      } catch (err) {
+        alert("Multimodal Registration Failed: " + (err as Error).message);
+      } finally {
+        setIsProcessing(false);
+      }
     }
+    
+    if (e.target) e.target.value = "";
   };
 
   const handleUrlAnalysis = async () => {

@@ -5,7 +5,9 @@ import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
 import LessonViewer from './components/LessonViewer';
 import LiveCoach from './components/LiveCoach';
+import Login from './components/Login';
 import { googleSheetService } from './services/googleSheetService';
+import { shlService } from './services/shlService';
 import { getUsers } from './services/adminService';
 import { allTrainingModules } from './data/trainingData';
 import type { View, UserProfile, Resource } from './types';
@@ -28,56 +30,90 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
 
-  const initApp = async (useDemo: boolean = false) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      if (useDemo) {
-        const localUsers = getUsers();
-        const demoUser = localUsers.find(u => u.id === '1773984510') || localUsers[0];
-        setCurrentUser(demoUser);
-        setIsDemoMode(true);
-        const mockResources: Resource[] = Object.values(allTrainingModules).flatMap(m => 
-          m.lessons.map(l => ({
-            id: l.title.replace(/\s+/g, '-').toLowerCase(),
-            title: l.title,
-            url: l.link || 'https://www.wikipedia.org',
-            type: l.type,
-            tags: [m.id],
-            level: l.level as any,
-            objective: l.objective,
-            progress: { status: 'open', attempts: 0, score: 0 }
-          }))
-        );
-        setUserPlan(mockResources); 
-      } else {
-        const user = await googleSheetService.login("hesham@tp.eg", "TpSkill2026!");
+  const checkSession = async () => {
+    setIsAuthChecking(true);
+    const cachedUser = localStorage.getItem('tp_skillence_user_session');
+    if (cachedUser) {
+      try {
+        const user = JSON.parse(cachedUser);
         setCurrentUser(user);
-        const plan = await googleSheetService.fetchUserPlan(user.id);
-        setUserPlan(Array.isArray(plan) ? plan : []);
-        setIsDemoMode(false);
+        await refreshPlan(user.id);
+      } catch (e) {
+        localStorage.removeItem('tp_skillence_user_session');
       }
+    }
+    setIsAuthChecking(false);
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    checkSession();
+  }, []);
+
+  const handleLogin = async (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem('tp_skillence_user_session', JSON.stringify(user));
+    await refreshPlan(user.id);
+    setIsDemoMode(false);
+  };
+
+  const handleEnterSandbox = () => {
+    const localUsers = getUsers();
+    const demoUser = localUsers.find(u => u.id === '1773984510') || localUsers[0];
+    setCurrentUser(demoUser);
+    setIsDemoMode(true);
+    
+    const mockResources: Resource[] = Object.values(allTrainingModules).flatMap(m => 
+      m.lessons.map(l => ({
+        id: l.title.replace(/\s+/g, '-').toLowerCase(),
+        title: l.title,
+        url: l.link || 'https://www.wikipedia.org',
+        type: l.type,
+        tags: [m.id],
+        level: l.level as any,
+        objective: l.objective,
+        progress: { status: 'open', attempts: 0, score: 0 }
+      }))
+    );
+    setUserPlan(mockResources);
+    setIsLoading(false);
+    setError(null);
+  };
+
+  const refreshPlan = async (uid?: string) => {
+    const id = uid || currentUser?.id;
+    if (!id || isDemoMode) return;
+    try {
+      const plan = await googleSheetService.fetchUserPlan(id);
+      setUserPlan(Array.isArray(plan) ? plan : []);
     } catch (err) {
-      console.error("Connection Fault:", err);
-      setError((err as Error).message || "Registry Sync Failure");
+      console.error("Refresh Error:", err);
+    }
+  };
+
+  const handleFileProcessed = async (file: File) => {
+    setIsLoading(true);
+    try {
+      const { registration } = await shlService.processAndRegister(file);
+      setCurrentUser(registration.userProfile);
+      setUserPlan(registration.resources);
+      localStorage.setItem('tp_skillence_user_session', JSON.stringify(registration.userProfile));
+      setView({ type: 'dashboard' });
+    } catch (err) {
+      alert("Registration Failed: " + (err as Error).message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    initApp();
-  }, []);
-
-  const refreshPlan = async () => {
-    if (!currentUser || isDemoMode) return;
-    try {
-      const plan = await googleSheetService.fetchUserPlan(currentUser.id);
-      setUserPlan(Array.isArray(plan) ? plan : []);
-    } catch (err) {
-      console.error("Refresh Error:", err);
-    }
+  const handleLogout = () => {
+    localStorage.removeItem('tp_skillence_user_session');
+    setCurrentUser(null);
+    setUserPlan([]);
+    setIsDemoMode(false);
+    setView({ type: 'dashboard' });
   };
 
   const handleNavigate = (newView: View) => {
@@ -86,7 +122,7 @@ const App: React.FC = () => {
   };
 
   const renderContent = () => {
-    if (isLoading) return (
+    if (isLoading || isAuthChecking) return (
         <div className="flex flex-col items-center justify-center min-h-[80vh] text-tp-purple animate-pulse">
             <div className="w-20 h-20 bg-tp-navy rounded-[32px] flex items-center justify-center mb-8 shadow-2xl">
                 <BrainIcon className="w-10 h-10 text-white" />
@@ -97,6 +133,10 @@ const App: React.FC = () => {
             </div>
         </div>
     );
+
+    if (!currentUser) {
+      return <Login onLoginSuccess={handleLogin} onEnterSandbox={handleEnterSandbox} />;
+    }
 
     if (error) {
       const isParsingError = error.includes("BACKEND_PARSING_ERROR");
@@ -125,7 +165,7 @@ const App: React.FC = () => {
                     </p>
 
                     <div className="flex flex-col sm:flex-row gap-6">
-                        <button onClick={() => initApp(true)} className="flex-1 bg-tp-navy text-white px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-[0.3em] shadow-xl">Enter Sandbox</button>
+                        <button onClick={handleEnterSandbox} className="flex-1 bg-tp-navy text-white px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-[0.3em] shadow-xl">Enter Sandbox</button>
                         <button onClick={() => window.location.reload()} className="flex-1 bg-white border-2 border-tp-purple text-tp-purple px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-[0.3em]">Retry Sync</button>
                     </div>
                 </div>
@@ -157,16 +197,14 @@ function doPost(e) {
       );
     }
 
-    if (!currentUser) return null;
-
-    if (view.type === 'admin') return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} />;
+    if (view.type === 'admin') return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onFileProcessed={handleFileProcessed} />;
     
     if (view.type === 'lesson') return (
         <LessonViewer 
             resource={view.resource} 
             uid={currentUser.id} 
             onClose={() => setView({ type: 'dashboard' })}
-            onMasteryAchieved={refreshPlan}
+            onMasteryAchieved={() => refreshPlan()}
         />
     );
 
@@ -187,31 +225,38 @@ function doPost(e) {
 
   return (
     <div className="flex min-h-screen overflow-hidden bg-[#FBFBFF]">
-      {isSidebarOpen && <div className="fixed inset-0 bg-tp-navy/80 z-40 lg:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />}
-      
-      <Sidebar 
-        modules={allTrainingModules} 
-        currentView={view} 
-        onNavigate={handleNavigate} 
-        currentUser={currentUser}
-        users={getUsers()} 
-        onSwitchUser={(u) => { setCurrentUser(u); handleNavigate({type: 'dashboard'}); }}
-        isOpen={isSidebarOpen} 
-        onClose={() => setIsSidebarOpen(false)}
-      />
+      {currentUser && (
+        <>
+          {isSidebarOpen && <div className="fixed inset-0 bg-tp-navy/80 z-40 lg:hidden backdrop-blur-sm" onClick={() => setIsSidebarOpen(false)} />}
+          
+          <Sidebar 
+            modules={allTrainingModules} 
+            currentView={view} 
+            onNavigate={handleNavigate} 
+            currentUser={currentUser}
+            users={getUsers()} 
+            onSwitchUser={(u) => { setCurrentUser(u); handleNavigate({type: 'dashboard'}); }}
+            isOpen={isSidebarOpen} 
+            onClose={() => setIsSidebarOpen(false)}
+            onLogout={handleLogout}
+          />
+        </>
+      )}
 
-      <main className="flex-1 overflow-y-auto p-4 md:p-12 relative lg:ml-72 transition-all">
-        {isDemoMode && (
+      <main className={`flex-1 overflow-y-auto ${currentUser ? 'p-4 md:p-12 relative lg:ml-72 transition-all' : ''}`}>
+        {isDemoMode && currentUser && (
           <div className="fixed bottom-12 right-12 z-50 bg-tp-red text-white px-10 py-5 rounded-3xl font-black text-[10px] uppercase tracking-[0.5em] shadow-2xl animate-pulse">
             Active Offline Academy
           </div>
         )}
 
-        <div className="flex items-center justify-between lg:hidden mb-12">
-            <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
-            <p className="font-black text-tp-purple uppercase tracking-[0.4em] text-[10px]">Academy</p>
-            <div className="w-16"></div>
-        </div>
+        {currentUser && (
+          <div className="flex items-center justify-between lg:hidden mb-12">
+              <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
+              <p className="font-black text-tp-purple uppercase tracking-[0.4em] text-[10px]">Academy</p>
+              <div className="w-16"></div>
+          </div>
+        )}
 
         {currentUser && view.type !== 'live-coach' && (
           <div className="hidden lg:flex absolute top-12 right-12 items-center bg-white px-8 py-5 rounded-[40px] shadow-sm border border-gray-100 z-10 animate-fadeIn">
@@ -223,7 +268,7 @@ function doPost(e) {
           </div>
         )}
 
-        <div className="max-w-7xl mx-auto">{renderContent()}</div>
+        <div className={`${currentUser ? 'max-w-7xl mx-auto' : 'h-full'}`}>{renderContent()}</div>
       </main>
     </div>
   );

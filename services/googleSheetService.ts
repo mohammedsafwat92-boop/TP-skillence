@@ -54,13 +54,42 @@ export const googleSheetService = {
   login: (email: string, pass: string) => 
     callApi('login', { email, password: pass }),
     
-  fetchUserPlan: (uid: string) => 
-    callApi('get_user_plan', { uid }),
+  /**
+   * Fetches user plan with a retry mechanism to handle Read-after-Write consistency.
+   * Sheets indexing can lag immediately after a row is added via createUser.
+   */
+  fetchUserPlan: async (uid: string) => {
+    let attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
+      try {
+        return await callApi('get_user_plan', { uid });
+      } catch (error) {
+        const message = (error as Error).message;
+        
+        // If consistency issue (User not found) and we have retries left
+        if (message.includes("User not found") && attempts < maxAttempts - 1) {
+          attempts++;
+          console.log(`User not found yet. Retrying (Attempt ${attempts}/${maxAttempts})...`);
+          // Wait 1500ms before retrying
+          await new Promise(resolve => setTimeout(resolve, 1500));
+          continue;
+        }
+        
+        // Otherwise, throw the final error to the UI
+        throw error;
+      }
+    }
+  },
     
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number) =>
     callApi('submit_progress', { uid, resourceId, passed, score }),
     
-  createUser: (userData: any) => 
+  /**
+   * create_user now returns { uid, userProfile, resources } in a single atomic response.
+   */
+  createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
     callApi('create_user', userData),
     
   importResource: (resourceData: any) => 

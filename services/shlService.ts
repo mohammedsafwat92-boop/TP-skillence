@@ -30,9 +30,10 @@ export const shlService = {
 
   /**
    * Full pipeline: Extract PDF data via Gemini -> Register user in Spreadsheet
+   * Returns the atomic registration payload { uid, userProfile, resources }
    */
   processAndRegister: async (file: File) => {
-    console.log(`[shlService] Starting registration pipeline for: ${file.name}`);
+    console.log(`[shlService] Starting atomic registration pipeline for: ${file.name}`);
     
     try {
       // 1. Convert to Base64
@@ -43,9 +44,9 @@ export const shlService = {
       const shlData = await geminiService.analyzeSHLData(pdfPart);
       console.log("[shlService] Gemini extraction successful:", shlData);
       
-      // 3. Database Registration (Crucial: Await the strictly validated result)
-      console.log("[shlService] Submitting to Registry...");
-      const registrationResult = await googleSheetService.createUser({
+      // 3. Database Registration (Atomic response)
+      console.log("[shlService] Submitting to Atomic Registry...");
+      const registration = await googleSheetService.createUser({
         name: shlData.candidateName,
         email: shlData.email,
         cefrLevel: shlData.cefrLevel,
@@ -59,11 +60,10 @@ export const shlService = {
         password: 'TpSkill2026!'
       });
 
-      console.log("[shlService] Registry confirmed success.");
-      return { shlData, result: registrationResult };
+      console.log("[shlService] Atomic registration successful.");
+      return { shlData, registration };
     } catch (error) {
       console.error("[shlService] Registration Pipeline Aborted:", (error as Error).message);
-      // Propagate the specific error (e.g., DEPLOYMENT_MISMATCH) so the UI can display it
       throw error;
     }
   }

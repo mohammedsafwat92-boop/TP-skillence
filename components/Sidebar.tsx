@@ -2,7 +2,7 @@
 import React from 'react';
 import { quizzes } from '../data/trainingData';
 import { getRosters } from '../services/adminService';
-import { DashboardIcon, WorksheetIcon, AdminIcon, UserIcon, XIcon } from './Icons';
+import { DashboardIcon, WorksheetIcon, AdminIcon, UserIcon, XIcon, ExitIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -14,6 +14,7 @@ interface SidebarProps {
   onSwitchUser: (user: UserProfile) => void;
   isOpen: boolean;
   onClose: () => void;
+  onLogout: () => void;
 }
 
 const NavItem: React.FC<{ view: View, currentView: View, onNavigate: (view: View) => void, children: React.ReactNode }> = ({ view, currentView, onNavigate, children }) => {
@@ -27,7 +28,7 @@ const NavItem: React.FC<{ view: View, currentView: View, onNavigate: (view: View
   );
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, users, onSwitchUser, isOpen, onClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, users, onSwitchUser, isOpen, onClose, onLogout }) => {
   const rosters = getRosters();
   
   return (
@@ -99,6 +100,16 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
                  </NavItem>
             ))}
         </ul>
+
+        <div className="mt-8 px-3">
+          <button 
+            onClick={onLogout}
+            className="flex items-center w-full py-2.5 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
+          >
+            <ExitIcon className="w-5 h-5" />
+            <span className="ml-3 text-sm font-bold uppercase tracking-widest">Logout Session</span>
+          </button>
+        </div>
       </nav>
 
       <div className="p-6 mt-auto">
