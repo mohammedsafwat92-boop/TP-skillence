@@ -39,13 +39,18 @@ async function callApi(action: string, payload: any = {}) {
     }
 
     if (!json.success) {
+      // Handle business-logic errors (like Invalid credentials) without making them look like system crashes
+      if (json.message === "Invalid credentials") {
+        throw new Error("AUTH_FAILED: The email or access code provided is incorrect.");
+      }
       console.error(`[Academy API Error] ${action}:`, json.message);
       throw new Error(json.message || 'GENERAL_BACKEND_FAULT');
     }
     
     return json.data;
   } catch (error) {
-    console.error(`[CallStack] Action: ${action}`, error);
+    // Log the error but re-throw the original message for the UI to consume
+    console.debug(`[CallStack] Action: ${action}`, (error as Error).message);
     throw error;
   }
 }
@@ -54,10 +59,6 @@ export const googleSheetService = {
   login: (email: string, pass: string) => 
     callApi('login', { email, password: pass }),
     
-  /**
-   * Fetches user plan with a retry mechanism to handle Read-after-Write consistency.
-   * Sheets indexing can lag immediately after a row is added via createUser.
-   */
   fetchUserPlan: async (uid: string) => {
     let attempts = 0;
     const maxAttempts = 3;
@@ -67,17 +68,12 @@ export const googleSheetService = {
         return await callApi('get_user_plan', { uid });
       } catch (error) {
         const message = (error as Error).message;
-        
-        // If consistency issue (User not found) and we have retries left
         if (message.includes("User not found") && attempts < maxAttempts - 1) {
           attempts++;
           console.log(`User not found yet. Retrying (Attempt ${attempts}/${maxAttempts})...`);
-          // Wait 1500ms before retrying
           await new Promise(resolve => setTimeout(resolve, 1500));
           continue;
         }
-        
-        // Otherwise, throw the final error to the UI
         throw error;
       }
     }
@@ -86,9 +82,6 @@ export const googleSheetService = {
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number) =>
     callApi('submit_progress', { uid, resourceId, passed, score }),
     
-  /**
-   * create_user now returns { uid, userProfile, resources } in a single atomic response.
-   */
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
     callApi('create_user', userData),
     

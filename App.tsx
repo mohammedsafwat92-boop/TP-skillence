@@ -90,6 +90,10 @@ const App: React.FC = () => {
       setUserPlan(Array.isArray(plan) ? plan : []);
     } catch (err) {
       console.error("Refresh Error:", err);
+      // If the session is invalid on the server side, log out the user
+      if ((err as Error).message.includes("User not found")) {
+        handleLogout();
+      }
     }
   };
 
@@ -138,7 +142,8 @@ const App: React.FC = () => {
       return <Login onLoginSuccess={handleLogin} onEnterSandbox={handleEnterSandbox} />;
     }
 
-    if (error) {
+    // Only show system error view for fatal technical errors, not business/auth errors
+    if (error && !error.includes("AUTH_FAILED")) {
       const isParsingError = error.includes("BACKEND_PARSING_ERROR");
       return (
         <div className="flex flex-col items-center justify-center min-h-screen p-6 animate-fadeIn bg-gray-50">
