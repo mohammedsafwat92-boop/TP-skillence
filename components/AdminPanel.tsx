@@ -21,9 +21,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      setUserList(users || []);
+      setUserList(Array.isArray(users) ? users : []);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to fetch users:", err);
+      setUserList([]);
     } finally {
       setIsProcessing(false);
     }
@@ -39,13 +40,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
 
     setIsProcessing(true);
     try {
-      await shlService.processAndRegister(file);
-      alert(`Success! Profile mapped.`);
+      const result = await shlService.processAndRegister(file);
+      console.log("[AdminPanel] Import successful", result);
+      alert(`Success! Agent ${result.shlData.candidateName} has been registered in the registry.`);
       onUpdateContent();
+      if (activeTab === 'users') fetchUsers();
     } catch (err) {
-      alert("Parsing Failed: " + (err as Error).message);
+      const errorMsg = (err as Error).message || "Unknown error";
+      console.error("[AdminPanel] Upload Error:", errorMsg);
+      alert("Registration Failed: " + errorMsg);
     } finally {
       setIsProcessing(false);
+      // Reset input
+      if (e.target) e.target.value = "";
     }
   };
 
@@ -66,17 +73,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
       setUrlInput('');
       onUpdateContent();
     } catch (err) {
-      alert("Import Failed");
+      alert("Import Failed: " + (err as Error).message);
     } finally {
       setIsProcessing(false);
     }
   };
 
   const exportCsv = () => {
+    if (!Array.isArray(userList) || userList.length === 0) {
+      alert("No data available to export.");
+      return;
+    }
     const headers = ['UID', 'Name', 'Email', 'CEFR', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
     const rows = userList.map(u => [
-      u.uid, u.name, u.email, u.cefrLevel, 
-      u.shlData?.grammar || 0, u.shlData?.fluency || 0, u.shlData?.vocabulary || 0, u.shlData?.pronunciation || 0
+      u.uid || u.id, 
+      `"${u.name || ''}"`, 
+      u.email || '', 
+      u.cefrLevel || '', 
+      u.shlData?.grammar || 0, 
+      u.shlData?.fluency || 0, 
+      u.shlData?.vocabulary || 0, 
+      u.shlData?.pronunciation || 0
     ].join(',')).join('\n');
     
     const blob = new Blob([`${headers}\n${rows}`], { type: 'text/csv' });
@@ -85,6 +102,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
     a.href = url;
     a.download = `Skillence_Language_Registry_${new Date().toISOString().slice(0,10)}.csv`;
     a.click();
+    window.URL.revokeObjectURL(url);
   };
 
   const handleUnlock = async (uid: string) => {
@@ -132,7 +150,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
               <DownloadIcon className="w-4 h-4" /> Export CSV
             </button>
           </div>
-          <div className="overflow-x-auto border border-gray-100 rounded-3xl shadow-inner">
+          <div className="overflow-x-auto border border-gray-100 rounded-3xl shadow-inner min-h-[200px]">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-gray-50 text-gray-500 text-[10px] font-black uppercase tracking-widest">
@@ -143,32 +161,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
-                {userList.map((user) => (
-                  <tr key={user.uid} className="hover:bg-tp-purple/[0.02] transition-colors">
-                    <td className="px-6 py-4">
-                      <p className="font-bold text-tp-purple">{user.name}</p>
-                      <p className="text-xs text-gray-400">{user.email}</p>
-                    </td>
-                    <td className="px-6 py-4 font-black text-tp-red text-sm">{user.cefrLevel}</td>
-                    <td className="px-6 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        {['grammar', 'fluency', 'pronunciation'].map(skill => (
-                          <div key={skill} className="bg-gray-100 px-2 py-1 rounded text-[10px] font-black text-gray-600 uppercase">
-                            {skill}: {user.shlData?.[skill] || 0}%
-                          </div>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button 
-                        onClick={() => handleUnlock(user.uid)}
-                        className="text-[10px] font-black uppercase text-tp-purple border border-tp-purple/20 px-3 py-1.5 rounded-lg hover:bg-tp-purple hover:text-white transition-all"
-                      >
-                        Reset Lock
-                      </button>
+                {Array.isArray(userList) && userList.length > 0 ? (
+                  userList.map((user, idx) => (
+                    <tr key={user.uid || user.id || idx} className="hover:bg-tp-purple/[0.02] transition-colors">
+                      <td className="px-6 py-4">
+                        <p className="font-bold text-tp-purple">{user.name}</p>
+                        <p className="text-xs text-gray-400">{user.email}</p>
+                      </td>
+                      <td className="px-6 py-4 font-black text-tp-red text-sm">{user.cefrLevel}</td>
+                      <td className="px-6 py-4">
+                        <div className="flex flex-wrap gap-2">
+                          {['grammar', 'fluency', 'pronunciation'].map(skill => (
+                            <div key={skill} className="bg-gray-100 px-2 py-1 rounded text-[10px] font-black text-gray-600 uppercase">
+                              {skill}: {user.shlData?.[skill] || 0}%
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <button 
+                          onClick={() => handleUnlock(user.uid || user.id)}
+                          className="text-[10px] font-black uppercase text-tp-purple border border-tp-purple/20 px-3 py-1.5 rounded-lg hover:bg-tp-purple hover:text-white transition-all"
+                        >
+                          Reset Lock
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="px-6 py-12 text-center text-gray-400 font-bold uppercase text-xs tracking-widest">
+                      {isProcessing ? 'Syncing registry...' : 'No agents found in registry.'}
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -183,7 +209,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
             </div>
             <h3 className="text-2xl font-black text-tp-purple mb-3">Language Audit Import</h3>
             <p className="text-sm text-gray-500 mb-8 max-w-sm mx-auto font-medium">Upload SHL PDFs. Skillence extracts CEFR levels and sub-scores to build the agent's profile.</p>
-            <label className="bg-tp-purple text-white px-10 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer hover:bg-tp-navy transition-all shadow-xl">
+            <label className={`bg-tp-purple text-white px-10 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer hover:bg-tp-navy transition-all shadow-xl ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
               {isProcessing ? 'Synchronizing...' : 'Upload PDF'}
               <input type="file" className="hidden" accept=".pdf" onChange={handlePdfUpload} disabled={isProcessing} />
             </label>
@@ -210,7 +236,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser })
               <button 
                 onClick={handleUrlAnalysis}
                 disabled={isProcessing}
-                className="bg-tp-red text-white px-10 py-4 rounded-2xl font-black uppercase text-xs hover:bg-red-700 transition-all shadow-xl"
+                className="bg-tp-red text-white px-10 py-4 rounded-2xl font-black uppercase text-xs hover:bg-red-700 transition-all shadow-xl disabled:opacity-50"
               >
                 {isProcessing ? 'Analyzing...' : 'Auto-Import'}
               </button>
