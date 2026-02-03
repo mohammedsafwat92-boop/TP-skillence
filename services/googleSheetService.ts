@@ -3,36 +3,49 @@ const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7
 
 /**
  * Communicates with Google Apps Script Web App.
- * Uses 'text/plain' Content-Type to avoid CORS preflight (OPTIONS) triggers.
+ * Strictly validates that the backend returns valid JSON.
  */
 async function callApi(action: string, payload: any = {}) {
+  const requestBody = JSON.stringify({ 
+    action, 
+    timestamp: new Date().toISOString(),
+    ...payload 
+  });
+
   try {
     const response = await fetch(WEB_APP_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=utf-8',
       },
-      body: JSON.stringify({ 
-        action, 
-        timestamp: new Date().toISOString(),
-        ...payload 
-      }),
+      body: requestBody,
       redirect: 'follow'
     });
 
     if (!response.ok) {
-      throw new Error(`NETWORK_UNAVAILABLE: HTTP ${response.status}`);
+      throw new Error(`NETWORK_ERROR: HTTP ${response.status}`);
     }
 
-    const result = await response.json();
+    // Capture as text first to debug stale deployments
+    const rawText = await response.text();
     
-    if (!result.success) {
-      throw new Error(result.message || 'GENERAL_BACKEND_FAULT');
+    let json;
+    try {
+      json = JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("STALE_DEPLOYMENT_DETECTED: Backend returned non-JSON text.");
+      console.error("RAW_RESPONSE_BODY:", rawText);
+      throw new Error("DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Please redeploy Google Apps Script as a 'New Version'.");
+    }
+
+    if (!json.success) {
+      console.error(`[Academy API Error] ${action}:`, json.message);
+      throw new Error(json.message || 'GENERAL_BACKEND_FAULT');
     }
     
-    return result.data;
+    return json.data;
   } catch (error) {
-    console.error(`[Academy API Failure] Action: ${action}`, error);
+    console.error(`[CallStack] Action: ${action}`, error);
     throw error;
   }
 }
