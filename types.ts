@@ -95,6 +95,7 @@ export interface UserProfile {
   performanceData?: UserPerformanceData;
   assignedModules?: string[];
   assignedCoachId?: string;
+  assignedCoach?: string; // New: email of the assigned coach
   generatedCredentials?: UserCredentials;
 }
 

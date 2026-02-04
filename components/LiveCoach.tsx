@@ -31,8 +31,18 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     setIsLoadingStudents(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      // Filter strictly for 'agent' role for the coach directory
-      const filtered = (Array.isArray(users) ? users : []).filter(u => u.role === 'agent');
+      let filtered: UserProfile[] = [];
+      
+      if (currentUser.role === 'admin') {
+        // Admins see all agents
+        filtered = (Array.isArray(users) ? users : []).filter(u => u.role === 'agent');
+      } else if (currentUser.role === 'coach') {
+        // Coaches only see agents specifically assigned to their email
+        filtered = (Array.isArray(users) ? users : []).filter(u => 
+          u.role === 'agent' && u.assignedCoach === currentUser.email
+        );
+      }
+      
       setStudents(filtered);
     } catch (err) {
       console.error("Failed to load students:", err);
@@ -228,7 +238,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-2xl font-black text-white uppercase tracking-tight">Active Students</h2>
               <div className="px-4 py-2 bg-tp-red text-white text-[10px] font-black rounded-full uppercase tracking-widest">
-                {students.length} Agents Assigned
+                {students.length} Agents {currentUser.role === 'coach' ? 'Assigned to You' : 'Total'}
               </div>
             </div>
 
@@ -259,7 +269,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                 </div>
               )}
               {students.length === 0 && !isLoadingStudents && (
-                <div className="py-20 text-center text-white/20 font-black uppercase text-xs tracking-widest">No active students found.</div>
+                <div className="py-20 text-center text-white/20 font-black uppercase text-xs tracking-widest">
+                  {currentUser.role === 'coach' ? 'No students assigned to your profile yet.' : 'No agents found in the registry.'}
+                </div>
               )}
             </div>
           </div>

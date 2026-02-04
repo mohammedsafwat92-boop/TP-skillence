@@ -6,12 +6,13 @@ function seedSpecialUsers() {
   let sheet = ss.getSheetByName('Users');
   if (!sheet) {
     sheet = ss.insertSheet('Users');
-    sheet.appendRow(['uid', 'name', 'email', 'password', 'role', 'cefrLevel', 'rosterId', 'createdAt', 'shlData']);
+    // Header schema: uid, name, email, password, role, cefrLevel, rosterId, createdAt, shlData, assignedCoach
+    sheet.appendRow(['uid', 'name', 'email', 'password', 'role', 'cefrLevel', 'rosterId', 'createdAt', 'shlData', 'assignedCoach']);
   }
 
   const specialUsers = [
-    ['admin-001', 'System Admin', 'admin@tp-skillence.com', 'TPAdmin2026!', 'admin', 'C2', 'MASTER', new Date(), '{}'],
-    ['coach-001', 'Lufthansa Coach', 'coach@tp-skillence.com', 'TPCoach2026!', 'coach', 'C1', 'Lufthansa-Main', new Date(), '{}']
+    ['admin-001', 'System Admin', 'admin@tp-skillence.com', 'TPAdmin2026!', 'admin', 'C2', 'MASTER', new Date(), '{}', 'System'],
+    ['coach-001', 'Lufthansa Coach', 'coach@tp-skillence.com', 'TPCoach2026!', 'coach', 'C1', 'Lufthansa-Main', new Date(), '{}', 'System']
   ];
 
   const data = sheet.getDataRange().getValues();
@@ -82,16 +83,14 @@ function findUser(ss, email, password) {
         role: data[i][4],
         languageLevel: data[i][5],
         rosterId: data[i][6],
-        shlData: JSON.parse(data[i][8] || '{}')
+        shlData: JSON.parse(data[i][8] || '{}'),
+        assignedCoach: data[i][9] || 'Unassigned'
       };
     }
   }
   return null;
 }
 
-/**
- * Creates user and performs Gap Analysis Course Mapping immediately.
- */
 function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
@@ -105,10 +104,10 @@ function registerUser(ss, data) {
     data.cefrLevel,
     data.rosterId || 'Lufthansa-Agent',
     new Date(),
-    JSON.stringify(data.shlData || {})
+    JSON.stringify(data.shlData || {}),
+    data.assignedCoach || 'Unassigned'
   ]);
 
-  // Perform Server-Side Gap Analysis and Persist to Progress sheet
   const assignedResources = generateAndStoreCourseMap(ss, uid, data.shlData);
 
   return {
@@ -119,16 +118,13 @@ function registerUser(ss, data) {
       email: data.email,
       role: 'agent',
       languageLevel: data.cefrLevel,
-      shlData: data.shlData
+      shlData: data.shlData,
+      assignedCoach: data.assignedCoach || 'Unassigned'
     },
     resources: assignedResources
   };
 }
 
-/**
- * Gap Analysis Logic: Maps SHL sub-scores to specific Resource tags.
- * Persists mapping to 'Progress' sheet as 'assigned'.
- */
 function generateAndStoreCourseMap(ss, uid, shlData) {
   const resourceSheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   const progressSheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
@@ -142,9 +138,7 @@ function generateAndStoreCourseMap(ss, uid, shlData) {
   const assignedList = [];
 
   const THRESHOLD = 60;
-  
-  // 1. Identify Needed Tags based on Gaps
-  const targetTags = ['onboarding']; // Everyone gets onboarding
+  const targetTags = ['onboarding'];
   
   if (shlData && shlData.svar) {
     if (shlData.svar.pronunciation < THRESHOLD) targetTags.push('pronunciation');
@@ -159,7 +153,6 @@ function generateAndStoreCourseMap(ss, uid, shlData) {
     }
   }
 
-  // 2. Iterate Resources and Assign Matches
   for (let i = 1; i < resourcesData.length; i++) {
     const res = {};
     headers.forEach((h, idx) => res[h] = resourcesData[i][idx]);
@@ -168,10 +161,7 @@ function generateAndStoreCourseMap(ss, uid, shlData) {
     const isMatch = resTags.some(tag => targetTags.includes(tag));
 
     if (isMatch) {
-      // Persist to Progress Database
-      // [UID, ResourceID, 'assigned', attempts, score, Date]
       progressSheet.appendRow([uid, res.id, 'assigned', 0, 0, new Date()]);
-      
       assignedList.push({
         ...res,
         tags: resTags,
@@ -184,9 +174,6 @@ function generateAndStoreCourseMap(ss, uid, shlData) {
   return assignedList;
 }
 
-/**
- * Fetches the user's current training plan from the Progress registry.
- */
 function getUserPlan(ss, uid) {
   const resSheet = ss.getSheetByName('Resources');
   const progSheet = ss.getSheetByName('Progress');
@@ -201,7 +188,6 @@ function getUserPlan(ss, uid) {
     const res = {};
     resHeaders.forEach((h, idx) => res[h] = resData[i][idx]);
     
-    // Find matching progress record
     let match = null;
     for (let j = 1; j < progData.length; j++) {
       if (progData[j][0] === uid && progData[j][1] === res.id) {
@@ -214,7 +200,6 @@ function getUserPlan(ss, uid) {
       }
     }
 
-    // Only return assigned or completed resources
     if (match && (match.status === 'assigned' || match.status === 'open' || match.status === 'completed')) {
       userPlan.push({
         ...res,
@@ -275,6 +260,9 @@ function fetchAllUsers(ss) {
     headers.forEach((h, idx) => {
       if (h === 'shlData') {
         try { u[h] = JSON.parse(data[i][idx] || '{}'); } catch(e) { u[h] = {}; }
+      }
+      else if (h === 'assignedCoach') {
+        u[h] = data[i][idx] || 'Unassigned';
       }
       else u[h] = data[i][idx];
     });

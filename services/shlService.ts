@@ -32,7 +32,7 @@ export const shlService = {
   /**
    * Pipeline: Extract Nested SHL JSON via Gemini -> Atomic Registry Creation
    */
-  processAndRegister: async (file: File) => {
+  processAndRegister: async (file: File, coachEmail?: string) => {
     console.log(`[shlService] Processing SHL Report: ${file.name}`);
     
     try {
@@ -44,13 +44,13 @@ export const shlService = {
       console.log("[shlService] Extracted Nested Data:", shlData);
       
       // 3. Database Registration & Course Mapping
-      // The backend will now handle the gap analysis and course persistence
       const registration = await googleSheetService.createUser({
         name: shlData.candidateName,
         email: shlData.email,
         cefrLevel: shlData.cefrLevel,
-        shlData: shlData, // Pass the full nested object
-        password: 'TpSkill2026!' // Default system password
+        shlData: shlData,
+        assignedCoach: coachEmail || 'Unassigned', // Set assigned coach if provided
+        password: 'TpSkill2026!'
       });
 
       return { shlData, registration };

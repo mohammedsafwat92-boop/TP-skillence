@@ -89,7 +89,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const exportToCsv = () => {
     if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Assigned Coach', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
     const rows = userList.map(u => {
       return [
         u.id,
@@ -97,6 +97,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         u.email || 'N/A',
         u.role,
         u.languageLevel || 'N/A',
+        u.assignedCoach || 'Unassigned',
         u.shlData?.svar?.grammar || 0,
         u.shlData?.svar?.fluency || 0,
         u.shlData?.svar?.vocabulary || 0,
@@ -155,7 +156,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Name</th>
                   <th className="px-8 py-5">Email</th>
-                  <th className="px-8 py-5">Role</th>
+                  <th className="px-8 py-5">Assigned Coach</th>
                   <th className="px-8 py-5 text-center">CEFR Level</th>
                   <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
@@ -170,8 +171,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <p className="text-xs text-gray-600 font-medium">{user.email || 'N/A'}</p>
                     </td>
                     <td className="px-8 py-5">
-                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
-                        {user.role}
+                      <span className="bg-gray-100 text-tp-purple px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
+                        {user.assignedCoach || 'Unassigned'}
                       </span>
                     </td>
                     <td className="px-8 py-5 text-center">
