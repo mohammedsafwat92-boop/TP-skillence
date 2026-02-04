@@ -18,7 +18,8 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   const [answers, setAnswers] = useState<number[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [score, setScore] = useState(0);
-  const [backendStatus, setBackendStatus] = useState<'open' | 'locked' | 'completed'>(resource.progress.status);
+  // Fix: use the correct status type from the Resource interface to allow 'assigned' status and prevent TS error
+  const [backendStatus, setBackendStatus] = useState<Resource['progress']['status']>(resource.progress.status);
 
   // CRITICAL: Block access if module is locked due to failure
   if (backendStatus === 'locked') {

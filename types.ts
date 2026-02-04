@@ -10,7 +10,7 @@ export enum ResourceType {
 }
 
 export interface ResourceProgress {
-  status: 'locked' | 'open' | 'completed';
+  status: 'locked' | 'assigned' | 'open' | 'completed';
   attempts: number;
   score: number;
   lastAttempt?: string;
@@ -30,47 +30,70 @@ export interface Resource {
 export interface SHLReport {
   candidateName: string;
   email: string;
+  testDate: string;
   cefrLevel: string;
-  grammar: number;
-  vocabulary: number;
-  fluency: number;
-  pronunciation: number;
-  overallSpokenScore: number;
+  svar: {
+    overall: number;
+    pronunciation: number;
+    fluency: number;
+    activeListening: number;
+    understanding: number;
+    vocabulary: number;
+    grammar: number;
+  };
+  writex: {
+    content: number;
+    grammar: number;
+  };
 }
 
+/**
+ * Enhanced performance metrics for language academy tracking
+ */
 export interface UserPerformanceData {
   grammar: number;
   vocabulary: number;
   fluency: number;
   pronunciation: number;
   overallSpoken: number;
-  testDate: string;
-  writing?: number;
-  listening?: number;
-  understanding?: number;
-  analytical?: number;
+  writing: number;
+  listening: number;
+  understanding: number;
+  analytical: number;
   content?: number;
+  testDate: string;
 }
 
+/**
+ * Credentials for impersonation and sandbox access
+ */
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
 }
 
+/**
+ * Organizational team structure for agents and coaches
+ */
 export interface Roster {
   id: string;
   name: string;
   assignedCoachId?: string;
 }
 
+/**
+ * Comprehensive user profile supporting admin, coach, and agent roles
+ */
 export interface UserProfile {
   id: string;
   name: string;
+  email?: string;
   role: 'admin' | 'coach' | 'agent';
   languageLevel: string;
   rosterId: string;
-  assignedModules: string[];
+  shlData?: SHLReport;
   performanceData?: UserPerformanceData;
+  assignedModules?: string[];
   assignedCoachId?: string;
   generatedCredentials?: UserCredentials;
 }

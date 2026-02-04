@@ -8,31 +8,47 @@ export const geminiService = {
   analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
     const promptPart = {
       text: `Analyze the attached SHL Assessment Report PDF. 
-      Strictly extract the following data.
+      Strictly extract the following detailed data points from the SVAR (Spoken) and WriteX (Written) sections.
       IMPORTANT: Return ONLY raw JSON. No markdown code blocks (no \`\`\`json). No explanatory text.
       
       Fields to extract:
       - Candidate Name
       - Email
-      - CEFR Level (A1, A2, B1, B2, C1, or C2)
-      - Spoken English Score (number 0-100)
-      - Grammar Score (number 0-100)
-      - Vocabulary Score (number 0-100)
-      - Fluency Score (number 0-100)
-      - Pronunciation Score (number 0-100)
-
-      IGNORE all sections related to Personality, Typing Speed, or Cognitive/Analytical Ability.
+      - Test Date (string)
+      - CEFR Level (The overall or SVAR CEFR result like A2, B1, etc.)
       
+      SVAR (Spoken) Sub-scores (0-100):
+      - overall
+      - pronunciation
+      - fluency
+      - activeListening (often listed as 'Listening' or 'Active Listening')
+      - understanding (often 'Spoken Understanding')
+      - vocabulary
+      - grammar
+      
+      WriteX (Written) Sub-scores (0-100):
+      - content
+      - grammar
+
       JSON schema: 
       { 
         "candidateName": "string", 
         "email": "string", 
+        "testDate": "string",
         "cefrLevel": "string", 
-        "grammar": number, 
-        "vocabulary": number, 
-        "fluency": number, 
-        "pronunciation": number,
-        "overallSpokenScore": number
+        "svar": {
+          "overall": number,
+          "pronunciation": number,
+          "fluency": number,
+          "activeListening": number,
+          "understanding": number,
+          "vocabulary": number,
+          "grammar": number
+        },
+        "writex": {
+          "content": number,
+          "grammar": number
+        }
       }`
     };
 
@@ -49,15 +65,12 @@ export const geminiService = {
     const rawText = response.text;
     if (!rawText) throw new Error("Empty response from Gemini Engine");
 
-    console.log("[geminiService] Raw Response:", rawText);
-
     try {
-      // Cleanup common markdown formatting if present despite system instructions
       const cleanedJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
       return JSON.parse(cleanedJson);
     } catch (e) {
       console.error("[geminiService] JSON Parse Error. Raw text was:", rawText);
-      throw new Error("Failed to parse agent data from PDF. Ensure the PDF is a valid SHL report.");
+      throw new Error("Failed to parse detailed SHL data. Ensure the PDF contains SVAR and WriteX results.");
     }
   },
 

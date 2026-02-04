@@ -1,6 +1,7 @@
 
 import { geminiService } from './geminiService';
 import { googleSheetService } from './googleSheetService';
+import type { SHLReport } from '../types';
 
 export const shlService = {
   /**
@@ -33,34 +34,29 @@ export const shlService = {
    * Returns the atomic registration payload { uid, userProfile, resources }
    */
   processAndRegister: async (file: File) => {
-    console.log(`[shlService] Starting atomic registration pipeline for: ${file.name}`);
+    console.log(`[shlService] Starting detailed registration pipeline for: ${file.name}`);
     
     try {
       // 1. Convert to Base64
       const pdfPart = await shlService.fileToGenerativePart(file);
       
-      // 2. Multimodal Extraction via Gemini
-      console.log("[shlService] Requesting Gemini analysis...");
-      const shlData = await geminiService.analyzeSHLData(pdfPart);
+      // 2. Multimodal Extraction via Gemini (Strict JSON)
+      console.log("[shlService] Requesting Detailed Gemini analysis...");
+      const shlData: SHLReport = await geminiService.analyzeSHLData(pdfPart);
       console.log("[shlService] Gemini extraction successful:", shlData);
       
       // 3. Database Registration (Atomic response)
-      console.log("[shlService] Submitting to Atomic Registry...");
+      // The backend now takes shlData as a single nested object
+      console.log("[shlService] Submitting to Atomic Registry for Mapping...");
       const registration = await googleSheetService.createUser({
         name: shlData.candidateName,
         email: shlData.email,
         cefrLevel: shlData.cefrLevel,
-        initialScores: {
-          grammar: shlData.grammar,
-          vocabulary: shlData.vocabulary,
-          fluency: shlData.fluency,
-          pronunciation: shlData.pronunciation,
-          overallSpokenScore: shlData.overallSpokenScore
-        },
-        password: 'TpSkill2026!'
+        shlData: shlData, // Passing the full nested object
+        password: 'TpSkill2026!' // Default enterprise password
       });
 
-      console.log("[shlService] Atomic registration successful.");
+      console.log("[shlService] Detailed atomic registration successful.");
       return { shlData, registration };
     } catch (error) {
       console.error("[shlService] Registration Pipeline Aborted:", (error as Error).message);
