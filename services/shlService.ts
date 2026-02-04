@@ -30,33 +30,29 @@ export const shlService = {
   },
 
   /**
-   * Full pipeline: Extract PDF data via Gemini -> Register user in Spreadsheet
-   * Returns the atomic registration payload { uid, userProfile, resources }
+   * Pipeline: Extract Nested SHL JSON via Gemini -> Atomic Registry Creation
    */
   processAndRegister: async (file: File) => {
-    console.log(`[shlService] Starting detailed registration pipeline for: ${file.name}`);
+    console.log(`[shlService] Processing SHL Report: ${file.name}`);
     
     try {
       // 1. Convert to Base64
       const pdfPart = await shlService.fileToGenerativePart(file);
       
-      // 2. Multimodal Extraction via Gemini (Strict JSON)
-      console.log("[shlService] Requesting Detailed Gemini analysis...");
+      // 2. Deep Extraction via Gemini
       const shlData: SHLReport = await geminiService.analyzeSHLData(pdfPart);
-      console.log("[shlService] Gemini extraction successful:", shlData);
+      console.log("[shlService] Extracted Nested Data:", shlData);
       
-      // 3. Database Registration (Atomic response)
-      // The backend now takes shlData as a single nested object
-      console.log("[shlService] Submitting to Atomic Registry for Mapping...");
+      // 3. Database Registration & Course Mapping
+      // The backend will now handle the gap analysis and course persistence
       const registration = await googleSheetService.createUser({
         name: shlData.candidateName,
         email: shlData.email,
         cefrLevel: shlData.cefrLevel,
-        shlData: shlData, // Passing the full nested object
-        password: 'TpSkill2026!' // Default enterprise password
+        shlData: shlData, // Pass the full nested object
+        password: 'TpSkill2026!' // Default system password
       });
 
-      console.log("[shlService] Detailed atomic registration successful.");
       return { shlData, registration };
     } catch (error) {
       console.error("[shlService] Registration Pipeline Aborted:", (error as Error).message);

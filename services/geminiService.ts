@@ -8,40 +8,35 @@ export const geminiService = {
   analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
     const promptPart = {
       text: `Analyze the attached SHL Assessment Report PDF. 
-      Strictly extract the following detailed data points from the SVAR (Spoken) and WriteX (Written) sections.
-      IMPORTANT: Return ONLY raw JSON. No markdown code blocks (no \`\`\`json). No explanatory text.
+      Extract the following data into a strict JSON structure.
       
-      Fields to extract:
-      - Candidate Name
-      - Email
-      - Test Date (string)
-      - CEFR Level (The overall or SVAR CEFR result like A2, B1, etc.)
-      
-      SVAR (Spoken) Sub-scores (0-100):
-      - overall
-      - pronunciation
-      - fluency
-      - activeListening (often listed as 'Listening' or 'Active Listening')
-      - understanding (often 'Spoken Understanding')
-      - vocabulary
-      - grammar
-      
-      WriteX (Written) Sub-scores (0-100):
-      - content
-      - grammar
+      REQUIRED FIELDS:
+      - candidateName: Full name of the candidate.
+      - email: Candidate's email address.
+      - cefrLevel: The overall or SVAR CEFR result (e.g., A2, B1, B2).
+      - svar: Nested object containing sub-scores (0-100) for:
+          - overall
+          - pronunciation
+          - fluency
+          - activeListening
+          - vocabulary
+          - grammar
+      - writex: Nested object containing sub-scores (0-100) for:
+          - content
+          - grammar
 
+      IMPORTANT: Return ONLY raw JSON. No markdown code blocks, no backticks, no preamble.
+      
       JSON schema: 
       { 
         "candidateName": "string", 
         "email": "string", 
-        "testDate": "string",
         "cefrLevel": "string", 
         "svar": {
           "overall": number,
           "pronunciation": number,
           "fluency": number,
           "activeListening": number,
-          "understanding": number,
           "vocabulary": number,
           "grammar": number
         },
@@ -66,11 +61,15 @@ export const geminiService = {
     if (!rawText) throw new Error("Empty response from Gemini Engine");
 
     try {
-      const cleanedJson = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+      // Robust cleaning of potential markdown or whitespace
+      const cleanedJson = rawText
+        .replace(/```json/gi, '')
+        .replace(/```/gi, '')
+        .trim();
       return JSON.parse(cleanedJson);
     } catch (e) {
-      console.error("[geminiService] JSON Parse Error. Raw text was:", rawText);
-      throw new Error("Failed to parse detailed SHL data. Ensure the PDF contains SVAR and WriteX results.");
+      console.error("[geminiService] Extraction Failed. Raw output:", rawText);
+      throw new Error("Critical Parsing Error: The SHL report structure was not recognized.");
     }
   },
 
@@ -78,27 +77,18 @@ export const geminiService = {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: `Analyze this language learning URL: ${url}. 
-      Determine: 
-      1. Short catchy title.
-      2. CEFR Level (A1, A2, B1, B2, C1).
-      3. Primary skill tag (Grammar, Listening, Speaking, Vocabulary, Fluency).
-      4. Brief learning objective.
+      Determine: 1. Title, 2. CEFR Level, 3. Skill Tag (Grammar, Listening, Speaking, Vocabulary, Fluency), 4. Objective.
       Return as raw JSON. No markdown.`,
       config: { responseMimeType: "application/json" }
     });
-    
-    const cleanedJson = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanedJson);
+    const cleaned = response.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    return JSON.parse(cleaned);
   },
 
   generateQuizForResource: async (title: string, description: string): Promise<QuizQuestion[]> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate 5 multiple-choice questions for a professional language training quiz.
-      Topic: ${title}. 
-      Context: ${description}.
-      Level: Intermediate Professional.
-      Return an array of objects. No markdown.`,
+      contents: `Generate 5 multiple-choice questions for: ${title}. ${description}. Return as JSON array. No markdown.`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: {
@@ -115,17 +105,14 @@ export const geminiService = {
         }
       }
     });
-    const cleanedJson = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanedJson);
+    const cleaned = response.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    return JSON.parse(cleaned);
   },
 
   generateWorksheetQuestions: async (quizId: string, level?: string): Promise<QuizQuestion[]> => {
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
-      contents: `Generate 5 professional assessment questions for ${quizId}. 
-      Target Level: ${level || 'Intermediate'}.
-      Include various types: 'listening', 'reading', 'speaking'.
-      Return raw JSON. No markdown.`,
+      contents: `Generate 5 professional assessment questions for ${quizId} at ${level || 'Intermediate'} level. Return as JSON array. No markdown.`,
       config: { 
         responseMimeType: "application/json",
         responseSchema: {
@@ -144,7 +131,7 @@ export const geminiService = {
         }
       }
     });
-    const cleanedJson = response.text.replace(/```json/g, '').replace(/```/g, '').trim();
-    return JSON.parse(cleanedJson);
+    const cleaned = response.text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+    return JSON.parse(cleaned);
   }
 };

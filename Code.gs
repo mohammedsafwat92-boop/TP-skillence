@@ -89,11 +89,13 @@ function findUser(ss, email, password) {
   return null;
 }
 
+/**
+ * Creates user and performs Gap Analysis Course Mapping immediately.
+ */
 function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
   
-  // New column SHLData stores the full nested JSON object
   sheet.appendRow([
     uid,
     data.name,
@@ -101,13 +103,13 @@ function registerUser(ss, data) {
     data.password,
     'agent',
     data.cefrLevel,
-    data.rosterId || 'Default',
+    data.rosterId || 'Lufthansa-Agent',
     new Date(),
     JSON.stringify(data.shlData || {})
   ]);
 
-  // Persistent Course Mapping (Gap Analysis)
-  const resources = generateAndStoreCourseMap(ss, uid, data.shlData);
+  // Perform Server-Side Gap Analysis and Persist to Progress sheet
+  const assignedResources = generateAndStoreCourseMap(ss, uid, data.shlData);
 
   return {
     uid: uid,
@@ -119,62 +121,72 @@ function registerUser(ss, data) {
       languageLevel: data.cefrLevel,
       shlData: data.shlData
     },
-    resources: resources
+    resources: assignedResources
   };
 }
 
+/**
+ * Gap Analysis Logic: Maps SHL sub-scores to specific Resource tags.
+ * Persists mapping to 'Progress' sheet as 'assigned'.
+ */
 function generateAndStoreCourseMap(ss, uid, shlData) {
   const resourceSheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   const progressSheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
   
   if (resourceSheet.getLastRow() < 1) {
-    // Header for fallback
     resourceSheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
   }
   
   const resourcesData = resourceSheet.getDataRange().getValues();
   const headers = resourcesData[0];
-  const assignedResources = [];
+  const assignedList = [];
 
-  // Gap Analysis Threshold
   const THRESHOLD = 60;
+  
+  // 1. Identify Needed Tags based on Gaps
+  const targetTags = ['onboarding']; // Everyone gets onboarding
+  
+  if (shlData && shlData.svar) {
+    if (shlData.svar.pronunciation < THRESHOLD) targetTags.push('pronunciation');
+    if (shlData.svar.fluency < THRESHOLD) targetTags.push('fluency');
+    if (shlData.svar.grammar < THRESHOLD) targetTags.push('grammar');
+    if (shlData.svar.vocabulary < THRESHOLD) targetTags.push('vocabulary');
+  }
+  
+  if (shlData && shlData.writex) {
+    if (shlData.writex.grammar < THRESHOLD && !targetTags.includes('grammar')) {
+      targetTags.push('grammar');
+    }
+  }
 
+  // 2. Iterate Resources and Assign Matches
   for (let i = 1; i < resourcesData.length; i++) {
     const res = {};
     headers.forEach((h, idx) => res[h] = resourcesData[i][idx]);
     
-    const tags = (res.tags || "").split(',').map(t => t.trim().toLowerCase());
-    let shouldAssign = false;
+    const resTags = (res.tags || "").split(',').map(t => t.trim().toLowerCase());
+    const isMatch = resTags.some(tag => targetTags.includes(tag));
 
-    // Logic: ALWAYS assign Onboarding
-    if (tags.includes('onboarding')) shouldAssign = true;
-
-    // Logic: Gaps in SVAR
-    if (shlData.svar) {
-      if (shlData.svar.pronunciation < THRESHOLD && tags.includes('pronunciation')) shouldAssign = true;
-      if (shlData.svar.vocabulary < THRESHOLD && tags.includes('vocabulary')) shouldAssign = true;
-      if (shlData.svar.fluency < THRESHOLD && tags.includes('fluency')) shouldAssign = true;
-      if (shlData.svar.grammar < THRESHOLD && tags.includes('grammar')) shouldAssign = true;
-    }
-
-    // Logic: Gaps in WriteX
-    if (shlData.writex) {
-      if (shlData.writex.grammar < THRESHOLD && tags.includes('grammar')) shouldAssign = true;
-    }
-
-    if (shouldAssign) {
+    if (isMatch) {
+      // Persist to Progress Database
+      // [UID, ResourceID, 'assigned', attempts, score, Date]
       progressSheet.appendRow([uid, res.id, 'assigned', 0, 0, new Date()]);
-      assignedResources.push({
+      
+      assignedList.push({
         ...res,
+        tags: resTags,
         progress: { status: 'assigned', attempts: 0, score: 0 }
       });
     }
   }
 
   SpreadsheetApp.flush();
-  return assignedResources;
+  return assignedList;
 }
 
+/**
+ * Fetches the user's current training plan from the Progress registry.
+ */
 function getUserPlan(ss, uid) {
   const resSheet = ss.getSheetByName('Resources');
   const progSheet = ss.getSheetByName('Progress');
@@ -189,25 +201,25 @@ function getUserPlan(ss, uid) {
     const res = {};
     resHeaders.forEach((h, idx) => res[h] = resData[i][idx]);
     
-    // Find latest progress row for this user + resource
-    let status = 'locked';
-    let attempts = 0;
-    let score = 0;
-    
+    // Find matching progress record
+    let match = null;
     for (let j = 1; j < progData.length; j++) {
       if (progData[j][0] === uid && progData[j][1] === res.id) {
-        status = progData[j][2];
-        attempts = progData[j][3];
-        score = progData[j][4];
+        match = {
+          status: progData[j][2],
+          attempts: progData[j][3],
+          score: progData[j][4]
+        };
+        break;
       }
     }
 
-    // Only return resources that are assigned/open/completed
-    if (status !== 'locked') {
+    // Only return assigned or completed resources
+    if (match && (match.status === 'assigned' || match.status === 'open' || match.status === 'completed')) {
       userPlan.push({
         ...res,
-        tags: res.tags ? res.tags.split(',') : [],
-        progress: { status, attempts, score }
+        tags: (res.tags || "").split(',').map(t => t.trim()),
+        progress: match
       });
     }
   }
@@ -222,6 +234,7 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   for (let i = 1; i < data.length; i++) {
     if (data[i][0] === uid && data[i][1] === resourceId) {
       foundRow = i + 1;
+      break;
     }
   }
 
@@ -244,7 +257,7 @@ function importResource(ss, data) {
     data.title,
     data.url,
     data.type,
-    data.tags.join(','),
+    (data.tags || []).join(','),
     data.level,
     data.objective
   ]);
@@ -260,7 +273,9 @@ function fetchAllUsers(ss) {
   for (let i = 1; i < data.length; i++) {
     const u = {};
     headers.forEach((h, idx) => {
-      if (h === 'shlData') u[h] = JSON.parse(data[i][idx] || '{}');
+      if (h === 'shlData') {
+        try { u[h] = JSON.parse(data[i][idx] || '{}'); } catch(e) { u[h] = {}; }
+      }
       else u[h] = data[i][idx];
     });
     users.push(u);
