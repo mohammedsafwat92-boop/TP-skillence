@@ -12,7 +12,10 @@ interface LiveCoachProps {
 }
 
 const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate }) => {
-  const [activeMode, setActiveMode] = useState<'ai' | 'directory'>(currentUser.role === 'coach' ? 'directory' : 'ai');
+  // Hard Failsafe: Only Coaches or Admins can access this management view
+  if (currentUser.role !== 'coach' && currentUser.role !== 'admin') return null;
+
+  const [activeMode, setActiveMode] = useState<'ai' | 'directory'>('directory');
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcription, setTranscription] = useState<string[]>([]);
@@ -27,17 +30,14 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const sessionRef = useRef<any>(null);
 
   const fetchStudents = async () => {
-    if (currentUser.role !== 'coach' && currentUser.role !== 'admin') return;
     setIsLoadingStudents(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
       let filtered: UserProfile[] = [];
       
       if (currentUser.role === 'admin') {
-        // Admins see all agents
         filtered = (Array.isArray(users) ? users : []).filter(u => u.role === 'agent');
       } else if (currentUser.role === 'coach') {
-        // Coaches only see agents specifically assigned to their email
         filtered = (Array.isArray(users) ? users : []).filter(u => 
           u.role === 'agent' && u.assignedCoach === currentUser.email
         );
@@ -202,22 +202,20 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           </div>
         </div>
 
-        {(currentUser.role === 'coach' || currentUser.role === 'admin') && (
-          <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
-            <button 
-              onClick={() => setActiveMode('directory')}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMode === 'directory' ? 'bg-tp-red text-white' : 'text-white/50'}`}
-            >
-              Student Directory
-            </button>
-            <button 
-              onClick={() => setActiveMode('ai')}
-              className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMode === 'ai' ? 'bg-tp-red text-white' : 'text-white/50'}`}
-            >
-              AI Practice Session
-            </button>
-          </div>
-        )}
+        <div className="flex bg-white/5 p-1 rounded-2xl border border-white/10">
+          <button 
+            onClick={() => setActiveMode('directory')}
+            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMode === 'directory' ? 'bg-tp-red text-white' : 'text-white/50'}`}
+          >
+            Student Directory
+          </button>
+          <button 
+            onClick={() => setActiveMode('ai')}
+            className={`px-6 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeMode === 'ai' ? 'bg-tp-red text-white' : 'text-white/50'}`}
+          >
+            AI Practice Session
+          </button>
+        </div>
 
         <button 
           onClick={onClose}
@@ -238,7 +236,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-2xl font-black text-white uppercase tracking-tight">Active Students</h2>
               <div className="px-4 py-2 bg-tp-red text-white text-[10px] font-black rounded-full uppercase tracking-widest">
-                {students.length} Agents {currentUser.role === 'coach' ? 'Assigned to You' : 'Total'}
+                {students.length} Agents Assigned
               </div>
             </div>
 
@@ -270,7 +268,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               )}
               {students.length === 0 && !isLoadingStudents && (
                 <div className="py-20 text-center text-white/20 font-black uppercase text-xs tracking-widest">
-                  {currentUser.role === 'coach' ? 'No students assigned to your profile yet.' : 'No agents found in the registry.'}
+                  No students assigned to your profile yet.
                 </div>
               )}
             </div>

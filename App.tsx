@@ -62,8 +62,6 @@ const App: React.FC = () => {
   const handleImpersonate = async (user: UserProfile) => {
     setIsLoading(true);
     try {
-      // Logic: Switch context to the target user while maintaining current session for back-navigation if needed
-      // For now, we simply update the current session user
       setCurrentUser(user);
       await refreshPlan(user.id);
       setView({ type: 'dashboard' });
@@ -156,66 +154,22 @@ const App: React.FC = () => {
       return <Login onLoginSuccess={handleLogin} onEnterSandbox={handleEnterSandbox} />;
     }
 
-    if (error && !error.includes("AUTH_FAILED")) {
-      const isParsingError = error.includes("BACKEND_PARSING_ERROR");
-      return (
-        <div className="flex flex-col items-center justify-center min-h-screen p-6 animate-fadeIn bg-gray-50">
-          <div className="bg-white rounded-[64px] p-12 lg:p-16 max-w-7xl w-full shadow-2xl border-t-[20px] border-tp-red relative overflow-hidden">
-            <div className="absolute top-0 right-0 p-16 opacity-[0.03] pointer-events-none">
-                <BrainIcon className="w-[400px] h-[400px] text-tp-purple" />
-            </div>
-            
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-16 relative z-10">
-                <div className="lg:col-span-5 flex flex-col justify-center">
-                    <div className="flex items-center gap-4 mb-10">
-                        <div className="w-16 h-16 bg-tp-red/10 rounded-3xl flex items-center justify-center text-tp-red">
-                            <ExclamationCircleIcon className="w-8 h-8" />
-                        </div>
-                        <span className="text-xs font-black text-tp-red uppercase tracking-[0.5em]">System Logic Alert</span>
-                    </div>
-                    
-                    <h2 className="text-5xl lg:text-6xl font-black text-tp-purple mb-10 uppercase tracking-tighter leading-[0.95]">
-                        {isParsingError ? 'Registry Sync Error' : 'Database Connection Lost'}
-                    </h2>
-                    
-                    <p className="text-gray-600 font-medium mb-12 leading-relaxed text-xl">
-                        The Academy registry could not be synchronized. Verify your connection or consult the diagnostic tools.
-                    </p>
-
-                    <div className="flex flex-col sm:flex-row gap-6">
-                        <button onClick={handleEnterSandbox} className="flex-1 bg-tp-navy text-white px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-[0.3em] shadow-xl">Enter Sandbox</button>
-                        <button onClick={() => window.location.reload()} className="flex-1 bg-white border-2 border-tp-purple text-tp-purple px-10 py-6 rounded-[32px] font-black uppercase text-xs tracking-[0.3em]">Retry Sync</button>
-                    </div>
-                </div>
-                <div className="lg:col-span-7 bg-gray-50 rounded-[56px] p-10 border border-gray-100 flex flex-col shadow-inner">
-                    <div className="flex items-center justify-between mb-10">
-                        <h3 className="text-sm font-black text-tp-purple uppercase tracking-[0.3em]">Technical Solution</h3>
-                    </div>
-                    <pre className="bg-tp-navy text-blue-300 p-10 rounded-[40px] font-mono text-[11px] overflow-auto border border-white/10 leading-relaxed shadow-2xl h-[400px] custom-scrollbar">
-{`// Universal Failsafe Google Script Snippet
-function doPost(e) {
-  var out = { success: false, message: "Handshake failed" };
-  try {
-    if (!e || !e.postData || !e.postData.contents) throw "Payload missing";
-    var data = JSON.parse(e.postData.contents);
-    var action = data.action;
-    var email = data.email;
-    // Core Logic...
-    out = { success: true, data: { status: 'open' } };
-  } catch (err) {
-    out.message = err.toString();
-  }
-  return ContentService.createTextOutput(JSON.stringify(out)).setMimeType(ContentService.MimeType.JSON);
-}`}
-                    </pre>
-                </div>
-            </div>
-          </div>
-        </div>
-      );
+    // Role-Based Access Guards
+    if (view.type === 'admin') {
+      if (currentUser.role !== 'admin') {
+        setView({ type: 'dashboard' });
+        return null;
+      }
+      return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onFileProcessed={handleFileProcessed} onImpersonate={handleImpersonate} />;
     }
 
-    if (view.type === 'admin') return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onFileProcessed={handleFileProcessed} onImpersonate={handleImpersonate} />;
+    if (view.type === 'live-coach') {
+      if (currentUser.role !== 'coach' && currentUser.role !== 'admin') {
+        setView({ type: 'dashboard' });
+        return null;
+      }
+      return <LiveCoach onClose={() => setView({ type: 'dashboard' })} currentUser={currentUser} onImpersonate={handleImpersonate} />;
+    }
     
     if (view.type === 'lesson') return (
         <LessonViewer 
@@ -224,10 +178,6 @@ function doPost(e) {
             onClose={() => setView({ type: 'dashboard' })}
             onMasteryAchieved={() => refreshPlan()}
         />
-    );
-
-    if (view.type === 'live-coach') return (
-      <LiveCoach onClose={() => setView({ type: 'dashboard' })} currentUser={currentUser} onImpersonate={handleImpersonate} />
     );
 
     return (

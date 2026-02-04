@@ -30,41 +30,46 @@ const NavItem: React.FC<{ view: View, currentView: View, onNavigate: (view: View
 
 const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, users, onSwitchUser, isOpen, onClose, onLogout }) => {
   const rosters = getRosters();
+  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'coach';
+  const isAdmin = currentUser?.role === 'admin';
   
   return (
     <div className={`fixed inset-y-0 left-0 w-72 bg-tp-purple text-white flex flex-col h-full shadow-2xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-20 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="lg:hidden absolute top-4 right-4"><button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><XIcon /></button></div>
 
       <div className="flex flex-col items-center justify-center pt-10 pb-6 border-b border-white/10" onClick={() => onNavigate({ type: 'dashboard' })}>
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4"><span className="text-tp-purple font-black text-2xl">TP</span></div>
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 cursor-pointer"><span className="text-tp-purple font-black text-2xl">TP</span></div>
         <h1 className="text-sm font-bold tracking-[0.1em] text-white/90 uppercase">Teleperformance</h1>
         <p className="text-xs text-tp-red font-bold uppercase tracking-[0.2em] mt-1">Egypt • Skillence</p>
       </div>
       
-      <div className="px-6 py-6">
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-            <label className="text-xs text-gray-100 uppercase font-bold tracking-widest mb-2 block">Impersonate Profile</label>
-            <div className="relative">
-              <select 
-                  className="w-full bg-tp-purple/50 text-white text-sm border border-white/10 rounded-lg px-3 py-3 appearance-none outline-none focus:ring-2 focus:ring-tp-red min-h-[44px]"
-                  value={currentUser?.id || ''}
-                  onChange={(e) => {
-                      const selected = users.find(u => u.id === e.target.value);
-                      if (selected) { onSwitchUser(selected); onNavigate({ type: 'dashboard' }); }
-                  }}
-              >
-                  {users.map(u => (
-                      <option key={u.id} value={u.id} className="bg-tp-purple">
-                          {u.name} ({rosters.find(r => r.id === u.rosterId)?.name.split(' ')[0] || 'N/A'})
-                      </option>
-                  ))}
-              </select>
-              <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-tp-red">
-                  <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+      {/* Strict Guard: Impersonation UI only for Privileged Users */}
+      {isPrivileged && (
+        <div className="px-6 py-6">
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
+              <label className="text-xs text-gray-100 uppercase font-bold tracking-widest mb-2 block">Impersonate Profile</label>
+              <div className="relative">
+                <select 
+                    className="w-full bg-tp-purple/50 text-white text-sm border border-white/10 rounded-lg px-3 py-3 appearance-none outline-none focus:ring-2 focus:ring-tp-red min-h-[44px]"
+                    value={currentUser?.id || ''}
+                    onChange={(e) => {
+                        const selected = users.find(u => u.id === e.target.value);
+                        if (selected) { onSwitchUser(selected); onNavigate({ type: 'dashboard' }); }
+                    }}
+                >
+                    {users.map(u => (
+                        <option key={u.id} value={u.id} className="bg-tp-purple">
+                            {u.name} ({rosters.find(r => r.id === u.rosterId)?.name.split(' ')[0] || 'N/A'})
+                        </option>
+                    ))}
+                </select>
+                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-tp-red">
+                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
+                </div>
               </div>
-            </div>
+          </div>
         </div>
-      </div>
+      )}
 
       <nav className="flex-1 py-4 overflow-y-auto custom-scrollbar">
         <ul>
@@ -73,11 +78,20 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
             <span className="ml-3">Dashboard</span>
           </NavItem>
           
-          {(currentUser?.role === 'admin' || currentUser?.role === 'coach') && (
+          {/* Strict Guard: Admin Panel only for Admin role */}
+          {isAdmin && (
              <NavItem view={{ type: 'admin' }} currentView={currentView} onNavigate={onNavigate}>
                 <AdminIcon />
                 <span className="ml-3">Admin Panel</span>
              </NavItem>
+          )}
+
+          {/* Strict Guard: Live Coach Directory only for privileged roles */}
+          {isPrivileged && (
+            <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
+               <UserIcon className="w-6 h-6" />
+               <span className="ml-3">Coach Hub</span>
+            </NavItem>
           )}
         </ul>
 

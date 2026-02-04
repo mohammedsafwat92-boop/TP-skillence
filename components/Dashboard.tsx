@@ -13,6 +13,7 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate, onOpenResource, isDemo }) => {
   const safeResources = Array.isArray(resources) ? resources : [];
+  const isPrivileged = user.role === 'admin' || user.role === 'coach';
   
   // Business Rule: Threshold for identifying a "Gap"
   const GAP_THRESHOLD = 75;
@@ -35,7 +36,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
   // 3. Filter Resources for "Remedial Path" (Gaps + Current Level)
   const remedialPath = safeResources.filter(res => {
     if (res.progress.status === 'completed') return false;
-    // Show if matches a gap skill OR matches target growth level
     const matchesGap = res.tags.some(tag => gaps.includes(tag));
     const matchesGrowth = res.level === targetLevel;
     return matchesGap || matchesGrowth;
@@ -64,13 +64,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
         </div>
 
         <div className="flex gap-4">
-            <button 
-              onClick={() => onNavigate({ type: 'live-coach' })}
-              className="bg-tp-navy text-white px-8 py-5 rounded-[32px] font-black uppercase text-[10px] tracking-[0.3em] shadow-xl hover:bg-tp-purple transition-all flex items-center group"
-            >
-              <SpeakingIcon className="w-5 h-5 mr-3 text-tp-red group-hover:animate-pulse" />
-              Live AI Practice
-            </button>
+            {/* RBAC: Hide Live AI Practice for non-privileged users */}
+            {isPrivileged && (
+              <button 
+                onClick={() => onNavigate({ type: 'live-coach' })}
+                className="bg-tp-navy text-white px-8 py-5 rounded-[32px] font-black uppercase text-[10px] tracking-[0.3em] shadow-xl hover:bg-tp-purple transition-all flex items-center group"
+              >
+                <SpeakingIcon className="w-5 h-5 mr-3 text-tp-red group-hover:animate-pulse" />
+                Live AI Practice
+              </button>
+            )}
             <div className="bg-white px-8 py-5 rounded-[32px] shadow-[0_20px_40px_rgba(46,8,84,0.05)] border border-gray-100 flex items-center gap-6">
                 <div className="text-center">
                     <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
@@ -80,7 +83,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
         </div>
       </div>
 
-      {/* Recommended Remedial Path */}
       <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/20">
         <div className="absolute top-0 right-0 p-10 opacity-[0.05] pointer-events-none">
             <BrainIcon className="w-64 h-64 text-white" />
@@ -126,7 +128,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
         </div>
       </div>
 
-      {/* Metrics Sidebar & Full Catalog */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="lg:col-span-4 order-2 lg:order-1">
               <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl flex-1 flex flex-col relative overflow-hidden">

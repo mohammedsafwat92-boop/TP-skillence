@@ -14,6 +14,9 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
+  // Hard Failsafe: Only Admins can render this component logic
+  if (currentUser.role !== 'admin') return null;
+
   const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
@@ -23,11 +26,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      // Logic: Admin sees everyone, Coach sees only Agents
       let filteredUsers = Array.isArray(users) ? users : [];
-      if (currentUser.role === 'coach') {
-        filteredUsers = filteredUsers.filter(u => u.role === 'agent');
-      }
+      // Additional safety filtering
       setUserList(filteredUsers);
     } catch (err) {
       console.error("Failed to fetch registry:", err);
@@ -122,7 +122,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-6">
         <div>
           <h1 className="text-3xl font-black text-tp-purple flex items-center tracking-tight uppercase">
-            <BrainIcon className="mr-4 text-tp-red" /> {currentUser.role === 'admin' ? 'Admin Registry Hub' : 'Coach Dashboard'}
+            <BrainIcon className="mr-4 text-tp-red" /> Admin Registry Hub
           </h1>
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Management Console</p>
         </div>
@@ -142,7 +142,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">{currentUser.role === 'admin' ? 'Active Academy Members' : 'Managed Students'}</h3>
+             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Academy Members</h3>
              <button 
                 onClick={exportToCsv}
                 className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl"
