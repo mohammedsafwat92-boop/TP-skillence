@@ -27,6 +27,7 @@ const App: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [userPlan, setUserPlan] = useState<Resource[]>([]);
+  const [globalUsers, setGlobalUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isDemoMode, setIsDemoMode] = useState(false);
@@ -40,12 +41,25 @@ const App: React.FC = () => {
         const user = JSON.parse(cachedUser);
         setCurrentUser(user);
         await refreshPlan(user.id);
+        if (user.role === 'admin' || user.role === 'coach') {
+          loadGlobalUsers();
+        }
       } catch (e) {
         localStorage.removeItem('tp_skillence_user_session');
       }
     }
     setIsAuthChecking(false);
     setIsLoading(false);
+  };
+
+  const loadGlobalUsers = async () => {
+    try {
+      const users = await googleSheetService.fetchAllUsers();
+      setGlobalUsers(Array.isArray(users) ? users : []);
+    } catch (e) {
+      console.error("Failed to load global users for sidebar:", e);
+      setGlobalUsers([]);
+    }
   };
 
   useEffect(() => {
@@ -56,6 +70,9 @@ const App: React.FC = () => {
     setCurrentUser(user);
     localStorage.setItem('tp_skillence_user_session', JSON.stringify(user));
     await refreshPlan(user.id);
+    if (user.role === 'admin' || user.role === 'coach') {
+      loadGlobalUsers();
+    }
     setIsDemoMode(false);
   };
 
@@ -73,8 +90,16 @@ const App: React.FC = () => {
   };
 
   const handleEnterSandbox = () => {
+    // Sandbox uses internal users if available, otherwise stays empty
     const localUsers = getUsers();
-    const demoUser = localUsers.find(u => u.id === '1773984510') || localUsers[0];
+    const demoUser = localUsers.length > 0 ? localUsers[0] : {
+      id: 'demo-guest',
+      name: 'Guest User',
+      role: 'agent',
+      languageLevel: 'B1',
+      rosterId: 'demo'
+    } as UserProfile;
+
     setCurrentUser(demoUser);
     setIsDemoMode(true);
     
@@ -128,6 +153,7 @@ const App: React.FC = () => {
     localStorage.removeItem('tp_skillence_user_session');
     setCurrentUser(null);
     setUserPlan([]);
+    setGlobalUsers([]);
     setIsDemoMode(false);
     setView({ type: 'dashboard' });
   };
@@ -202,7 +228,7 @@ const App: React.FC = () => {
             currentView={view} 
             onNavigate={handleNavigate} 
             currentUser={currentUser}
-            users={getUsers()} 
+            users={globalUsers} 
             onSwitchUser={(u) => { setCurrentUser(u); handleNavigate({type: 'dashboard'}); }}
             isOpen={isSidebarOpen} 
             onClose={() => setIsSidebarOpen(false)}

@@ -26,7 +26,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      setUserList(Array.isArray(users) ? users : []);
+      const realUsers = Array.isArray(users) ? users : [];
+      setUserList(realUsers);
+      console.log("[AdminPanel] Fetched Registry:", realUsers);
     } catch (err) {
       console.error("Failed to fetch registry:", err);
       setUserList([]);
@@ -139,7 +141,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
              <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Global Member Directory</h3>
              <button 
                 onClick={exportToCsv}
-                className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl"
+                disabled={userList.length === 0}
+                className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50"
              >
                 <DownloadIcon className="w-4 h-4" /> Export Registry
              </button>
@@ -177,7 +180,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <span className="text-tp-red font-black text-lg">{user.languageLevel || 'N/A'}</span>
                     </td>
                     <td className="px-8 py-5 text-right">
-                      {/* SECURITY FIX: Only allow profile viewing (impersonation) for agents to prevent internal admin logic conflicts */}
                       {user.role === 'agent' ? (
                         <button 
                           onClick={() => onImpersonate(user)}
@@ -193,11 +195,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                     </td>
                   </tr>
                 ))}
+                {!isProcessing && userList.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-20 text-center text-gray-400 font-black uppercase text-xs tracking-widest">
+                      No registered users found in database.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
-            {userList.length === 0 && !isProcessing && (
-              <div className="py-20 text-center text-gray-400 font-black uppercase text-xs tracking-widest">No members found in registry.</div>
-            )}
             {isProcessing && (
               <div className="py-20 text-center text-tp-purple font-black uppercase text-xs tracking-widest animate-pulse">Synchronizing database...</div>
             )}

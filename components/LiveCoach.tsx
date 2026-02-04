@@ -48,9 +48,11 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         );
       }
       
+      console.log(`[LiveCoach] Fetched Students for ${currentUser.email}:`, filtered);
       setStudents(filtered);
     } catch (err) {
       console.error("Failed to load students:", err);
+      setStudents([]);
     } finally {
       setIsLoadingStudents(false);
     }
@@ -163,7 +165,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           onclose: () => setIsConnected(false),
         },
         config: {
-          responseModalities: [Modality.AUDIO],
+          responseModalalities: [Modality.AUDIO],
           speechConfig: {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
           },
@@ -273,7 +275,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               )}
               {students.length === 0 && !isLoadingStudents && (
                 <div className="py-20 text-center text-white/20 font-black uppercase text-xs tracking-widest">
-                  No students assigned to your profile yet.
+                  No registered students found in your directory.
                 </div>
               )}
             </div>
