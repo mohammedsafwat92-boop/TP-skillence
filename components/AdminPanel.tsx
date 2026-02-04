@@ -3,7 +3,6 @@ import React, { useState, useEffect } from 'react';
 import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
-// Added CheckCircleIcon to the imported icons list
 import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile } from '../types';
 
@@ -11,19 +10,25 @@ interface AdminPanelProps {
   onUpdateContent: () => void;
   currentUser: UserProfile;
   onFileProcessed?: (file: File) => Promise<void>;
+  onImpersonate: (user: UserProfile) => void;
 }
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed }) => {
+const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
   const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
-  const [userList, setUserList] = useState<any[]>([]);
+  const [userList, setUserList] = useState<UserProfile[]>([]);
 
   const fetchUsers = async () => {
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      setUserList(Array.isArray(users) ? users : []);
+      // Logic: Admin sees everyone, Coach sees only Agents
+      let filteredUsers = Array.isArray(users) ? users : [];
+      if (currentUser.role === 'coach') {
+        filteredUsers = filteredUsers.filter(u => u.role === 'agent');
+      }
+      setUserList(filteredUsers);
     } catch (err) {
       console.error("Failed to fetch registry:", err);
       setUserList([]);
@@ -41,10 +46,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     if (!file) return;
 
     if (onFileProcessed) {
-      // Use the Atomic Handler from App.tsx
       await onFileProcessed(file);
     } else {
-      // Legacy Fallback
       setIsProcessing(true);
       try {
         const result = await shlService.processAndRegister(file);
@@ -84,24 +87,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
   };
 
-  /**
-   * Generates and downloads a CSV of the user database.
-   */
   const exportToCsv = () => {
     if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Level', 'Completion %', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
     const rows = userList.map(u => {
-      const completion = u.plan ? Math.round((u.plan.filter((r:any) => r.status === 'completed').length / u.plan.length) * 100) : 0;
       return [
-        u.uid || u.id,
+        u.id,
         `"${u.name}"`,
-        u.email,
-        u.cefrLevel,
-        `${completion}%`,
-        u.shlData?.grammar || 0,
-        u.shlData?.fluency || 0,
-        u.shlData?.vocabulary || 0,
-        u.shlData?.pronunciation || 0
+        u.email || 'N/A',
+        u.role,
+        u.languageLevel || 'N/A',
+        u.shlData?.svar?.grammar || 0,
+        u.shlData?.svar?.fluency || 0,
+        u.shlData?.svar?.vocabulary || 0,
+        u.shlData?.svar?.pronunciation || 0
       ].join(',');
     }).join('\n');
 
@@ -122,7 +121,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-6">
         <div>
           <h1 className="text-3xl font-black text-tp-purple flex items-center tracking-tight uppercase">
-            <BrainIcon className="mr-4 text-tp-red" /> Admin Registry Hub
+            <BrainIcon className="mr-4 text-tp-red" /> {currentUser.role === 'admin' ? 'Admin Registry Hub' : 'Coach Dashboard'}
           </h1>
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Management Console</p>
         </div>
@@ -142,60 +141,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Academy Members</h3>
+             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">{currentUser.role === 'admin' ? 'Active Academy Members' : 'Managed Students'}</h3>
              <button 
                 onClick={exportToCsv}
                 className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl"
              >
-                <DownloadIcon className="w-4 h-4" /> Download Registry (CSV)
+                <DownloadIcon className="w-4 h-4" /> Export Data
              </button>
           </div>
           <div className="overflow-x-auto border border-gray-100 rounded-[32px] shadow-inner bg-gray-50/30">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
-                  <th className="px-8 py-5">Profile</th>
-                  <th className="px-8 py-5 text-center">Proficiency</th>
-                  <th className="px-8 py-5">Language metrics</th>
-                  <th className="px-8 py-5 text-right">Status</th>
+                  <th className="px-8 py-5">Name</th>
+                  <th className="px-8 py-5">Email</th>
+                  <th className="px-8 py-5">Role</th>
+                  <th className="px-8 py-5 text-center">CEFR Level</th>
+                  <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {userList.map((user, idx) => {
-                  const comp = user.plan ? Math.round((user.plan.filter((r:any) => r.status === 'completed').length / user.plan.length) * 100) : 0;
-                  return (
-                    <tr key={user.uid || idx} className="hover:bg-tp-purple/[0.02] transition-colors">
-                      <td className="px-8 py-5">
-                        <p className="font-bold text-tp-purple text-base">{user.name}</p>
-                        <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest">{user.email}</p>
-                      </td>
-                      <td className="px-8 py-5 text-center">
-                        <span className="text-tp-red font-black text-lg">{user.cefrLevel}</span>
-                        <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Global Standard</p>
-                      </td>
-                      <td className="px-8 py-5">
-                        <div className="flex flex-wrap gap-2">
-                           {['grammar', 'fluency', 'pronunciation'].map(s => (
-                             <div key={s} className="bg-gray-100 px-2.5 py-1 rounded-lg text-[9px] font-black text-gray-600 uppercase tracking-widest">
-                               {s}: {user.shlData?.[s] || 0}%
-                             </div>
-                           ))}
-                        </div>
-                      </td>
-                      <td className="px-8 py-5 text-right">
-                        <div className="inline-flex items-center gap-3">
-                           <div className="text-right">
-                              <p className="text-sm font-black text-tp-purple">{comp}%</p>
-                              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">Path completion</p>
-                           </div>
-                           <div className="w-10 h-10 bg-tp-purple/5 rounded-full flex items-center justify-center text-tp-purple border border-tp-purple/10">
-                              <CheckCircleIcon className="w-5 h-5" filled={comp === 100} />
-                           </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                {userList.map((user, idx) => (
+                  <tr key={user.id || idx} className="hover:bg-tp-purple/[0.02] transition-colors group">
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-tp-purple text-base">{user.name}</p>
+                    </td>
+                    <td className="px-8 py-5">
+                      <p className="text-xs text-gray-600 font-medium">{user.email || 'N/A'}</p>
+                    </td>
+                    <td className="px-8 py-5">
+                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-8 py-5 text-center">
+                      <span className="text-tp-red font-black text-lg">{user.languageLevel || 'N/A'}</span>
+                    </td>
+                    <td className="px-8 py-5 text-right">
+                      <button 
+                        onClick={() => onImpersonate(user)}
+                        className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
+                      >
+                        View Profile
+                      </button>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
             {userList.length === 0 && !isProcessing && (

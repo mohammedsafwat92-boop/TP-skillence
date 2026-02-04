@@ -59,6 +59,21 @@ const App: React.FC = () => {
     setIsDemoMode(false);
   };
 
+  const handleImpersonate = async (user: UserProfile) => {
+    setIsLoading(true);
+    try {
+      // Logic: Switch context to the target user while maintaining current session for back-navigation if needed
+      // For now, we simply update the current session user
+      setCurrentUser(user);
+      await refreshPlan(user.id);
+      setView({ type: 'dashboard' });
+    } catch (err) {
+      alert("Failed to view profile: " + (err as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleEnterSandbox = () => {
     const localUsers = getUsers();
     const demoUser = localUsers.find(u => u.id === '1773984510') || localUsers[0];
@@ -90,7 +105,6 @@ const App: React.FC = () => {
       setUserPlan(Array.isArray(plan) ? plan : []);
     } catch (err) {
       console.error("Refresh Error:", err);
-      // If the session is invalid on the server side, log out the user
       if ((err as Error).message.includes("User not found")) {
         handleLogout();
       }
@@ -142,7 +156,6 @@ const App: React.FC = () => {
       return <Login onLoginSuccess={handleLogin} onEnterSandbox={handleEnterSandbox} />;
     }
 
-    // Only show system error view for fatal technical errors, not business/auth errors
     if (error && !error.includes("AUTH_FAILED")) {
       const isParsingError = error.includes("BACKEND_PARSING_ERROR");
       return (
@@ -202,7 +215,7 @@ function doPost(e) {
       );
     }
 
-    if (view.type === 'admin') return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onFileProcessed={handleFileProcessed} />;
+    if (view.type === 'admin') return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onFileProcessed={handleFileProcessed} onImpersonate={handleImpersonate} />;
     
     if (view.type === 'lesson') return (
         <LessonViewer 
@@ -214,7 +227,7 @@ function doPost(e) {
     );
 
     if (view.type === 'live-coach') return (
-      <LiveCoach onClose={() => setView({ type: 'dashboard' })} />
+      <LiveCoach onClose={() => setView({ type: 'dashboard' })} currentUser={currentUser} onImpersonate={handleImpersonate} />
     );
 
     return (
