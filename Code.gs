@@ -6,8 +6,7 @@ function seedSpecialUsers() {
   let sheet = ss.getSheetByName('Users');
   if (!sheet) {
     sheet = ss.insertSheet('Users');
-    // Updated Header schema based on Architect requirement:
-    // [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
+    // Schema: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
     sheet.appendRow(['UID', 'Email', 'Password', 'Name', 'Role', 'CEFRLevel', 'SHLData', 'Date', 'AssignedCoach']);
   }
 
@@ -17,7 +16,7 @@ function seedSpecialUsers() {
   ];
 
   const data = sheet.getDataRange().getValues();
-  const existingEmails = data.map(row => row[1]); // Email is at index 1 now
+  const existingEmails = data.map(row => row[1]); 
 
   specialUsers.forEach(user => {
     if (!existingEmails.includes(user[1])) {
@@ -29,6 +28,10 @@ function seedSpecialUsers() {
 function doPost(e) {
   const res = { success: false, message: 'Unknown Error', data: null };
   try {
+    if (!e || !e.postData || !e.postData.contents) {
+      throw new Error("No payload received by backend.");
+    }
+
     const json = JSON.parse(e.postData.contents);
     const action = json.action;
     const ss = SpreadsheetApp.openById(SHEET_ID);
@@ -36,10 +39,7 @@ function doPost(e) {
     if (action === 'test_connection') {
       res.success = true;
       res.message = 'System Online';
-      return sendResponse(res);
-    }
-
-    if (action === 'login') {
+    } else if (action === 'login') {
       const user = findUser(ss, json.email, json.password);
       if (user) {
         res.success = true;
@@ -48,9 +48,8 @@ function doPost(e) {
         res.message = 'Invalid credentials';
       }
     } else if (action === 'create_user') {
-      const newUser = registerUser(ss, json);
+      res.data = registerUser(ss, json);
       res.success = true;
-      res.data = newUser;
     } else if (action === 'get_user_plan') {
       res.data = getUserPlan(ss, json.uid);
       res.success = true;
@@ -75,17 +74,21 @@ function findUser(ss, email, password) {
   const sheet = ss.getSheetByName('Users');
   if (!sheet) return null;
   const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  
+  const emailIdx = headers.indexOf('Email');
+  const pwdIdx = headers.indexOf('Password');
+  
   for (let i = 1; i < data.length; i++) {
-    // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
-    if (data[i][1] === email && data[i][2] === password) {
+    if (data[i][emailIdx] === email && data[i][pwdIdx] === password) {
       return {
-        id: data[i][0],
-        email: data[i][1],
-        name: data[i][3],
-        role: data[i][4],
-        languageLevel: data[i][5],
-        shlData: JSON.parse(data[i][6] || '{}'),
-        assignedCoach: data[i][8] || 'Unassigned'
+        id: data[i][headers.indexOf('UID')],
+        email: data[i][emailIdx],
+        name: data[i][headers.indexOf('Name')],
+        role: data[i][headers.indexOf('Role')],
+        languageLevel: data[i][headers.indexOf('CEFRLevel')],
+        shlData: safeParse(data[i][headers.indexOf('SHLData')]),
+        assignedCoach: data[i][headers.indexOf('AssignedCoach')] || 'Unassigned'
       };
     }
   }
@@ -96,7 +99,6 @@ function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
   
-  // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
   sheet.appendRow([
     uid,
     data.email,
@@ -256,20 +258,33 @@ function fetchAllUsers(ss) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const users = [];
+  
+  // Create mapping of header names to indices
+  const mapping = {};
+  headers.forEach((h, i) => mapping[h] = i);
+  
   for (let i = 1; i < data.length; i++) {
-    const u = {};
-    // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
-    // UID: 0, Email: 1, Pwd: 2, Name: 3, Role: 4, CEFR: 5, SHL: 6, Date: 7, Coach: 8
-    u.id = data[i][0];
-    u.email = data[i][1];
-    u.name = data[i][3];
-    u.role = data[i][4];
-    u.languageLevel = data[i][5];
-    try { u.shlData = JSON.parse(data[i][6] || '{}'); } catch(e) { u.shlData = {}; }
-    u.assignedCoach = data[i][8] || 'Unassigned';
-    users.push(u);
+    const row = data[i];
+    users.push({
+      id: row[mapping['UID']],
+      email: row[mapping['Email']],
+      name: row[mapping['Name']],
+      role: row[mapping['Role']],
+      languageLevel: row[mapping['CEFRLevel']],
+      shlData: safeParse(row[mapping['SHLData']]),
+      assignedCoach: row[mapping['AssignedCoach']] || 'Unassigned'
+    });
   }
   return users;
+}
+
+function safeParse(jsonStr) {
+  if (!jsonStr) return {};
+  try {
+    return JSON.parse(jsonStr);
+  } catch (e) {
+    return {};
+  }
 }
 
 function sendResponse(obj) {

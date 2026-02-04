@@ -38,12 +38,13 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const allUsers = Array.isArray(users) ? users : [];
 
       if (currentUser.role === 'admin') {
-        // Admins see all agents
+        // Admins see all agents for oversight
         filtered = allUsers.filter(u => u.role === 'agent');
       } else if (currentUser.role === 'coach') {
-        // Coaches only see agents specifically assigned to their email
+        // SECURITY FIX: Coaches strictly filter for assigned agents only
         filtered = allUsers.filter(u => 
-          u.role === 'agent' && u.assignedCoach === currentUser.email
+          u.assignedCoach === currentUser.email && 
+          u.role === 'agent' 
         );
       }
       
@@ -240,7 +241,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             <div className="flex justify-between items-center mb-10">
               <h2 className="text-2xl font-black text-white uppercase tracking-tight">Active Students</h2>
               <div className="px-4 py-2 bg-tp-red text-white text-[10px] font-black rounded-full uppercase tracking-widest">
-                {students.length} Agents {currentUser.role === 'coach' ? 'Assigned to You' : 'Found'}
+                {students.length} Agents Assigned
               </div>
             </div>
 
@@ -272,7 +273,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               )}
               {students.length === 0 && !isLoadingStudents && (
                 <div className="py-20 text-center text-white/20 font-black uppercase text-xs tracking-widest">
-                  {currentUser.role === 'coach' ? 'No students assigned to your profile yet.' : 'No agents found in registry.'}
+                  No students assigned to your profile yet.
                 </div>
               )}
             </div>

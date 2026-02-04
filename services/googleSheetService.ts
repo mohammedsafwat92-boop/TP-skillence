@@ -26,7 +26,8 @@ async function callApi(action: string, payload: any = {}) {
     try {
       json = JSON.parse(rawText);
     } catch (parseError) {
-      throw new Error("DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Redeploy GAS.");
+      console.error("[googleSheetService] Critical parsing failure. Raw text received from backend:", rawText);
+      throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Raw output: ${rawText.substring(0, 50)}...`);
     }
 
     if (!json.success) {

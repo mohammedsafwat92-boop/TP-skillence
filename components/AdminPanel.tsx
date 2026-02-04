@@ -177,12 +177,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <span className="text-tp-red font-black text-lg">{user.languageLevel || 'N/A'}</span>
                     </td>
                     <td className="px-8 py-5 text-right">
-                      <button 
-                        onClick={() => onImpersonate(user)}
-                        className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
-                      >
-                        View Profile
-                      </button>
+                      {/* SECURITY FIX: Only allow profile viewing (impersonation) for agents to prevent internal admin logic conflicts */}
+                      {user.role === 'agent' ? (
+                        <button 
+                          onClick={() => onImpersonate(user)}
+                          className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
+                        >
+                          View Profile
+                        </button>
+                      ) : (
+                        <span className="text-[9px] font-black text-tp-red uppercase tracking-widest bg-tp-red/10 px-3 py-1.5 rounded-lg border border-tp-red/20 inline-block">
+                          Internal Account
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
