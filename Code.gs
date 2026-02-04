@@ -6,20 +6,21 @@ function seedSpecialUsers() {
   let sheet = ss.getSheetByName('Users');
   if (!sheet) {
     sheet = ss.insertSheet('Users');
-    // Header schema: uid, name, email, password, role, cefrLevel, rosterId, createdAt, shlData, assignedCoach
-    sheet.appendRow(['uid', 'name', 'email', 'password', 'role', 'cefrLevel', 'rosterId', 'createdAt', 'shlData', 'assignedCoach']);
+    // Updated Header schema based on Architect requirement:
+    // [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
+    sheet.appendRow(['UID', 'Email', 'Password', 'Name', 'Role', 'CEFRLevel', 'SHLData', 'Date', 'AssignedCoach']);
   }
 
   const specialUsers = [
-    ['admin-001', 'System Admin', 'admin@tp-skillence.com', 'TPAdmin2026!', 'admin', 'C2', 'MASTER', new Date(), '{}', 'System'],
-    ['coach-001', 'Lufthansa Coach', 'coach@tp-skillence.com', 'TPCoach2026!', 'coach', 'C1', 'Lufthansa-Main', new Date(), '{}', 'System']
+    ['admin-001', 'admin@tp-skillence.com', 'TPAdmin2026!', 'System Admin', 'admin', 'C2', '{}', new Date(), 'System'],
+    ['coach-001', 'coach@tp-skillence.com', 'TPCoach2026!', 'Lufthansa Coach', 'coach', 'C1', '{}', new Date(), 'System']
   ];
 
   const data = sheet.getDataRange().getValues();
-  const existingEmails = data.map(row => row[2]);
+  const existingEmails = data.map(row => row[1]); // Email is at index 1 now
 
   specialUsers.forEach(user => {
-    if (!existingEmails.includes(user[2])) {
+    if (!existingEmails.includes(user[1])) {
       sheet.appendRow(user);
     }
   });
@@ -75,16 +76,16 @@ function findUser(ss, email, password) {
   if (!sheet) return null;
   const data = sheet.getDataRange().getValues();
   for (let i = 1; i < data.length; i++) {
-    if (data[i][2] === email && data[i][3] === password) {
+    // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
+    if (data[i][1] === email && data[i][2] === password) {
       return {
         id: data[i][0],
-        name: data[i][1],
-        email: data[i][2],
+        email: data[i][1],
+        name: data[i][3],
         role: data[i][4],
         languageLevel: data[i][5],
-        rosterId: data[i][6],
-        shlData: JSON.parse(data[i][8] || '{}'),
-        assignedCoach: data[i][9] || 'Unassigned'
+        shlData: JSON.parse(data[i][6] || '{}'),
+        assignedCoach: data[i][8] || 'Unassigned'
       };
     }
   }
@@ -95,16 +96,16 @@ function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
   
+  // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
   sheet.appendRow([
     uid,
-    data.name,
     data.email,
     data.password,
+    data.name,
     'agent',
     data.cefrLevel,
-    data.rosterId || 'Lufthansa-Agent',
-    new Date(),
     JSON.stringify(data.shlData || {}),
+    new Date(),
     data.assignedCoach || 'Unassigned'
   ]);
 
@@ -114,8 +115,8 @@ function registerUser(ss, data) {
     uid: uid,
     userProfile: {
       id: uid,
-      name: data.name,
       email: data.email,
+      name: data.name,
       role: 'agent',
       languageLevel: data.cefrLevel,
       shlData: data.shlData,
@@ -257,15 +258,15 @@ function fetchAllUsers(ss) {
   const users = [];
   for (let i = 1; i < data.length; i++) {
     const u = {};
-    headers.forEach((h, idx) => {
-      if (h === 'shlData') {
-        try { u[h] = JSON.parse(data[i][idx] || '{}'); } catch(e) { u[h] = {}; }
-      }
-      else if (h === 'assignedCoach') {
-        u[h] = data[i][idx] || 'Unassigned';
-      }
-      else u[h] = data[i][idx];
-    });
+    // Structure: [UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach]
+    // UID: 0, Email: 1, Pwd: 2, Name: 3, Role: 4, CEFR: 5, SHL: 6, Date: 7, Coach: 8
+    u.id = data[i][0];
+    u.email = data[i][1];
+    u.name = data[i][3];
+    u.role = data[i][4];
+    u.languageLevel = data[i][5];
+    try { u.shlData = JSON.parse(data[i][6] || '{}'); } catch(e) { u.shlData = {}; }
+    u.assignedCoach = data[i][8] || 'Unassigned';
     users.push(u);
   }
   return users;

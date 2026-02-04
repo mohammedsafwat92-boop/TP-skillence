@@ -17,7 +17,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   // Hard Failsafe: Only Admins can render this component logic
   if (currentUser.role !== 'admin') return null;
 
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'content' | 'users'>('users');
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'content'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [userList, setUserList] = useState<UserProfile[]>([]);
@@ -26,9 +26,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      let filteredUsers = Array.isArray(users) ? users : [];
-      // Additional safety filtering
-      setUserList(filteredUsers);
+      setUserList(Array.isArray(users) ? users : []);
     } catch (err) {
       console.error("Failed to fetch registry:", err);
       setUserList([]);
@@ -89,7 +87,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const exportToCsv = () => {
     if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Assigned Coach', 'Grammar', 'Fluency', 'Vocab', 'Pronunciation'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Assigned Coach'].join(',');
     const rows = userList.map(u => {
       return [
         u.id,
@@ -97,11 +95,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         u.email || 'N/A',
         u.role,
         u.languageLevel || 'N/A',
-        u.assignedCoach || 'Unassigned',
-        u.shlData?.svar?.grammar || 0,
-        u.shlData?.svar?.fluency || 0,
-        u.shlData?.svar?.vocabulary || 0,
-        u.shlData?.svar?.pronunciation || 0
+        u.assignedCoach || 'Unassigned'
       ].join(',');
     }).join('\n');
 
@@ -142,12 +136,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Academy Members</h3>
+             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Global Member Directory</h3>
              <button 
                 onClick={exportToCsv}
                 className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl"
              >
-                <DownloadIcon className="w-4 h-4" /> Export Data
+                <DownloadIcon className="w-4 h-4" /> Export Registry
              </button>
           </div>
           <div className="overflow-x-auto border border-gray-100 rounded-[32px] shadow-inner bg-gray-50/30">
@@ -156,8 +150,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Name</th>
                   <th className="px-8 py-5">Email</th>
+                  <th className="px-8 py-5">Role</th>
                   <th className="px-8 py-5">Assigned Coach</th>
-                  <th className="px-8 py-5 text-center">CEFR Level</th>
+                  <th className="px-8 py-5 text-center">Level</th>
                   <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
               </thead>
@@ -171,9 +166,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <p className="text-xs text-gray-600 font-medium">{user.email || 'N/A'}</p>
                     </td>
                     <td className="px-8 py-5">
-                      <span className="bg-gray-100 text-tp-purple px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
-                        {user.assignedCoach || 'Unassigned'}
+                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
+                        {user.role}
                       </span>
+                    </td>
+                    <td className="px-8 py-5">
+                      <p className="text-xs text-tp-purple font-bold italic">{user.assignedCoach || 'Unassigned'}</p>
                     </td>
                     <td className="px-8 py-5 text-center">
                       <span className="text-tp-red font-black text-lg">{user.languageLevel || 'N/A'}</span>
