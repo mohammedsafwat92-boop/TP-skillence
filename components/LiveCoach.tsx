@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
-import { XIcon, SpeakingIcon, BrainIcon, UserIcon, CheckCircleIcon } from './Icons';
+import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
 import { googleSheetService } from '../services/googleSheetService';
 import type { UserProfile } from '../types';
 
@@ -33,22 +33,27 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     setIsLoadingStudents(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      let filtered: UserProfile[] = [];
-      
       const allUsers = Array.isArray(users) ? users : [];
+      
+      let filtered: UserProfile[] = [];
 
       if (currentUser.role === 'admin') {
-        // Admins see all agents for oversight
+        // Admins see all agents for global oversight
         filtered = allUsers.filter(u => u.role === 'agent');
       } else if (currentUser.role === 'coach') {
-        // SECURITY FIX: Coaches strictly filter for assigned agents only
+        // SECURITY & ACCURACY FIX: 
+        // Coaches strictly filter for:
+        // 1. Role is 'agent' (student)
+        // 2. assignedCoach email matches THIS coach's email
+        // 3. Not themselves
         filtered = allUsers.filter(u => 
-          u.assignedCoach === currentUser.email && 
-          u.role === 'agent' 
+          u.role === 'agent' && 
+          u.assignedCoach === currentUser.email &&
+          u.email !== currentUser.email
         );
       }
       
-      console.log(`[LiveCoach] Fetched Students for ${currentUser.email}:`, filtered);
+      console.log(`[LiveCoach] Students Fetched for ${currentUser.email}:`, filtered);
       setStudents(filtered);
     } catch (err) {
       console.error("Failed to load students:", err);

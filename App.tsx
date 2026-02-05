@@ -14,23 +14,19 @@ import type { View, UserProfile, Resource } from './types';
 import { 
   MenuIcon, 
   UserIcon, 
-  ExclamationCircleIcon, 
   BrainIcon, 
-  LightningIcon, 
-  CodeIcon, 
-  CheckCircleIcon,
-  DownloadIcon
+  ExitIcon,
+  XIcon
 } from './components/Icons';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>({ type: 'dashboard' });
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [originalUser, setOriginalUser] = useState<UserProfile | null>(null); // Sandbox State
   const [userPlan, setUserPlan] = useState<Resource[]>([]);
   const [globalUsers, setGlobalUsers] = useState<UserProfile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
   const checkSession = async () => {
@@ -73,15 +69,20 @@ const App: React.FC = () => {
     if (user.role === 'admin' || user.role === 'coach') {
       loadGlobalUsers();
     }
-    setIsDemoMode(false);
   };
 
-  const handleImpersonate = async (user: UserProfile) => {
+  const handleImpersonate = async (targetUser: UserProfile) => {
     setIsLoading(true);
     try {
-      setCurrentUser(user);
-      await refreshPlan(user.id);
+      // If we aren't already impersonating, save the real user
+      if (!originalUser && currentUser) {
+        setOriginalUser(currentUser);
+      }
+      
+      setCurrentUser(targetUser);
+      await refreshPlan(targetUser.id);
       setView({ type: 'dashboard' });
+      setIsSidebarOpen(false);
     } catch (err) {
       alert("Failed to view profile: " + (err as Error).message);
     } finally {
@@ -89,8 +90,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleExitImpersonation = async () => {
+    if (!originalUser) return;
+    setIsLoading(true);
+    try {
+      setCurrentUser(originalUser);
+      await refreshPlan(originalUser.id);
+      setOriginalUser(null);
+      setView({ type: 'dashboard' });
+    } catch (err) {
+      alert("Failed to restore session: " + (err as Error).message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleEnterSandbox = () => {
-    // Sandbox uses internal users if available, otherwise stays empty
     const localUsers = getUsers();
     const demoUser = localUsers.length > 0 ? localUsers[0] : {
       id: 'demo-guest',
@@ -101,7 +116,6 @@ const App: React.FC = () => {
     } as UserProfile;
 
     setCurrentUser(demoUser);
-    setIsDemoMode(true);
     
     const mockResources: Resource[] = Object.values(allTrainingModules).flatMap(m => 
       m.lessons.map(l => ({
@@ -117,20 +131,16 @@ const App: React.FC = () => {
     );
     setUserPlan(mockResources);
     setIsLoading(false);
-    setError(null);
   };
 
   const refreshPlan = async (uid?: string) => {
     const id = uid || currentUser?.id;
-    if (!id || isDemoMode) return;
+    if (!id) return;
     try {
       const plan = await googleSheetService.fetchUserPlan(id);
       setUserPlan(Array.isArray(plan) ? plan : []);
     } catch (err) {
       console.error("Refresh Error:", err);
-      if ((err as Error).message.includes("User not found")) {
-        handleLogout();
-      }
     }
   };
 
@@ -152,9 +162,9 @@ const App: React.FC = () => {
   const handleLogout = () => {
     localStorage.removeItem('tp_skillence_user_session');
     setCurrentUser(null);
+    setOriginalUser(null);
     setUserPlan([]);
     setGlobalUsers([]);
-    setIsDemoMode(false);
     setView({ type: 'dashboard' });
   };
 
@@ -170,9 +180,6 @@ const App: React.FC = () => {
                 <BrainIcon className="w-10 h-10 text-white" />
             </div>
             <p className="font-black uppercase tracking-[0.4em] text-[10px] text-tp-navy">TP Skillence • Language Academy</p>
-            <div className="mt-8 flex gap-2">
-                {[0, 1, 2].map(i => <div key={i} className="w-1.5 h-1.5 bg-tp-red rounded-full"></div>)}
-            </div>
         </div>
     );
 
@@ -180,7 +187,6 @@ const App: React.FC = () => {
       return <Login onLoginSuccess={handleLogin} onEnterSandbox={handleEnterSandbox} />;
     }
 
-    // Role-Based Access Guards
     if (view.type === 'admin') {
       if (currentUser.role !== 'admin') {
         setView({ type: 'dashboard' });
@@ -212,7 +218,6 @@ const App: React.FC = () => {
             resources={userPlan} 
             onNavigate={handleNavigate} 
             onOpenResource={(res) => setView({ type: 'lesson', resource: res })}
-            isDemo={isDemoMode}
         />
     );
   };
@@ -229,7 +234,7 @@ const App: React.FC = () => {
             onNavigate={handleNavigate} 
             currentUser={currentUser}
             users={globalUsers} 
-            onSwitchUser={(u) => { setCurrentUser(u); handleNavigate({type: 'dashboard'}); }}
+            onSwitchUser={handleImpersonate}
             isOpen={isSidebarOpen} 
             onClose={() => setIsSidebarOpen(false)}
             onLogout={handleLogout}
@@ -237,32 +242,49 @@ const App: React.FC = () => {
         </>
       )}
 
-      <main className={`flex-1 overflow-y-auto ${currentUser ? 'p-4 md:p-12 relative lg:ml-72 transition-all' : ''}`}>
-        {isDemoMode && currentUser && (
-          <div className="fixed bottom-12 right-12 z-50 bg-tp-red text-white px-10 py-5 rounded-3xl font-black text-[10px] uppercase tracking-[0.5em] shadow-2xl animate-pulse">
-            Active Offline Academy
-          </div>
-        )}
-
-        {currentUser && (
-          <div className="flex items-center justify-between lg:hidden mb-12">
-              <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
-              <p className="font-black text-tp-purple uppercase tracking-[0.4em] text-[10px]">Academy</p>
-              <div className="w-16"></div>
-          </div>
-        )}
-
-        {currentUser && view.type !== 'live-coach' && (
-          <div className="hidden lg:flex absolute top-12 right-12 items-center bg-white px-8 py-5 rounded-[40px] shadow-sm border border-gray-100 z-10 animate-fadeIn">
-              <div className="w-14 h-14 bg-tp-navy text-white rounded-2xl mr-6 flex items-center justify-center shadow-xl"><UserIcon className="w-7 h-7" /></div>
-              <div>
-                  <p className="text-lg font-black text-tp-purple leading-tight">{currentUser.name}</p>
-                  <span className="text-[10px] text-tp-red font-black uppercase tracking-[0.4em] mt-1.5 block">Role: {currentUser.role}</span>
+      <main className={`flex-1 overflow-y-auto ${currentUser ? 'relative lg:ml-72 transition-all' : ''}`}>
+        {/* SANDBOX MODE BANNER */}
+        {originalUser && (
+          <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-3 shadow-lg flex items-center justify-between border-b border-amber-600/20 animate-fadeIn">
+            <div className="flex items-center gap-3">
+              <div className="p-1.5 bg-white/20 rounded-lg">
+                <UserIcon className="w-4 h-4" />
               </div>
+              <p className="text-[11px] font-black uppercase tracking-widest">
+                Sandbox Mode: Viewing as <span className="underline underline-offset-4">{currentUser?.name}</span>
+              </p>
+            </div>
+            <button 
+              onClick={handleExitImpersonation}
+              className="bg-tp-navy text-white px-5 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2"
+            >
+              <ExitIcon className="w-3.5 h-3.5" />
+              Exit Impersonation
+            </button>
           </div>
         )}
 
-        <div className={`${currentUser ? 'max-w-7xl mx-auto' : 'h-full'}`}>{renderContent()}</div>
+        <div className={`${currentUser ? 'p-4 md:p-12' : ''}`}>
+          {currentUser && (
+            <div className="flex items-center justify-between lg:hidden mb-12">
+                <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
+                <p className="font-black text-tp-purple uppercase tracking-[0.4em] text-[10px]">Academy</p>
+                <div className="w-16"></div>
+            </div>
+          )}
+
+          {currentUser && view.type !== 'live-coach' && (
+            <div className={`hidden lg:flex absolute right-12 items-center bg-white px-8 py-5 rounded-[40px] shadow-sm border border-gray-100 z-10 animate-fadeIn ${originalUser ? 'top-20' : 'top-12'}`}>
+                <div className="w-14 h-14 bg-tp-navy text-white rounded-2xl mr-6 flex items-center justify-center shadow-xl"><UserIcon className="w-7 h-7" /></div>
+                <div>
+                    <p className="text-lg font-black text-tp-purple leading-tight">{currentUser.name}</p>
+                    <span className="text-[10px] text-tp-red font-black uppercase tracking-[0.4em] mt-1.5 block">Role: {currentUser.role}</span>
+                </div>
+            </div>
+          )}
+
+          <div className={`${currentUser ? 'max-w-7xl mx-auto' : 'h-full'}`}>{renderContent()}</div>
+        </div>
       </main>
     </div>
   );
