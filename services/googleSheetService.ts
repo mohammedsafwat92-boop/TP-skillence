@@ -39,7 +39,6 @@ async function callApi(action: string, payload: any = {}) {
     
     return json.data;
   } catch (error) {
-    // Strictly throw the error to allow the UI to handle it (e.g., showing 'No users found' or error states)
     console.debug(`[CallStack] Action: ${action}`, (error as Error).message);
     throw error;
   }
@@ -73,6 +72,9 @@ export const googleSheetService = {
 
   importResource: (resourceData: any) => 
     callApi('admin_import_resource', resourceData),
+
+  bulkImportResources: (resources: any[]) =>
+    callApi('bulk_import_resources', { resources }),
 
   unlockResource: (uid: string, resourceId: string) =>
     callApi('admin_unlock_resource', { uid, resourceId })

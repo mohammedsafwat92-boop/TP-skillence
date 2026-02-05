@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
+import ResourceUploader from './admin/ResourceUploader';
 import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile } from '../types';
 
@@ -89,14 +90,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const exportToCsv = () => {
     if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Assigned Coach'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'SVAR', 'WriteX', 'Assigned Coach'].join(',');
     const rows = userList.map(u => {
+      const svar = u.shlData?.svar?.overall ?? 'N/A';
+      const writex = u.shlData?.writex?.grammar ?? 'N/A';
       return [
         u.id,
         `"${u.name}"`,
         u.email || 'N/A',
         u.role,
         u.languageLevel || 'N/A',
+        svar,
+        writex,
         u.assignedCoach || 'Unassigned'
       ].join(',');
     }).join('\n');
@@ -135,6 +140,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         </div>
       </div>
 
+      {activeTab === 'content' && (
+        <ResourceUploader onSuccess={onUpdateContent} />
+      )}
+
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="flex justify-between items-center">
@@ -152,52 +161,62 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               <thead>
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Name</th>
-                  <th className="px-8 py-5">Email</th>
                   <th className="px-8 py-5">Role</th>
+                  <th className="px-4 py-5 text-center">CEFR</th>
+                  <th className="px-4 py-5 text-center">SVAR</th>
+                  <th className="px-4 py-5 text-center">WriteX</th>
                   <th className="px-8 py-5">Assigned Coach</th>
-                  <th className="px-8 py-5 text-center">Level</th>
                   <th className="px-8 py-5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {userList.map((user, idx) => (
-                  <tr key={user.id || idx} className="hover:bg-tp-purple/[0.02] transition-colors group">
-                    <td className="px-8 py-5">
-                      <p className="font-bold text-tp-purple text-base">{user.name}</p>
-                    </td>
-                    <td className="px-8 py-5">
-                      <p className="text-xs text-gray-600 font-medium">{user.email || 'N/A'}</p>
-                    </td>
-                    <td className="px-8 py-5">
-                      <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
-                        {user.role}
-                      </span>
-                    </td>
-                    <td className="px-8 py-5">
-                      <p className="text-xs text-tp-purple font-bold italic">{user.assignedCoach || 'Unassigned'}</p>
-                    </td>
-                    <td className="px-8 py-5 text-center">
-                      <span className="text-tp-red font-black text-lg">{user.languageLevel || 'N/A'}</span>
-                    </td>
-                    <td className="px-8 py-5 text-right">
-                      {user.role === 'agent' ? (
-                        <button 
-                          onClick={() => onImpersonate(user)}
-                          className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
-                        >
-                          View Profile
-                        </button>
-                      ) : (
-                        <span className="text-[9px] font-black text-tp-red uppercase tracking-widest bg-tp-red/10 px-3 py-1.5 rounded-lg border border-tp-red/20 inline-block">
-                          Internal Account
+                {userList.map((user, idx) => {
+                  const svar = user.shlData?.svar?.overall ?? '--';
+                  const writex = user.shlData?.writex?.grammar ?? '--';
+
+                  return (
+                    <tr key={user.id || idx} className="hover:bg-tp-purple/[0.02] transition-colors group">
+                      <td className="px-8 py-5">
+                        <p className="font-bold text-tp-purple text-base leading-none">{user.name}</p>
+                        <p className="text-[10px] text-gray-400 font-medium mt-1">{user.email || 'N/A'}</p>
+                      </td>
+                      <td className="px-8 py-5">
+                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
+                          {user.role}
                         </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-5 text-center">
+                        <span className="text-tp-red font-black text-lg">{user.languageLevel || '--'}</span>
+                      </td>
+                      <td className="px-4 py-5 text-center">
+                        <span className="text-tp-purple font-black text-base">{svar}</span>
+                      </td>
+                      <td className="px-4 py-5 text-center">
+                        <span className="text-tp-purple font-black text-base">{writex}</span>
+                      </td>
+                      <td className="px-8 py-5">
+                        <p className="text-xs text-tp-purple font-bold italic">{user.assignedCoach || 'Unassigned'}</p>
+                      </td>
+                      <td className="px-8 py-5 text-right">
+                        {user.role === 'agent' ? (
+                          <button 
+                            onClick={() => onImpersonate(user)}
+                            className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
+                          >
+                            View Profile
+                          </button>
+                        ) : (
+                          <span className="text-[9px] font-black text-tp-red uppercase tracking-widest bg-tp-red/10 px-3 py-1.5 rounded-lg border border-tp-red/20 inline-block">
+                            Internal Account
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {!isProcessing && userList.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-20 text-center text-gray-400 font-black uppercase text-xs tracking-widest">
+                    <td colSpan={7} className="py-20 text-center text-gray-400 font-black uppercase text-xs tracking-widest">
                       No registered users found in database.
                     </td>
                   </tr>

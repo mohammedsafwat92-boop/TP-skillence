@@ -62,6 +62,9 @@ function doPost(e) {
     } else if (action === 'admin_import_resource') {
       res.data = importResource(ss, json);
       res.success = true;
+    } else if (action === 'bulk_import_resources') {
+      res.data = handleBulkImport(ss, json.resources);
+      res.success = true;
     }
 
   } catch (err) {
@@ -76,19 +79,19 @@ function findUser(ss, email, password) {
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   
-  const emailIdx = headers.indexOf('Email');
-  const pwdIdx = headers.indexOf('Password');
+  const mapping = {};
+  headers.forEach((h, i) => mapping[h] = i);
   
   for (let i = 1; i < data.length; i++) {
-    if (data[i][emailIdx] === email && data[i][pwdIdx] === password) {
+    if (data[i][mapping['Email']] === email && data[i][mapping['Password']] === password) {
       return {
-        id: data[i][headers.indexOf('UID')],
-        email: data[i][emailIdx],
-        name: data[i][headers.indexOf('Name')],
-        role: data[i][headers.indexOf('Role')],
-        languageLevel: data[i][headers.indexOf('CEFRLevel')],
-        shlData: safeParse(data[i][headers.indexOf('SHLData')]),
-        assignedCoach: data[i][headers.indexOf('AssignedCoach')] || 'Unassigned'
+        id: data[i][mapping['UID']],
+        email: data[i][mapping['Email']],
+        name: data[i][mapping['Name']],
+        role: data[i][mapping['Role']],
+        languageLevel: data[i][mapping['CEFRLevel']],
+        shlData: safeParse(data[i][mapping['SHLData']]),
+        assignedCoach: data[i][mapping['AssignedCoach']] || 'Unassigned'
       };
     }
   }
@@ -252,6 +255,32 @@ function importResource(ss, data) {
   return { id };
 }
 
+function handleBulkImport(ss, resources) {
+  const sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
+  const lastRow = sheet.getLastRow();
+  
+  if (lastRow === 0) {
+    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
+  }
+  
+  const startTime = new Date().getTime();
+  const rows = resources.map((res, index) => [
+    'r-' + startTime + '-' + index,
+    res.title || 'Untitled Resource',
+    res.url || '',
+    res.type || 'Hyperlink',
+    (res.tags || []).join(','),
+    res.level || 'B1',
+    res.objective || ''
+  ]);
+  
+  if (rows.length > 0) {
+    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
+  }
+  
+  return { count: rows.length };
+}
+
 function fetchAllUsers(ss) {
   const sheet = ss.getSheetByName('Users');
   if (!sheet) return [];
@@ -259,7 +288,6 @@ function fetchAllUsers(ss) {
   const headers = data[0];
   const users = [];
   
-  // Create mapping of header names to indices
   const mapping = {};
   headers.forEach((h, i) => mapping[h] = i);
   
