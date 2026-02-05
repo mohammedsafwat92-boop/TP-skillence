@@ -33,7 +33,7 @@ export const shlService = {
    * Pipeline: Extract Nested SHL JSON via Gemini -> Atomic Registry Creation
    */
   processAndRegister: async (file: File, coachEmail?: string) => {
-    console.log(`[shlService] Processing SHL Report: ${file.name}`);
+    console.log(`[shlService] Processing SHL Report: ${file.name} for Coach: ${coachEmail || 'None'}`);
     
     try {
       // 1. Convert to Base64
@@ -41,7 +41,7 @@ export const shlService = {
       
       // 2. Deep Extraction via Gemini
       const shlData: SHLReport = await geminiService.analyzeSHLData(pdfPart);
-      console.log("[shlService] Extracted Nested Data:", shlData);
+      console.log("[shlService] Extracted Data from AI:", shlData);
       
       // 3. Database Registration & Course Mapping
       const registration = await googleSheetService.createUser({
@@ -49,7 +49,7 @@ export const shlService = {
         email: shlData.email,
         cefrLevel: shlData.cefrLevel,
         shlData: shlData,
-        assignedCoach: coachEmail || 'Unassigned', // Set assigned coach if provided
+        assignedCoach: coachEmail || 'Unassigned',
         password: 'TpSkill2026!'
       });
 
