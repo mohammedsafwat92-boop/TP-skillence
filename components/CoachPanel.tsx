@@ -48,7 +48,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
     try {
       // Auto-Assign: Pass currentUser.email as the assignedCoach
       const result = await shlService.processAndRegister(file, currentUser.email);
-      alert(`Successfully onboarded ${result.shlData.candidateName}. User is now assigned to your roster.`);
+      alert(`Successfully onboarded ${result.shlData.candidateName}. User is now assigned to your coaching roster.`);
       fetchMyStudents();
       onUpdateContent();
     } catch (err) {

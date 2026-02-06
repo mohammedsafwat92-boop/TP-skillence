@@ -3,12 +3,10 @@ import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
-import CoachPanel from './components/CoachPanel'; // New
+import CoachPanel from './components/CoachPanel';
 import LessonViewer from './components/LessonViewer';
 import Login from './components/Login';
 import { googleSheetService } from './services/googleSheetService';
-import { shlService } from './services/shlService';
-import { getUsers } from './services/adminService';
 import { allTrainingModules } from './data/trainingData';
 import type { View, UserProfile, Resource } from './types';
 import { 
@@ -66,6 +64,8 @@ const App: React.FC = () => {
     await refreshPlan(user.id);
     if (user.role === 'admin' || user.role === 'coach') {
       loadGlobalUsers();
+      // Default Coaches to their Hub
+      if (user.role === 'coach') setView({ type: 'live-coach' });
     }
   };
 
@@ -93,7 +93,10 @@ const App: React.FC = () => {
       setCurrentUser(originalUser);
       await refreshPlan(originalUser.id);
       setOriginalUser(null);
-      setView({ type: 'dashboard' });
+      // Redirect back to management view
+      if (originalUser.role === 'admin') setView({ type: 'admin' });
+      else if (originalUser.role === 'coach') setView({ type: 'live-coach' });
+      else setView({ type: 'dashboard' });
     } catch (err) {
       alert("Session restore failed.");
     } finally {
@@ -141,11 +144,6 @@ const App: React.FC = () => {
     }
 
     if (view.type === 'live-coach') {
-      // Security Guard: Restrict access to Admins only during testing phase
-      if (currentUser.role !== 'admin') {
-        setView({ type: 'dashboard' });
-        return null;
-      }
       return <CoachPanel onUpdateContent={refreshPlan} currentUser={currentUser} onImpersonate={handleImpersonate} />;
     }
     
@@ -174,18 +172,20 @@ const App: React.FC = () => {
 
       <main className={`flex-1 overflow-y-auto ${currentUser ? 'relative lg:ml-72 transition-all' : ''}`}>
         {originalUser && (
-          <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-3 shadow-lg flex items-center justify-between animate-fadeIn">
+          <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-4 shadow-xl flex items-center justify-between animate-fadeIn border-b border-amber-600/20">
             <div className="flex items-center gap-3">
-              <UserIcon className="w-4 h-4" />
-              <p className="text-[10px] font-black uppercase tracking-widest">
-                Viewing as <span className="underline">{currentUser?.name}</span>
+              <div className="p-1.5 bg-white/20 rounded-lg">
+                <UserIcon className="w-4 h-4" />
+              </div>
+              <p className="text-[11px] font-black uppercase tracking-widest">
+                Sandbox Mode: Viewing as <span className="underline underline-offset-4 decoration-2">{currentUser?.name}</span>
               </p>
             </div>
             <button 
               onClick={handleExitImpersonation}
-              className="bg-tp-navy text-white px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2"
+              className="bg-tp-navy text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2 shadow-lg"
             >
-              <ExitIcon className="w-3.5 h-3.5" /> Return to Hub
+              <ExitIcon className="w-4 h-4" /> Exit to {originalUser.role === 'admin' ? 'Admin Panel' : 'Coach Hub'}
             </button>
           </div>
         )}

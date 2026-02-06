@@ -1,8 +1,7 @@
 
 import React from 'react';
 import { quizzes } from '../data/trainingData';
-import { getRosters } from '../services/adminService';
-import { DashboardIcon, WorksheetIcon, AdminIcon, UserIcon, XIcon, ExitIcon, SpeakingIcon } from './Icons';
+import { DashboardIcon, WorksheetIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -28,69 +27,46 @@ const NavItem: React.FC<{ view: View, currentView: View, onNavigate: (view: View
   );
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, users, onSwitchUser, isOpen, onClose, onLogout }) => {
-  const rosters = getRosters();
-  const isPrivileged = currentUser?.role === 'admin' || currentUser?.role === 'coach';
+const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, isOpen, onClose, onLogout }) => {
   const isAdmin = currentUser?.role === 'admin';
+  const isCoach = currentUser?.role === 'coach';
   
   return (
     <div className={`fixed inset-y-0 left-0 w-72 bg-tp-purple text-white flex flex-col h-full shadow-2xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-20 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
       <div className="lg:hidden absolute top-4 right-4"><button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><XIcon /></button></div>
 
       <div className="flex flex-col items-center justify-center pt-10 pb-6 border-b border-white/10" onClick={() => onNavigate({ type: 'dashboard' })}>
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 cursor-pointer"><span className="text-tp-purple font-black text-2xl">TP</span></div>
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 cursor-pointer hover:scale-105 transition-transform"><span className="text-tp-purple font-black text-2xl">TP</span></div>
         <h1 className="text-sm font-bold tracking-[0.1em] text-white/90 uppercase">Teleperformance</h1>
         <p className="text-xs text-tp-red font-bold uppercase tracking-[0.2em] mt-1">Egypt • Skillence</p>
       </div>
       
-      {/* Strict Guard: Impersonation UI only for Privileged Users */}
-      {isPrivileged && (
-        <div className="px-6 py-6">
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4">
-              <label className="text-xs text-gray-100 uppercase font-bold tracking-widest mb-2 block">Impersonate Profile</label>
-              <div className="relative">
-                <select 
-                    className="w-full bg-tp-purple/50 text-white text-sm border border-white/10 rounded-lg px-3 py-3 appearance-none outline-none focus:ring-2 focus:ring-tp-red min-h-[44px]"
-                    value={currentUser?.id || ''}
-                    onChange={(e) => {
-                        const selected = users.find(u => u.id === e.target.value);
-                        if (selected) { onSwitchUser(selected); onNavigate({ type: 'dashboard' }); }
-                    }}
-                >
-                    {users.map(u => (
-                        <option key={u.id} value={u.id} className="bg-tp-purple">
-                            {u.name} ({rosters.find(r => r.id === u.rosterId)?.name.split(' ')[0] || 'N/A'})
-                        </option>
-                    ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-tp-red">
-                    <svg className="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/></svg>
-                </div>
-              </div>
-          </div>
-        </div>
-      )}
-
-      <nav className="flex-1 py-4 overflow-y-auto custom-scrollbar">
+      <nav className="flex-1 py-8 overflow-y-auto custom-scrollbar">
         <ul>
           <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
             <DashboardIcon />
             <span className="ml-3">Dashboard</span>
           </NavItem>
           
-          {/* Strict Guard: Admin Panel only for Admin role */}
+          {/* Admin Exclusive: Admin Panel & Simulations */}
           {isAdmin && (
-             <NavItem view={{ type: 'admin' }} currentView={currentView} onNavigate={onNavigate}>
-                <AdminIcon />
-                <span className="ml-3">Admin Panel</span>
-             </NavItem>
+            <>
+              <NavItem view={{ type: 'admin' }} currentView={currentView} onNavigate={onNavigate}>
+                  <AdminIcon />
+                  <span className="ml-3">Admin Panel</span>
+              </NavItem>
+              <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
+                <SpeakingIcon className="w-5 h-5" />
+                <span className="ml-3">Simulations</span>
+              </NavItem>
+            </>
           )}
 
-          {/* RBAC: Hide Simulations/Live Practice for non-admin users (Testing Phase) */}
-          {isAdmin && (
+          {/* Coach Exclusive: Hub */}
+          {isCoach && (
             <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
-               <SpeakingIcon className="w-6 h-6" />
-               <span className="ml-3">Simulations</span>
+               <AdminIcon className="w-5 h-5" />
+               <span className="ml-3">Coach Hub</span>
             </NavItem>
           )}
         </ul>
@@ -115,10 +91,10 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
             ))}
         </ul>
 
-        <div className="mt-8 px-3">
+        <div className="mt-auto px-3 pb-4 pt-8">
           <button 
             onClick={onLogout}
-            className="flex items-center w-full py-2.5 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
+            className="flex items-center w-full py-3 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
           >
             <ExitIcon className="w-5 h-5" />
             <span className="ml-3 text-sm font-bold uppercase tracking-widest">Logout Session</span>
@@ -126,10 +102,10 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
         </div>
       </nav>
 
-      <div className="p-6 mt-auto">
+      <div className="p-6 border-t border-white/5">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <p className="text-xs text-white/80 font-bold uppercase">Internal Training Program</p>
-              <p className="text-sm text-white/50">Teleperformance Egypt &copy; 2025</p>
+              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Lufthansa Specialized Track</p>
+              <p className="text-[9px] text-white/30 font-medium mt-1 uppercase tracking-widest">Academy © 2025</p>
           </div>
       </div>
     </div>
