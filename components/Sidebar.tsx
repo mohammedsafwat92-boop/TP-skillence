@@ -2,7 +2,7 @@
 import React from 'react';
 import { quizzes } from '../data/trainingData';
 import { getRosters } from '../services/adminService';
-import { DashboardIcon, WorksheetIcon, AdminIcon, UserIcon, XIcon, ExitIcon } from './Icons';
+import { DashboardIcon, WorksheetIcon, AdminIcon, UserIcon, XIcon, ExitIcon, SpeakingIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -86,11 +86,11 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
              </NavItem>
           )}
 
-          {/* Strict Guard: Live Coach Directory only for privileged roles */}
-          {isPrivileged && (
+          {/* RBAC: Hide Simulations/Live Practice for non-admin users (Testing Phase) */}
+          {isAdmin && (
             <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
-               <UserIcon className="w-6 h-6" />
-               <span className="ml-3">Coach Hub</span>
+               <SpeakingIcon className="w-6 h-6" />
+               <span className="ml-3">Simulations</span>
             </NavItem>
           )}
         </ul>

@@ -13,7 +13,6 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate, onOpenResource, isDemo }) => {
   const safeResources = Array.isArray(resources) ? resources : [];
-  const isPrivileged = user.role === 'admin' || user.role === 'coach';
   
   // Business Rule: Threshold for identifying a "Gap"
   const GAP_THRESHOLD = 75;
@@ -64,8 +63,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources = [], onNavigate,
         </div>
 
         <div className="flex gap-4">
-            {/* RBAC: Hide Live AI Practice for non-privileged users */}
-            {isPrivileged && (
+            {/* RBAC: Hide Live AI Practice for non-admin users (Testing Phase) */}
+            {user.role === 'admin' && (
               <button 
                 onClick={() => onNavigate({ type: 'live-coach' })}
                 className="bg-tp-navy text-white px-8 py-5 rounded-[32px] font-black uppercase text-[10px] tracking-[0.3em] shadow-xl hover:bg-tp-purple transition-all flex items-center group"

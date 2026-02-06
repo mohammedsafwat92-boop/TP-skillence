@@ -141,6 +141,11 @@ const App: React.FC = () => {
     }
 
     if (view.type === 'live-coach') {
+      // Security Guard: Restrict access to Admins only during testing phase
+      if (currentUser.role !== 'admin') {
+        setView({ type: 'dashboard' });
+        return null;
+      }
       return <CoachPanel onUpdateContent={refreshPlan} currentUser={currentUser} onImpersonate={handleImpersonate} />;
     }
     
@@ -180,7 +185,7 @@ const App: React.FC = () => {
               onClick={handleExitImpersonation}
               className="bg-tp-navy text-white px-4 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2"
             >
-              <ExitIcon className="w-3.5 h-3.5" /> Return to Coach Hub
+              <ExitIcon className="w-3.5 h-3.5" /> Return to Hub
             </button>
           </div>
         )}
