@@ -1,7 +1,16 @@
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { UserProfile, Resource, View } from '../types';
-import { TrendingUpIcon, TargetIcon, BrainIcon, CheckCircleIcon } from './Icons';
+import { 
+  TrendingUpIcon, 
+  TargetIcon, 
+  BrainIcon, 
+  CheckCircleIcon,
+  ListeningIcon,
+  SpeakingIcon,
+  ReadingIcon,
+  PracticeIcon
+} from './Icons';
 
 interface DashboardProps {
   user: UserProfile;
@@ -10,73 +19,54 @@ interface DashboardProps {
   onOpenResource: (resource: Resource) => void;
 }
 
+type SkillCategory = 'All' | 'Listening' | 'Speaking' | 'Reading' | 'Writing';
+
 const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOpenResource }) => {
-  
+  const [activeSkill, setActiveSkill] = useState<SkillCategory>('All');
+
   // 1. Threshold for identifying a "Gap"
   const GAP_THRESHOLD_PERCENT = 75;
 
-  // 2. Score Normalization Logic
-  // SVAR overall is 0-10, WriteX grammar/vocab is 0-5. 
-  // Convert all to 0-100 for visual consistency.
+  // 2. Score Normalization & Mapping strictly from SHL Data
   const metrics = useMemo(() => {
     const s = user.shlData?.svar;
     const w = user.shlData?.writex;
 
     return [
-      { 
-        label: 'Fluency', 
-        val: (s?.fluency || 0) * 10, 
-        raw: s?.fluency || 0,
-        tag: 'Fluency'
-      },
-      { 
-        label: 'Pronunciation', 
-        val: (s?.pronunciation || 0) * 10, 
-        raw: s?.pronunciation || 0,
-        tag: 'Speaking' 
-      },
-      { 
-        label: 'Listening', 
-        val: (s?.activeListening || 0) * 10, 
-        raw: s?.activeListening || 0,
-        tag: 'Listening' 
-      },
-      { 
-        label: 'Writing Grammar', 
-        val: (w?.grammar || 0) * 20, 
-        raw: w?.grammar || 0,
-        tag: 'Grammar'
-      },
-      { 
-        label: 'Writing Vocabulary', 
-        val: (w?.vocabulary || 0) * 20, 
-        raw: w?.vocabulary || 0,
-        tag: 'Vocabulary'
-      }
+      { label: 'Fluency', val: (s?.fluency || 0) * 10, raw: s?.fluency || 0, tag: 'Speaking' },
+      { label: 'Pronunciation', val: (s?.pronunciation || 0) * 10, raw: s?.pronunciation || 0, tag: 'Speaking' },
+      { label: 'Listening', val: (s?.activeListening || 0) * 10, raw: s?.activeListening || 0, tag: 'Listening' },
+      { label: 'Writing Grammar', val: (w?.grammar || 0) * 20, raw: w?.grammar || 0, tag: 'Writing' },
+      { label: 'Writing Vocabulary', val: (w?.vocabulary || 0) * 20, raw: w?.vocabulary || 0, tag: 'Writing' },
+      { label: 'Coherence', val: (w?.coherence || 0) * 20, raw: w?.coherence || 0, tag: 'Writing' }
     ];
   }, [user.shlData]);
 
-  // 3. Smart Mapping & Gap Analysis Engine
-  const { recommended, curriculum } = useMemo(() => {
-    // Identify Gaps
+  // 3. Filtering Logic for Skill Selection
+  const { recommended, filteredCurriculum } = useMemo(() => {
+    // Identify Gaps across all metrics
     const lowScores = metrics.filter(m => m.val < GAP_THRESHOLD_PERCENT);
     const gapTags = lowScores.map(m => m.tag.toLowerCase());
 
     const recs: Resource[] = [];
-    const main: Resource[] = [];
+    const curriculum: Resource[] = [];
 
     resources.forEach(res => {
       const isCompleted = res.progress?.status === 'completed';
       const isRelevantToGap = res.tags.some(t => gapTags.includes(t.toLowerCase()));
 
-      if (isRelevantToGap && !isCompleted) {
-        recs.push(res);
-      } else {
-        main.push(res);
+      // Filter by active skill category if not 'All'
+      const matchesSkill = activeSkill === 'All' || res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
+
+      if (matchesSkill) {
+        if (isRelevantToGap && !isCompleted) {
+          recs.push(res);
+        } else {
+          curriculum.push(res);
+        }
       }
     });
 
-    // Sort by completion status
     const sortFn = (a: Resource, b: Resource) => {
       const aDone = a.progress?.status === 'completed' ? 1 : 0;
       const bDone = b.progress?.status === 'completed' ? 1 : 0;
@@ -84,16 +74,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     };
 
     recs.sort(sortFn);
-    main.sort(sortFn);
+    curriculum.sort(sortFn);
 
     return {
       recommended: recs.slice(0, 3), 
-      curriculum: main
+      filteredCurriculum: curriculum
     };
-  }, [resources, metrics]);
+  }, [resources, metrics, activeSkill]);
 
   const completedCount = resources.filter(r => r.progress?.status === 'completed').length;
   const progressPercent = resources.length > 0 ? Math.round((completedCount / resources.length) * 100) : 0;
+
+  const skillButtons: { name: SkillCategory; icon: React.ReactNode }[] = [
+    { name: 'All', icon: <BrainIcon className="w-4 h-4" /> },
+    { name: 'Listening', icon: <ListeningIcon className="w-4 h-4" /> },
+    { name: 'Speaking', icon: <SpeakingIcon className="w-4 h-4" /> },
+    { name: 'Reading', icon: <ReadingIcon className="w-4 h-4" /> },
+    { name: 'Writing', icon: <PracticeIcon className="w-4 h-4" /> }
+  ];
 
   return (
     <div className="space-y-10 animate-fadeIn">
@@ -128,6 +126,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
       </div>
 
+      {/* Skill Selector Filter Bar */}
+      <div className="flex flex-wrap gap-4 items-center bg-white p-2 rounded-[32px] shadow-sm border border-gray-100 w-fit">
+        {skillButtons.map((skill) => (
+          <button
+            key={skill.name}
+            onClick={() => setActiveSkill(skill.name)}
+            className={`flex items-center gap-2 px-6 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+              activeSkill === skill.name
+                ? 'bg-tp-purple text-white shadow-lg shadow-tp-purple/20 scale-105'
+                : 'text-gray-400 hover:text-tp-purple hover:bg-tp-purple/5'
+            }`}
+          >
+            {skill.icon}
+            {skill.name}
+          </button>
+        ))}
+      </div>
+
       {/* Gap Analysis Priority Section */}
       {recommended.length > 0 && (
         <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/20">
@@ -140,7 +156,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                 <h2 className="text-2xl font-black flex items-center tracking-tight uppercase">
                   <TargetIcon className="mr-3 text-tp-red" /> Gap Remediation
                 </h2>
-                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-1">Targeted content based on your lowest assessment scores</p>
+                <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-1">Targeted content based on your {activeSkill === 'All' ? '' : activeSkill} scores</p>
               </div>
             </div>
 
@@ -189,7 +205,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                   <div className="flex justify-between text-[11px] font-black uppercase mb-1.5">
                     <span className="text-tp-purple">{label}</span>
                     <span className={val < GAP_THRESHOLD_PERCENT ? 'text-tp-red' : 'text-green-600'}>
-                      {raw} / {label.toLowerCase().includes('writing') ? '5.0' : '10.0'}
+                      {raw.toFixed(1)} / {label.toLowerCase().includes('writing') || label === 'Coherence' ? '5.0' : '10.0'}
                     </span>
                   </div>
                   <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
@@ -209,15 +225,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
           </div>
         </div>
 
-        {/* Assigned Curriculum (Filtered by Level) */}
+        {/* Assigned Curriculum (Filtered by Skill) */}
         <div className="lg:col-span-8">
           <div className="flex items-center justify-between mb-8 px-4">
-            <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">Assigned Learning Path</h2>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{curriculum.length} Total Modules</p>
+            <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">
+              {activeSkill === 'All' ? 'Assigned Learning Path' : `${activeSkill} Modules`}
+            </h2>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Modules Found</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
-            {curriculum.map((res) => (
+            {filteredCurriculum.map((res) => (
               <div 
                 key={res.id} 
                 onClick={() => onOpenResource(res)}
@@ -240,9 +258,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                 </div>
               </div>
             ))}
-            {curriculum.length === 0 && (
+            {filteredCurriculum.length === 0 && (
               <div className="col-span-2 py-20 text-center bg-gray-50 border-2 border-dashed border-gray-200 rounded-[32px]">
-                 <p className="text-gray-400 font-black uppercase text-xs tracking-widest">No assigned modules for level {user.languageLevel}.</p>
+                 <p className="text-gray-400 font-black uppercase text-xs tracking-widest">No assigned {activeSkill !== 'All' ? activeSkill : ''} modules for level {user.languageLevel}.</p>
               </div>
             )}
           </div>

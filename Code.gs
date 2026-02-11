@@ -23,23 +23,14 @@ function doPost(e) {
       } else {
         res.message = 'Invalid credentials';
       }
-    } else if (action === 'create_user') {
-      res.data = registerUser(ss, json);
-      res.success = true;
     } else if (action === 'get_user_plan') {
       res.data = getUserPlan(ss, json.uid);
-      res.success = true;
-    } else if (action === 'get_all_resources') {
-      res.data = getAllResources(ss);
       res.success = true;
     } else if (action === 'admin_get_users') {
       res.data = fetchAllUsers(ss);
       res.success = true;
     } else if (action === 'submit_progress') {
       res.data = updateProgress(ss, json.uid, json.resourceId, json.passed, json.score);
-      res.success = true;
-    } else if (action === 'admin_import_resource') {
-      res.data = importResource(ss, json);
       res.success = true;
     } else if (action === 'bulk_import_resources') {
       const result = handleBulkImport(ss, json.resources);
@@ -55,7 +46,8 @@ function doPost(e) {
 }
 
 /**
- * Helper to safely parse JSON strings from the spreadsheet
+ * Helper to safely parse JSON strings from the spreadsheet.
+ * This prevents the frontend from receiving raw strings that break charts.
  */
 function safeParse(str) {
   if (!str) return {};
@@ -68,8 +60,8 @@ function safeParse(str) {
 }
 
 /**
- * Flexible Level Match Logic
- * Handles exact matches, 'All', and ranges like 'B1-B2'
+ * Flexible Level Match Logic.
+ * Handles exact matches, 'All', and ranges like 'B1-B2' or 'B2+'.
  */
 function isLevelMatch(resourceLevel, userLevel) {
   const r = String(resourceLevel || 'All').toUpperCase();
@@ -77,14 +69,15 @@ function isLevelMatch(resourceLevel, userLevel) {
   
   if (r === 'ALL') return true;
   if (r === u) return true;
-  // Check if user level is contained within a range (e.g. "B2" is in "B1-B2")
+  
+  // Range Match: Check if user level (e.g. B2) is contained in resource string (e.g. B1-B2)
   if (u && r.indexOf(u) !== -1) return true;
   
   return false;
 }
 
 /**
- * Returns a filtered and merged user plan with flexible level mapping.
+ * Returns a filtered user plan with flexible level mapping.
  */
 function getUserPlan(ss, uid) {
   const userSheet = ss.getSheetByName('Users');
@@ -93,7 +86,6 @@ function getUserPlan(ss, uid) {
   
   if (!userSheet || !resSheet) return [];
 
-  // 1. Resolve User's Current Level
   const userData = userSheet.getDataRange().getValues();
   const userHeaders = userData[0];
   const uidIdx = userHeaders.indexOf('UID');
@@ -107,13 +99,11 @@ function getUserPlan(ss, uid) {
     }
   }
 
-  // 2. Get All Resources and User Progress Data
   const resData = resSheet.getDataRange().getValues();
   const resHeaders = resData[0].map(h => h.toLowerCase());
   const progData = progSheet ? progSheet.getDataRange().getValues() : [];
 
   const userPlan = [];
-
   const idIdx = resHeaders.indexOf('id');
   const titleIdx = resHeaders.indexOf('title');
   const urlIdx = resHeaders.indexOf('url');
@@ -126,18 +116,12 @@ function getUserPlan(ss, uid) {
     const resRow = resData[i];
     const resourceLevel = resRow[levelIdx];
     
-    // FLEXIBLE FILTER: Support ranges and "All"
-    if (!isLevelMatch(resourceLevel, userLevel)) {
-      continue;
-    }
+    if (!isLevelMatch(resourceLevel, userLevel)) continue;
 
-    // 3. Left-Join Progress Data
     let progress = { status: 'assigned', attempts: 0, score: 0 };
     if (progData.length > 1) {
       for (let j = 1; j < progData.length; j++) {
-        const pUid = String(progData[j][0]);
-        const pResId = String(progData[j][1]);
-        if (pUid === String(uid) && pResId === String(resRow[idIdx])) {
+        if (String(progData[j][0]) === String(uid) && String(progData[j][1]) === String(resRow[idIdx])) {
           progress = { 
             status: progData[j][2], 
             attempts: progData[j][3], 
@@ -187,46 +171,29 @@ function findUser(ss, email, password) {
   return null;
 }
 
-function registerUser(ss, data) {
-  const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['UID', 'Email', 'Password', 'Name', 'Role', 'CEFRLevel', 'SHLData', 'CreatedDate', 'AssignedCoach', 'PerformanceData']);
-  }
-  const uid = 'u-' + new Date().getTime();
+function fetchAllUsers(ss) {
+  const sheet = ss.getSheetByName('Users');
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const users = [];
+  const mapping = {};
+  headers.forEach((h, i) => mapping[h] = i);
   
-  const shl = data.shlData || {};
-  const perfData = {
-    grammar: shl.writex?.grammar || shl.svar?.grammar || 0,
-    vocabulary: shl.writex?.vocabulary || shl.svar?.vocabulary || 0,
-    fluency: shl.svar?.fluency || 0,
-    pronunciation: shl.svar?.pronunciation || 0,
-    activeListening: shl.svar?.activeListening || 0,
-    overallSpoken: shl.svar?.overall || 0,
-    testDate: new Date().toISOString()
-  };
-
-  sheet.appendRow([
-    uid,
-    data.email,
-    data.password || 'TpSkill2026!',
-    data.name,
-    'agent',
-    data.cefrLevel || 'B1',
-    JSON.stringify(shl),
-    new Date(),
-    data.assignedCoach || 'Unassigned',
-    JSON.stringify(perfData)
-  ]);
-
-  return {
-    uid: uid,
-    userProfile: { 
-      id: uid, 
-      ...data, 
-      role: 'agent', 
-      performanceData: perfData 
-    }
-  };
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    users.push({
+      id: row[mapping['UID']],
+      email: row[mapping['Email']],
+      name: row[mapping['Name']],
+      role: row[mapping['Role']],
+      languageLevel: row[mapping['CEFRLevel']],
+      shlData: safeParse(row[mapping['SHLData']]),
+      assignedCoach: row[mapping['AssignedCoach']] || 'Unassigned',
+      performanceData: safeParse(row[mapping['PerformanceData']])
+    });
+  }
+  return users;
 }
 
 function updateProgress(ss, uid, resourceId, passed, score) {
@@ -255,41 +222,11 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   return { status: newStatus };
 }
 
-function getAllResources(ss) {
-  const sheet = ss.getSheetByName('Resources');
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0].map(h => h.toLowerCase());
-  
-  const resources = [];
-  for (let i = 1; i < data.length; i++) {
-    const res = {};
-    headers.forEach((h, idx) => res[h] = data[i][idx]);
-    resources.push({
-      id: String(res.id),
-      title: String(res.title),
-      url: String(res.url),
-      type: String(res.type),
-      tags: String(res.tags || "").split(',').filter(Boolean),
-      level: String(res.level || 'All'),
-      objective: String(res.objective || ''),
-      progress: { status: 'assigned', attempts: 0, score: 0 }
-    });
-  }
-  return resources;
-}
-
-function sendResponse(obj) {
-  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
 function handleBulkImport(ss, resources) {
-  if (!Array.isArray(resources)) throw new Error("Resources must be an array.");
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
   }
-  
   const timestamp = new Date().getTime();
   const dataToPush = resources.map((res, index) => [
     String(res.id || 'r-' + timestamp + '-' + index),
@@ -300,33 +237,10 @@ function handleBulkImport(ss, resources) {
     String(res.level || 'All'),
     String(res.objective || 'N/A')
   ]);
-  
   sheet.getRange(sheet.getLastRow() + 1, 1, dataToPush.length, 7).setValues(dataToPush);
-  SpreadsheetApp.flush();
   return { count: dataToPush.length, status: 'Success' };
 }
 
-function fetchAllUsers(ss) {
-  const sheet = ss.getSheetByName('Users');
-  if (!sheet) return [];
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  const users = [];
-  const mapping = {};
-  headers.forEach((h, i) => mapping[h] = i);
-  
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i];
-    users.push({
-      id: row[mapping['UID']],
-      email: row[mapping['Email']],
-      name: row[mapping['Name']],
-      role: row[mapping['Role']],
-      languageLevel: row[mapping['CEFRLevel']],
-      shlData: safeParse(row[mapping['SHLData']]),
-      assignedCoach: row[mapping['AssignedCoach']] || 'Unassigned',
-      performanceData: safeParse(row[mapping['PerformanceData']])
-    });
-  }
-  return users;
+function sendResponse(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }

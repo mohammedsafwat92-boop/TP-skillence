@@ -1,7 +1,6 @@
 
 import React from 'react';
-import { quizzes } from '../data/trainingData';
-import { DashboardIcon, WorksheetIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon } from './Icons';
+import { DashboardIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon, ListeningIcon, ReadingIcon, PracticeIcon, BrainIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -27,7 +26,7 @@ const NavItem: React.FC<{ view: View, currentView: View, onNavigate: (view: View
   );
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, currentUser, isOpen, onClose, onLogout }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser, isOpen, onClose, onLogout }) => {
   const isAdmin = currentUser?.role === 'admin';
   const isCoach = currentUser?.role === 'coach';
   
@@ -45,10 +44,9 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
         <ul>
           <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
             <DashboardIcon />
-            <span className="ml-3">Dashboard</span>
+            <span className="ml-3">Academy Hub</span>
           </NavItem>
           
-          {/* Admin Exclusive: Admin Panel & Simulations */}
           {isAdmin && (
             <>
               <NavItem view={{ type: 'admin' }} currentView={currentView} onNavigate={onNavigate}>
@@ -62,7 +60,6 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
             </>
           )}
 
-          {/* Coach Exclusive: Hub */}
           {isCoach && (
             <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
                <AdminIcon className="w-5 h-5" />
@@ -71,26 +68,26 @@ const Sidebar: React.FC<SidebarProps> = ({ modules, currentView, onNavigate, cur
           )}
         </ul>
 
-        <div className="mt-8 mb-4 px-6"><h2 className="text-xs font-bold text-white/60 uppercase tracking-[0.2em]">Learning Tracks</h2></div>
+        <div className="mt-8 mb-4 px-6"><h2 className="text-xs font-bold text-white/60 uppercase tracking-[0.2em]">Development Areas</h2></div>
         <ul>
-            {Object.values(modules).map((module: Module) => (
-                <NavItem key={module.id} view={{ type: 'module', moduleId: module.id }} currentView={currentView} onNavigate={onNavigate}>
-                    <div className="text-tp-red opacity-80">{module.icon}</div>
-                    <span className="ml-3">{module.title}</span>
-                </NavItem>
-            ))}
+            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+                <ListeningIcon className="w-5 h-5 opacity-80 text-tp-red" />
+                <span className="ml-3">Listening Skill</span>
+            </NavItem>
+            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+                <SpeakingIcon className="w-5 h-5 opacity-80 text-tp-red" />
+                <span className="ml-3">Speaking Skill</span>
+            </NavItem>
+            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+                <ReadingIcon className="w-5 h-5 opacity-80 text-tp-red" />
+                <span className="ml-3">Reading Skill</span>
+            </NavItem>
+            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+                <PracticeIcon className="w-5 h-5 opacity-80 text-tp-red" />
+                <span className="ml-3">Writing Skill</span>
+            </NavItem>
         </ul>
         
-        <div className="mt-8 mb-4 px-6"><h2 className="text-xs font-bold text-white/60 uppercase tracking-[0.2em]">Performance</h2></div>
-        <ul>
-            {quizzes.map(quiz => (
-                 <NavItem key={quiz.id} view={{ type: 'quiz', quizId: quiz.id }} currentView={currentView} onNavigate={onNavigate}>
-                    <WorksheetIcon className="w-5 h-5 opacity-60" />
-                    <span className="ml-3">{quiz.title}</span>
-                 </NavItem>
-            ))}
-        </ul>
-
         <div className="mt-auto px-3 pb-4 pt-8">
           <button 
             onClick={onLogout}

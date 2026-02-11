@@ -22,32 +22,30 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
 
   /**
    * Enterprise-grade YouTube URL Transformer
-   * Handles watch?v=, youtu.be/, /v/, /u/ and /embed/ formats.
+   * Fixes "Configuration Error 153" by converting watch links to embed links.
    */
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
     
-    // Check if it's already an embed URL
+    // Safety check: already an embed URL
     if (url.includes('/embed/')) return url;
 
-    // Advanced regex to handle standard, shortened, mobile and playlist URLs
+    // Advanced regex to capture video IDs from watch?v=, youtu.be, mobile links, etc.
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
     const match = url.match(regExp);
     
     if (match && match[2].length === 11) {
       const videoId = match[2];
-      // Construct clean embed URL with origin and safety parameters
+      // Construct clean embed URL with parameters to disable related videos and branding
       return `https://www.youtube.com/embed/${videoId}?rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`;
     }
     
-    // Fallback for non-standard or previously transformed links
     return url;
   };
 
   const startQuiz = async () => {
     setIsGenerating(true);
     try {
-      // Dynamic Prompt Injection: Explicitly passing the 'objective' column from Excel to Gemini
       const questions = await geminiService.generateQuizForResource(
         resource.title, 
         resource.objective || 'Master the core competencies of this module.'
