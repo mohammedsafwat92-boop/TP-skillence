@@ -27,7 +27,7 @@ async function callApi(action: string, payload: any = {}) {
       json = JSON.parse(rawText);
     } catch (parseError) {
       console.error("[googleSheetService] Critical parsing failure. Raw text received from backend:", rawText);
-      throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Raw output: ${rawText.substring(0, 50)}...`);
+      throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Raw output: ${rawText.substring(0, 100)}...`);
     }
 
     if (!json.success) {
@@ -73,8 +73,10 @@ export const googleSheetService = {
   importResource: (resourceData: any) => 
     callApi('admin_import_resource', resourceData),
 
-  bulkImportResources: (resources: any[]) =>
-    callApi('bulk_import_resources', { resources }),
+  bulkImportResources: (resources: any[]) => {
+    console.log(`[googleSheetService] Bulk Import Payload Size: ${resources.length} units`);
+    return callApi('bulk_import_resources', { resources });
+  },
 
   unlockResource: (uid: string, resourceId: string) =>
     callApi('admin_unlock_resource', { uid, resourceId })

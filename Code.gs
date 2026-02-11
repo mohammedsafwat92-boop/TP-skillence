@@ -1,3 +1,4 @@
+
 const SHEET_ID = '1wJrE03884n8xcFvazJDpylAplWfLco1NV17oGM4J0-A';
 
 function doPost(e) {
@@ -38,14 +39,66 @@ function doPost(e) {
       res.data = importResource(ss, json);
       res.success = true;
     } else if (action === 'bulk_import_resources') {
-      res.data = handleBulkImport(ss, json.resources);
+      const result = handleBulkImport(ss, json.resources);
+      res.data = result;
       res.success = true;
     }
 
   } catch (err) {
     res.message = err.toString();
+    console.error("Critical Backend Failure:", err);
   }
   return sendResponse(res);
+}
+
+/**
+ * Robust High-Performance Batch Writer
+ * Includes dimension validation and explicit sheet preparation.
+ */
+function handleBulkImport(ss, resources) {
+  if (!Array.isArray(resources)) {
+    throw new Error("Payload Error: Resources must be an array.");
+  }
+
+  if (resources.length === 0) {
+    return { count: 0, message: 'Empty payload, nothing to write.' };
+  }
+
+  let sheet = ss.getSheetByName('Resources');
+  if (!sheet) {
+    sheet = ss.insertSheet('Resources');
+    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
+  }
+  
+  const lastRow = sheet.getLastRow();
+  const timestamp = new Date().getTime();
+  
+  // Create 2D array for batch writing with 7-column validation
+  const dataToPush = resources.map((res, index) => {
+    // Force exactly 7 columns to prevent Range errors
+    return [
+      String(res.id || 'r-' + timestamp + '-' + index),
+      String(res.title || 'Untitled Resource'),
+      String(res.url || '').trim(),
+      String(res.type || 'Article'),
+      Array.isArray(res.tags) ? res.tags.join(',') : String(res.tags || 'General'),
+      String(res.level || 'All'),
+      String(res.objective || 'No objective provided')
+    ];
+  });
+  
+  try {
+    // Write entire block in one operation
+    const range = sheet.getRange(lastRow + 1, 1, dataToPush.length, 7);
+    range.setValues(dataToPush);
+    
+    // Ensure data is committed before returning
+    SpreadsheetApp.flush();
+    return { count: dataToPush.length, status: 'Success' };
+  } catch (e) {
+    console.error("Batch Write Error:", e);
+    throw new Error(`Registry Range Error: ${e.toString()}`);
+  }
 }
 
 function findUser(ss, email, password) {
@@ -72,16 +125,10 @@ function findUser(ss, email, password) {
   return null;
 }
 
-/**
- * Registers a new candidate with deep performance capability metrics.
- */
 function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
-  
   const shl = data.shlData || {};
-  
-  // High-Precision Performance Metadata Ingestion
   const perfData = {
     grammar: shl.writex?.grammar || shl.svar?.grammar || 0,
     vocabulary: shl.writex?.vocabulary || shl.svar?.vocabulary || 0,
@@ -89,14 +136,9 @@ function registerUser(ss, data) {
     pronunciation: shl.svar?.pronunciation || 0,
     activeListening: shl.svar?.activeListening || 0,
     overallSpoken: shl.svar?.overall || 0,
-    writingContent: shl.writex?.content || 0,
-    coherence: shl.writex?.coherence || 0,
-    testDate: shl.testDate || new Date().toISOString(),
-    behavioralTraits: shl.competencies?.behavioralTraits || [],
-    strengths: shl.competencies?.strengths || []
+    testDate: new Date().toISOString()
   };
 
-  // Row Definition: [UID, Email, Password, Name, Role, CEFR, SHL_Raw, Date, Coach, Performance_JSON]
   sheet.appendRow([
     uid,
     data.email,
@@ -110,66 +152,10 @@ function registerUser(ss, data) {
     JSON.stringify(perfData)
   ]);
 
-  // Generate learning track based on identified gaps
-  const assignedResources = generateAndStoreCourseMap(ss, uid, data.shlData);
-
   return {
     uid: uid,
-    userProfile: {
-      id: uid,
-      email: data.email,
-      name: data.name,
-      role: 'agent',
-      languageLevel: data.cefrLevel || 'B1',
-      shlData: shl,
-      performanceData: perfData,
-      assignedCoach: data.assignedCoach || 'Unassigned'
-    },
-    resources: assignedResources
+    userProfile: { id: uid, ...data, role: 'agent' }
   };
-}
-
-function generateAndStoreCourseMap(ss, uid, shlData) {
-  const resourceSheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
-  const progressSheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
-  
-  if (resourceSheet.getLastRow() < 1) {
-    resourceSheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
-  }
-  
-  const resourcesData = resourceSheet.getDataRange().getValues();
-  const headers = resourcesData[0];
-  const assignedList = [];
-
-  const THRESHOLD = 65; 
-  const targetTags = ['onboarding'];
-  
-  if (shlData && shlData.svar) {
-    if (shlData.svar.pronunciation < THRESHOLD) targetTags.push('pronunciation');
-    if (shlData.svar.fluency < THRESHOLD) targetTags.push('fluency');
-    if (shlData.svar.grammar < THRESHOLD) targetTags.push('grammar');
-    if (shlData.svar.vocabulary < THRESHOLD) targetTags.push('vocabulary');
-  }
-  
-  for (let i = 1; i < resourcesData.length; i++) {
-    const res = {};
-    headers.forEach((h, idx) => res[h] = resourcesData[i][idx]);
-    
-    const resTags = (res.tags || "").split(',').map(t => t.trim().toLowerCase());
-    const isMatch = resTags.some(tag => targetTags.includes(tag));
-
-    if (isMatch) {
-      progressSheet.appendRow([uid, res.id, 'assigned', 0, 0, new Date()]);
-      assignedList.push({
-        ...res,
-        tags: resTags,
-        progress: { status: 'assigned', attempts: 0, score: 0 }
-      });
-    }
-  }
-
-  SpreadsheetApp.flush();
-  return assignedList;
 }
 
 function getUserPlan(ss, uid) {
@@ -184,25 +170,21 @@ function getUserPlan(ss, uid) {
   const userPlan = [];
   for (let i = 1; i < resData.length; i++) {
     const res = {};
-    resHeaders.forEach((h, idx) => res[h] = resData[i][idx]);
+    resHeaders.forEach((h, idx) => res[h.toLowerCase()] = resData[i][idx]);
     
     let match = null;
     for (let j = 1; j < progData.length; j++) {
       if (progData[j][0] === uid && progData[j][1] === res.id) {
-        match = {
-          status: progData[j][2],
-          attempts: progData[j][3],
-          score: progData[j][4]
-        };
+        match = { status: progData[j][2], attempts: progData[j][3], score: progData[j][4] };
         break;
       }
     }
 
-    if (match && (match.status === 'assigned' || match.status === 'open' || match.status === 'completed')) {
+    if (match || i < 10) { // Fallback for new users
       userPlan.push({
         ...res,
-        tags: (res.tags || "").split(',').map(t => t.trim()),
-        progress: match
+        tags: (res.tags || "").split(',').filter(Boolean),
+        progress: match || { status: 'assigned', attempts: 0, score: 0 }
       });
     }
   }
@@ -210,7 +192,7 @@ function getUserPlan(ss, uid) {
 }
 
 function updateProgress(ss, uid, resourceId, passed, score) {
-  const sheet = ss.getSheetByName('Progress');
+  const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
   const data = sheet.getDataRange().getValues();
   let foundRow = -1;
 
@@ -232,54 +214,12 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   return { status: newStatus };
 }
 
-function importResource(ss, data) {
-  const sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
-  const id = 'r-' + new Date().getTime();
-  sheet.appendRow([
-    id,
-    data.title,
-    data.url,
-    data.type,
-    (data.tags || []).join(','),
-    data.level,
-    data.objective
-  ]);
-  return { id };
-}
-
-function handleBulkImport(ss, resources) {
-  const sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
-  const lastRow = sheet.getLastRow();
-  
-  if (lastRow === 0) {
-    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
-  }
-  
-  const startTime = new Date().getTime();
-  const rows = resources.map((res, index) => [
-    'r-' + startTime + '-' + index,
-    res.title || 'Untitled Resource',
-    res.url || '',
-    res.type || 'Hyperlink',
-    (res.tags || []).join(','),
-    res.level || 'B1',
-    res.objective || ''
-  ]);
-  
-  if (rows.length > 0) {
-    sheet.getRange(sheet.getLastRow() + 1, 1, rows.length, 7).setValues(rows);
-  }
-  
-  return { count: rows.length };
-}
-
 function fetchAllUsers(ss) {
   const sheet = ss.getSheetByName('Users');
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
   const users = [];
-  
   const mapping = {};
   headers.forEach((h, i) => mapping[h] = i);
   
@@ -292,7 +232,6 @@ function fetchAllUsers(ss) {
       role: row[mapping['Role']],
       languageLevel: row[mapping['CEFRLevel']],
       shlData: safeParse(row[mapping['SHLData']]),
-      performanceData: safeParse(row[mapping['PerformanceMetadata']] || row[mapping['SHLData']]),
       assignedCoach: row[mapping['AssignedCoach']] || 'Unassigned'
     });
   }
@@ -301,11 +240,7 @@ function fetchAllUsers(ss) {
 
 function safeParse(jsonStr) {
   if (!jsonStr) return {};
-  try {
-    return JSON.parse(jsonStr);
-  } catch (e) {
-    return {};
-  }
+  try { return JSON.parse(jsonStr); } catch (e) { return {}; }
 }
 
 function sendResponse(obj) {
