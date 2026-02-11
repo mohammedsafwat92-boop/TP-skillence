@@ -1,14 +1,19 @@
-
 import React, { useState, useRef } from 'react';
-import type { UserProfile, Roster } from '../../types';
-import { getRosters } from '../../services/adminService';
+import type { UserProfile } from '../../types';
 import { shlService } from '../../services/shlService';
-import { DownloadIcon, PlusIcon, ClipboardListIcon, CheckCircleIcon, ExclamationCircleIcon } from '../Icons';
+import { 
+  ClipboardListIcon, 
+  CheckCircleIcon, 
+  ExclamationCircleIcon, 
+  BrainIcon,
+  DownloadIcon
+} from '../Icons';
 
 interface FileStatus {
   name: string;
-  status: 'pending' | 'uploading' | 'analyzing' | 'success' | 'error';
+  status: 'pending' | 'uploading' | 'syncing' | 'analyzing' | 'success' | 'error';
   message?: string;
+  sizeMB: string;
 }
 
 interface UserUploaderProps {
@@ -19,146 +24,147 @@ interface UserUploaderProps {
 const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated }) => {
   const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [selectedRoster, setSelectedRoster] = useState(currentUser.rosterId);
-  const rosters = getRosters();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const updateStatus = (name: string, status: FileStatus['status'], message?: string) => {
+    setFileStatuses(prev => prev.map(f => 
+      f.name === name ? { ...f, status, message } : f
+    ));
+  };
 
   const processFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     
     setIsProcessing(true);
-    const fileArray = Array.from(files);
     
-    const newStatuses = fileArray.map(f => ({
-      name: f.name,
-      status: 'pending' as const
+    // Convert FileList to Array and filter for valid files
+    const fileArray = Array.from(files).filter(f => f && f instanceof File);
+    
+    // Initialize UI statuses for all files in the batch
+    const initialStatuses = fileArray.map(f => ({
+      name: f.name || 'Unknown_Candidate.pdf',
+      status: 'pending' as const,
+      sizeMB: (f.size / 1024 / 1024).toFixed(1)
     }));
-    setFileStatuses(newStatuses);
+    setFileStatuses(initialStatuses);
 
-    // Process files sequentially to avoid memory pressure and race conditions
+    // Sequential Processing: Prevent 400 Errors and Memory Leaks
     for (const file of fileArray) {
+      // Safety Guard: Re-check within the loop
       if (!file) continue;
       
-      updateStatus(file.name, 'uploading');
+      const isLarge = file.size > 15 * 1024 * 1024;
+      updateStatus(file.name, 'uploading', isLarge ? 'Ingesting to Cloud Node...' : 'Preparing In-Memory Extraction...');
 
       try {
-        updateStatus(file.name, 'analyzing');
+        if (isLarge) {
+          updateStatus(file.name, 'syncing', 'Polling Cloud Activation...');
+        } else {
+          updateStatus(file.name, 'analyzing', 'Extracting Intelligence...');
+        }
+
         const result = await shlService.processAndRegister(
           file, 
           currentUser.role === 'coach' ? currentUser.email : undefined
         );
         
-        updateStatus(file.name, 'success');
-        onUserCreated(result.registration.userProfile);
+        updateStatus(file.name, 'success', `Onboarded: ${result.shlData.candidateName}`);
+        
+        if (result.registration?.userProfile) {
+          onUserCreated(result.registration.userProfile);
+        }
       } catch (err) {
+        console.error(`[UserUploader] Failure for ${file.name}:`, err);
         updateStatus(file.name, 'error', (err as Error).message);
       }
     }
+    
     setIsProcessing(false);
   };
 
-  const updateStatus = (name: string, status: FileStatus['status'], message?: string) => {
-    setFileStatuses(prev => prev.map(s => 
-      s.name === name ? { ...s, status, message } : s
-    ));
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    if (e.dataTransfer.files) processFiles(e.dataTransfer.files);
-  };
-
   return (
-    <div className="bg-white rounded-3xl border border-gray-100 p-8 shadow-xl animate-fadeIn">
-      <h3 className="font-black text-tp-purple uppercase text-lg tracking-widest mb-6 flex items-center">
-        <ClipboardListIcon className="w-6 h-6 mr-3 text-tp-red" />
-        Deep Capacity Onboarding
-      </h3>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
-        <div className="lg:col-span-5">
-          <p className="text-gray-700 text-sm font-medium mb-8 leading-relaxed">
-            Upload candidate SHL reports (PDFs up to 100MB+). 
-            Gemini 3 Pro will perform behavioral and technical capability mapping automatically.
-          </p>
-
-          {currentUser.role === 'admin' && (
-            <div className="mb-8">
-              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Target Roster Node</label>
-              <select 
-                value={selectedRoster} 
-                onChange={(e) => setSelectedRoster(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-5 py-3 text-sm outline-none transition-all focus:ring-2 focus:ring-tp-red font-bold text-tp-purple"
-              >
-                {rosters.map(r => (
-                  <option key={r.id} value={r.id}>{r.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          <div 
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={handleDrop}
-            className={`aspect-video flex flex-col items-center justify-center rounded-3xl border-4 border-dashed border-gray-100 bg-gray-50/50 hover:border-tp-purple/20 hover:bg-white transition-all cursor-pointer group mb-6 ${isProcessing ? 'pointer-events-none opacity-50' : ''}`}
-            onClick={() => !isProcessing && fileInputRef.current?.click()}
-          >
-            <DownloadIcon className="w-12 h-12 text-gray-300 group-hover:text-tp-red group-hover:scale-110 transition-all mb-4" />
-            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-400">Drag or Click to Batch</p>
-          </div>
-
-          <input 
-            type="file" 
-            ref={fileInputRef} 
-            className="hidden" 
-            multiple 
-            accept=".pdf" 
-            onChange={(e) => processFiles(e.target.files)} 
-          />
+    <div className="space-y-8 animate-fadeIn max-w-3xl mx-auto">
+      <div 
+        onClick={() => !isProcessing && fileInputRef.current?.click()}
+        className={`border-4 border-dashed border-tp-purple/5 rounded-[48px] p-20 text-center transition-all group bg-gray-50/50 cursor-pointer shadow-inner ${isProcessing ? 'opacity-50 pointer-events-none' : 'hover:border-tp-purple/20 hover:bg-white'}`}
+      >
+        <div className="w-24 h-24 bg-tp-purple text-white rounded-[32px] flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform shadow-2xl">
+          <BrainIcon className="w-12 h-12" />
         </div>
-
-        <div className="lg:col-span-7 bg-tp-navy/5 rounded-[32px] p-8 border border-white min-h-[300px]">
-          <h4 className="text-xs font-black text-tp-purple uppercase tracking-widest mb-6 flex justify-between">
-            Syncing Status
-            {fileStatuses.length > 0 && <span className="text-tp-red">{fileStatuses.filter(s => s.status === 'success').length} / {fileStatuses.length}</span>}
-          </h4>
-          
-          <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-            {fileStatuses.length === 0 ? (
-              <div className="h-40 flex items-center justify-center text-gray-400 italic text-sm">
-                "No active processing nodes."
-              </div>
-            ) : (
-              fileStatuses.map((file, i) => (
-                <div key={i} className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex items-center justify-between group animate-fadeIn">
-                  <div className="flex items-center gap-4 flex-1 truncate mr-4">
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      file.status === 'success' ? 'bg-green-100 text-green-600' :
-                      file.status === 'error' ? 'bg-tp-red/10 text-tp-red' : 'bg-tp-purple/10 text-tp-purple animate-pulse'
-                    }`}>
-                      {file.status === 'success' ? <CheckCircleIcon className="w-4 h-4" /> : 
-                       file.status === 'error' ? <ExclamationCircleIcon className="w-4 h-4" /> : <ClipboardListIcon className="w-4 h-4" />}
-                    </div>
-                    <div className="truncate">
-                      <p className="text-xs font-bold text-tp-purple truncate">{file.name}</p>
-                      <p className={`text-[9px] font-black uppercase tracking-widest mt-1 ${
-                        file.status === 'error' ? 'text-tp-red' : 'text-gray-400'
-                      }`}>
-                        {file.status} {file.message && ` - ${file.message}`}
-                      </p>
-                    </div>
-                  </div>
-                  {file.status === 'analyzing' && (
-                    <div className="w-12 h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <div className="h-full bg-tp-purple animate-[shimmer_2s_infinite] w-full"></div>
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
+        <h3 className="text-3xl font-black text-tp-purple mb-4 uppercase tracking-tighter">Candidate Batch Ingestion</h3>
+        <p className="text-sm text-gray-500 mb-10 max-w-sm mx-auto font-medium">
+          Drag & Drop SHL Reports. Gemini 3 Pro manages Cloud Sync for documents >15MB to bypass payload limits.
+        </p>
+        <div className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-xs shadow-xl inline-flex items-center gap-3 group-hover:bg-tp-navy transition-colors">
+          <DownloadIcon className="w-4 h-4" />
+          {isProcessing ? 'Synchronizing Cluster...' : 'Upload Reports'}
         </div>
+        <input 
+          type="file" 
+          ref={fileInputRef}
+          className="hidden" 
+          accept=".pdf" 
+          multiple
+          onChange={(e) => processFiles(e.target.files)} 
+          disabled={isProcessing} 
+        />
       </div>
+
+      {fileStatuses.length > 0 && (
+        <div className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-2xl">
+          <div className="flex justify-between items-center mb-8 px-2">
+            <h4 className="text-[10px] font-black text-tp-purple uppercase tracking-[0.3em]">Batch Registry Status</h4>
+            <div className="flex items-center gap-4">
+              <span className="text-[10px] font-black text-tp-red uppercase">{fileStatuses.filter(s => s.status === 'success').length} / {fileStatuses.length} COMPLETED</span>
+            </div>
+          </div>
+          
+          <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
+            {fileStatuses.map((file, idx) => (
+              <div key={idx} className="bg-gray-50 border border-gray-100 rounded-3xl p-5 flex items-center justify-between group animate-fadeIn">
+                <div className="flex items-center gap-5">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
+                    file.status === 'success' ? 'bg-green-100 text-green-600' :
+                    file.status === 'error' ? 'bg-tp-red/10 text-tp-red' :
+                    'bg-tp-purple/5 text-tp-purple animate-pulse'
+                  }`}>
+                    {file.status === 'success' ? <CheckCircleIcon /> : 
+                     file.status === 'error' ? <ExclamationCircleIcon /> : 
+                     <ClipboardListIcon className="w-6 h-6" />}
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-tp-purple text-sm truncate max-w-[200px]">{file.name}</p>
+                      <span className="text-[9px] font-bold text-gray-400">{file.sizeMB} MB</span>
+                    </div>
+                    <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${
+                      file.status === 'error' ? 'text-tp-red' : 'text-tp-purple/40'
+                    }`}>
+                      {file.message || file.status}
+                    </p>
+                  </div>
+                </div>
+                {(file.status !== 'success' && file.status !== 'error' && file.status !== 'pending') && (
+                  <div className="flex items-center gap-1.5 px-3">
+                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
+                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          
+          {!isProcessing && (
+            <button 
+              onClick={() => setFileStatuses([])}
+              className="mt-6 w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-tp-red transition-colors"
+            >
+              Clear Processing History
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };

@@ -1,4 +1,3 @@
-
 const SHEET_ID = '1wJrE03884n8xcFvazJDpylAplWfLco1NV17oGM4J0-A';
 
 function doPost(e) {
@@ -73,38 +72,45 @@ function findUser(ss, email, password) {
   return null;
 }
 
+/**
+ * Registers a new candidate with deep performance capability metrics.
+ */
 function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
   
   const shl = data.shlData || {};
+  
+  // High-Precision Performance Metadata Ingestion
   const perfData = {
-    grammar: shl.svar?.grammar || 0,
-    vocabulary: shl.svar?.vocabulary || 0,
+    grammar: shl.writex?.grammar || shl.svar?.grammar || 0,
+    vocabulary: shl.writex?.vocabulary || shl.svar?.vocabulary || 0,
     fluency: shl.svar?.fluency || 0,
     pronunciation: shl.svar?.pronunciation || 0,
+    activeListening: shl.svar?.activeListening || 0,
     overallSpoken: shl.svar?.overall || 0,
-    writing: shl.writex?.grammar || 0,
-    content: shl.writex?.content || 0,
+    writingContent: shl.writex?.content || 0,
     coherence: shl.writex?.coherence || 0,
     testDate: shl.testDate || new Date().toISOString(),
-    competencies: shl.competencies?.behavioralIndicators || []
+    behavioralTraits: shl.competencies?.behavioralTraits || [],
+    strengths: shl.competencies?.strengths || []
   };
 
-  // Columns: UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach, PerformanceMetadata
+  // Row Definition: [UID, Email, Password, Name, Role, CEFR, SHL_Raw, Date, Coach, Performance_JSON]
   sheet.appendRow([
     uid,
     data.email,
-    data.password,
+    data.password || 'TpSkill2026!',
     data.name,
     'agent',
-    data.cefrLevel,
+    data.cefrLevel || 'B1',
     JSON.stringify(shl),
     new Date(),
     data.assignedCoach || 'Unassigned',
     JSON.stringify(perfData)
   ]);
 
+  // Generate learning track based on identified gaps
   const assignedResources = generateAndStoreCourseMap(ss, uid, data.shlData);
 
   return {
@@ -114,7 +120,7 @@ function registerUser(ss, data) {
       email: data.email,
       name: data.name,
       role: 'agent',
-      languageLevel: data.cefrLevel,
+      languageLevel: data.cefrLevel || 'B1',
       shlData: shl,
       performanceData: perfData,
       assignedCoach: data.assignedCoach || 'Unassigned'
@@ -135,7 +141,7 @@ function generateAndStoreCourseMap(ss, uid, shlData) {
   const headers = resourcesData[0];
   const assignedList = [];
 
-  const THRESHOLD = 60;
+  const THRESHOLD = 65; 
   const targetTags = ['onboarding'];
   
   if (shlData && shlData.svar) {
