@@ -26,12 +26,43 @@ const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isAuthChecking, setIsAuthChecking] = useState(true);
 
+  // Normalization logic: Ensures raw database strings are valid JSON objects for the UI
+  const normalizeUser = (userData: any): UserProfile => {
+    if (!userData) return userData;
+    
+    let parsedShl = userData.shlData;
+    if (typeof parsedShl === 'string' && parsedShl.trim() !== '') {
+      try {
+        parsedShl = JSON.parse(parsedShl);
+      } catch (e) {
+        console.error("SHL Data Parsing Error:", e);
+        parsedShl = {};
+      }
+    }
+
+    let parsedPerf = userData.performanceData;
+    if (typeof parsedPerf === 'string' && parsedPerf.trim() !== '') {
+      try {
+        parsedPerf = JSON.parse(parsedPerf);
+      } catch (e) {
+        console.error("Performance Data Parsing Error:", e);
+        parsedPerf = {};
+      }
+    }
+
+    return {
+      ...userData,
+      shlData: parsedShl || {},
+      performanceData: parsedPerf || {}
+    };
+  };
+
   const checkSession = async () => {
     setIsAuthChecking(true);
     const cachedUser = localStorage.getItem('tp_skillence_user_session');
     if (cachedUser) {
       try {
-        const user = JSON.parse(cachedUser);
+        const user = normalizeUser(JSON.parse(cachedUser));
         setCurrentUser(user);
         await refreshPlan(user.id);
         if (user.role === 'admin' || user.role === 'coach') {
@@ -58,25 +89,26 @@ const App: React.FC = () => {
     checkSession();
   }, []);
 
-  const handleLogin = async (user: UserProfile) => {
-    setCurrentUser(user);
-    localStorage.setItem('tp_skillence_user_session', JSON.stringify(user));
-    await refreshPlan(user.id);
-    if (user.role === 'admin' || user.role === 'coach') {
+  const handleLogin = async (user: any) => {
+    const normalized = normalizeUser(user);
+    setCurrentUser(normalized);
+    localStorage.setItem('tp_skillence_user_session', JSON.stringify(normalized));
+    await refreshPlan(normalized.id);
+    if (normalized.role === 'admin' || normalized.role === 'coach') {
       loadGlobalUsers();
-      // Default Coaches to their Hub
-      if (user.role === 'coach') setView({ type: 'live-coach' });
+      if (normalized.role === 'coach') setView({ type: 'live-coach' });
     }
   };
 
-  const handleImpersonate = async (targetUser: UserProfile) => {
+  const handleImpersonate = async (targetUser: any) => {
     setIsLoading(true);
     try {
       if (!originalUser && currentUser) {
         setOriginalUser(currentUser);
       }
-      setCurrentUser(targetUser);
-      await refreshPlan(targetUser.id);
+      const normalized = normalizeUser(targetUser);
+      setCurrentUser(normalized);
+      await refreshPlan(normalized.id);
       setView({ type: 'dashboard' });
       setIsSidebarOpen(false);
     } catch (err) {
@@ -93,7 +125,6 @@ const App: React.FC = () => {
       setCurrentUser(originalUser);
       await refreshPlan(originalUser.id);
       setOriginalUser(null);
-      // Redirect back to management view
       if (originalUser.role === 'admin') setView({ type: 'admin' });
       else if (originalUser.role === 'coach') setView({ type: 'live-coach' });
       else setView({ type: 'dashboard' });
@@ -148,10 +179,22 @@ const App: React.FC = () => {
     }
     
     if (view.type === 'lesson') return (
-      <LessonViewer resource={view.resource} uid={currentUser.id} onClose={() => setView({ type: 'dashboard' })} onMasteryAchieved={refreshPlan} />
+      <LessonViewer 
+        resource={view.resource} 
+        uid={currentUser.id} 
+        onClose={() => setView({ type: 'dashboard' })} 
+        onMasteryAchieved={refreshPlan} 
+      />
     );
 
-    return <Dashboard user={currentUser} resources={userPlan} onNavigate={handleNavigate} onOpenResource={(res) => setView({ type: 'lesson', resource: res })} />;
+    return (
+      <Dashboard 
+        user={currentUser} 
+        resources={userPlan} 
+        onNavigate={handleNavigate} 
+        onOpenResource={(res) => setView({ type: 'lesson', resource: res })} 
+      />
+    );
   };
 
   return (

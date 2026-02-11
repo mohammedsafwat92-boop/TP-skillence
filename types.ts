@@ -22,75 +22,46 @@ export interface Resource {
   url: string;
   type: ResourceType;
   tags: string[];
-  level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1';
+  level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'All';
   objective?: string;
   progress: ResourceProgress;
 }
 
 export interface SHLReport {
-  candidateName: string;
-  email: string;
-  testDate: string;
-  cefrLevel: string;
-  svar: {
+  svar?: {
     overall: number;
     pronunciation: number;
     fluency: number;
     activeListening: number;
-    understanding: number;
     vocabulary: number;
     grammar: number;
   };
-  writex: {
-    content: number;
+  writex?: {
     grammar: number;
+    vocabulary: number;
     coherence: number;
   };
-  competencies?: {
-    behavioralIndicators: string[];
-    skillBreakdown: Record<string, number>;
-  };
+  candidateName?: string;
+  email?: string;
+  testDate?: string;
+  cefrLevel?: string;
 }
 
-/**
- * Enhanced performance metrics for language academy tracking
- */
 export interface UserPerformanceData {
   grammar: number;
   vocabulary: number;
   fluency: number;
   pronunciation: number;
+  activeListening: number;
   overallSpoken: number;
-  writing: number;
-  listening: number;
-  understanding: number;
-  analytical: number;
-  content?: number;
-  coherence?: number;
   testDate: string;
-  competencies?: string[];
 }
 
-/**
- * Credentials for impersonation and sandbox access
- */
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
 }
 
-/**
- * Organizational team structure for agents and coaches
- */
-export interface Roster {
-  id: string;
-  name: string;
-  assignedCoachId?: string;
-}
-
-/**
- * Comprehensive user profile supporting admin, coach, and agent roles
- */
 export interface UserProfile {
   id: string;
   name: string;
@@ -101,9 +72,15 @@ export interface UserProfile {
   shlData?: SHLReport;
   performanceData?: UserPerformanceData;
   assignedModules?: string[];
-  assignedCoachId?: string;
-  assignedCoach?: string; // New: email of the assigned coach
+  assignedCoach?: string; 
   generatedCredentials?: UserCredentials;
+}
+
+export interface Roster {
+  id: string;
+  name: string;
+  coachId: string;
+  agentIds: string[];
 }
 
 export interface Lesson {

@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from 'react';
 import { geminiService } from '../services/geminiService';
-import type { QuizQuestion, Lesson, Module, View, Quiz, UserProgress, ActivityLog } from '../types';
+import type { QuizQuestion, Lesson, Module, View, Quiz, UserProgress, ActivityLog, Resource } from '../types';
 import { ResourceType } from '../types';
 import { quizzes } from '../data/trainingData';
 import { WatchIcon, ReadIcon, ListenIcon, PracticeIcon, WorksheetIcon, LinkIcon, CheckCircleIcon, TrendingUpIcon, ExclamationCircleIcon, BadgeIcon, ChartBarIcon, SpeakingIcon } from './Icons';
@@ -15,6 +15,7 @@ interface WorksheetProps {
   onQuizComplete: (quizId: string, score: number) => void;
   onOpenLesson: (lesson: Lesson) => void;
   userLevel?: string;
+  resource?: Resource; // Added resource prop for objective-driven assessments
 }
 
 const LessonCard: React.FC<{
@@ -426,7 +427,8 @@ const QuizComponent: React.FC<{
     modules: { [id: string]: Module };
     onQuizComplete: (id: string, score: number) => void;
     userLevel?: string;
-}> = ({ quiz, onNavigate, modules, onQuizComplete, userLevel }) => {
+    resource?: Resource; // Added resource to QuizComponent for objective handling
+}> = ({ quiz, onNavigate, modules, onQuizComplete, userLevel, resource }) => {
     const [viewState, setViewState] = useState<'start' | 'quiz' | 'results'>('start');
     const [questions, setQuestions] = useState<QuizQuestion[]>([]);
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -439,8 +441,9 @@ const QuizComponent: React.FC<{
         setIsLoading(true);
         setError(null);
         try {
-            // Fix: Use geminiService.generateWorksheetQuestions
-            const generatedQuestions = await geminiService.generateWorksheetQuestions(quiz.id, userLevel);
+            // Dynamic generation based on resource objective if available, otherwise fallback to quiz id
+            const objectiveToUse = resource?.objective || quiz.title;
+            const generatedQuestions = await geminiService.generateWorksheetQuestions(objectiveToUse, userLevel);
             setQuestions(generatedQuestions);
             setUserAnswers(new Array(generatedQuestions.length).fill(-1));
             setViewState('quiz');
@@ -451,7 +454,7 @@ const QuizComponent: React.FC<{
         } finally {
             setIsLoading(false);
         }
-    }, [quiz.id, userLevel]);
+    }, [quiz.id, userLevel, resource]);
 
     useEffect(() => {
       setViewState('start');
@@ -472,6 +475,15 @@ const QuizComponent: React.FC<{
                 <WorksheetIcon className="w-10 h-10 md:w-12 md:h-12" />
             </div>
             <h1 className="text-2xl md:text-3xl font-black text-tp-purple mb-4 tracking-tight uppercase">{quiz.title}</h1>
+            
+            {/* Displaying specific resource objective in the start screen */}
+            {resource?.objective && (
+                <div className="bg-tp-red/5 p-4 rounded-2xl mb-6 border border-tp-red/10">
+                    <p className="text-[10px] font-black text-tp-red uppercase tracking-widest mb-1">Target Competency</p>
+                    <p className="text-sm font-bold text-tp-purple italic leading-relaxed">"{resource.objective}"</p>
+                </div>
+            )}
+            
             <p className="text-sm md:text-base text-gray-700 font-medium mb-8 md:mb-10 leading-relaxed px-4 md:px-10">{quiz.description}</p>
             
             {error && <p className="text-tp-red mb-6 text-xs font-bold uppercase tracking-widest">⚠️ {error}</p>}
@@ -512,6 +524,12 @@ const QuizComponent: React.FC<{
 
         return (
             <div className="max-w-3xl mx-auto mt-6 md:mt-12 pb-10 md:pb-20">
+                {/* Dynamic objective header for explicit context */}
+                <div className="mb-8 px-6 py-4 bg-tp-purple/5 border-l-4 border-tp-red rounded-r-2xl">
+                    <p className="text-[9px] font-black text-tp-purple uppercase tracking-widest mb-1">Session Objective</p>
+                    <p className="text-sm font-bold text-tp-purple italic">{resource?.objective || quiz.title}</p>
+                </div>
+
                 <div className="glass-card rounded-3xl shadow-2xl border border-white/50 overflow-hidden">
                     <div className="bg-tp-purple px-6 md:px-10 py-5 md:py-6 flex flex-col sm:flex-row justify-between items-center gap-2">
                         <h2 className="font-black text-white uppercase tracking-widest text-xs md:text-sm">Calibration Session</h2>
@@ -654,7 +672,7 @@ const QuizComponent: React.FC<{
     return null;
 }
 
-const Worksheet: React.FC<WorksheetProps & { userLevel?: string }> = ({ modules, view, onNavigate, progress, onToggleLesson, onQuizComplete, onOpenLesson, userLevel }) => {
+const Worksheet: React.FC<WorksheetProps & { userLevel?: string }> = ({ modules, view, onNavigate, progress, onToggleLesson, onQuizComplete, onOpenLesson, userLevel, resource }) => {
     switch(view.type) {
         case 'dashboard':
             return <DashboardView modules={modules} onNavigate={onNavigate} progress={progress} />;
@@ -663,7 +681,7 @@ const Worksheet: React.FC<WorksheetProps & { userLevel?: string }> = ({ modules,
             return module ? <ModuleView module={module} progress={progress} onToggleLesson={onToggleLesson} onNavigate={onNavigate} onOpenLesson={onOpenLesson} /> : <div className="p-10 text-center text-gray-600 text-lg">Path not found.</div>;
         case 'quiz':
             const quiz = quizzes.find(q => q.id === view.quizId);
-            return quiz ? <QuizComponent quiz={quiz} onNavigate={onNavigate} modules={modules} onQuizComplete={onQuizComplete} userLevel={userLevel} /> : <div className="p-10 text-center text-gray-600 text-lg">Assessment not found.</div>;
+            return quiz ? <QuizComponent quiz={quiz} onNavigate={onNavigate} modules={modules} onQuizComplete={onQuizComplete} userLevel={userLevel} resource={resource} /> : <div className="p-10 text-center text-gray-600 text-lg">Assessment not found.</div>;
         default:
             return <div className="p-10 text-center text-gray-600 uppercase font-black tracking-widest text-sm">System ready.</div>
     }

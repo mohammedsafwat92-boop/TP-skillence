@@ -27,7 +27,7 @@ async function callApi(action: string, payload: any = {}) {
       json = JSON.parse(rawText);
     } catch (parseError) {
       console.error("[googleSheetService] Critical parsing failure. Raw text received from backend:", rawText);
-      throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON. Raw output: ${rawText.substring(0, 100)}...`);
+      throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON.`);
     }
 
     if (!json.success) {
@@ -59,6 +59,10 @@ export const googleSheetService = {
     
   fetchUserPlan: async (uid: string) => {
     return await callApi('get_user_plan', { uid });
+  },
+
+  fetchGlobalResources: async () => {
+    return await callApi('get_all_resources');
   },
     
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
