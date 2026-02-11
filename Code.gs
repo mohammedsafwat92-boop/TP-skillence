@@ -77,7 +77,21 @@ function registerUser(ss, data) {
   const sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
   const uid = 'u-' + new Date().getTime();
   
-  // Columns: UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach
+  const shl = data.shlData || {};
+  const perfData = {
+    grammar: shl.svar?.grammar || 0,
+    vocabulary: shl.svar?.vocabulary || 0,
+    fluency: shl.svar?.fluency || 0,
+    pronunciation: shl.svar?.pronunciation || 0,
+    overallSpoken: shl.svar?.overall || 0,
+    writing: shl.writex?.grammar || 0,
+    content: shl.writex?.content || 0,
+    coherence: shl.writex?.coherence || 0,
+    testDate: shl.testDate || new Date().toISOString(),
+    competencies: shl.competencies?.behavioralIndicators || []
+  };
+
+  // Columns: UID, Email, Password, Name, Role, CEFRLevel, SHLData, Date, AssignedCoach, PerformanceMetadata
   sheet.appendRow([
     uid,
     data.email,
@@ -85,9 +99,10 @@ function registerUser(ss, data) {
     data.name,
     'agent',
     data.cefrLevel,
-    JSON.stringify(data.shlData || {}),
+    JSON.stringify(shl),
     new Date(),
-    data.assignedCoach || 'Unassigned'
+    data.assignedCoach || 'Unassigned',
+    JSON.stringify(perfData)
   ]);
 
   const assignedResources = generateAndStoreCourseMap(ss, uid, data.shlData);
@@ -100,7 +115,8 @@ function registerUser(ss, data) {
       name: data.name,
       role: 'agent',
       languageLevel: data.cefrLevel,
-      shlData: data.shlData,
+      shlData: shl,
+      performanceData: perfData,
       assignedCoach: data.assignedCoach || 'Unassigned'
     },
     resources: assignedResources
@@ -270,6 +286,7 @@ function fetchAllUsers(ss) {
       role: row[mapping['Role']],
       languageLevel: row[mapping['CEFRLevel']],
       shlData: safeParse(row[mapping['SHLData']]),
+      performanceData: safeParse(row[mapping['PerformanceMetadata']] || row[mapping['SHLData']]),
       assignedCoach: row[mapping['AssignedCoach']] || 'Unassigned'
     });
   }

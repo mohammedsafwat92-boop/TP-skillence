@@ -44,6 +44,11 @@ export interface SHLReport {
   writex: {
     content: number;
     grammar: number;
+    coherence: number;
+  };
+  competencies?: {
+    behavioralIndicators: string[];
+    skillBreakdown: Record<string, number>;
   };
 }
 
@@ -61,7 +66,9 @@ export interface UserPerformanceData {
   understanding: number;
   analytical: number;
   content?: number;
+  coherence?: number;
   testDate: string;
+  competencies?: string[];
 }
 
 /**
