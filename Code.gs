@@ -40,7 +40,8 @@ function doPost(e) {
       res.data = result;
       res.success = true;
     } else if (action === 'assign_manual_resource') {
-      res.data = manualAssign(ss, json.uid, json.resourceId);
+      // New payload structure: targetUid, resourceId, adminId
+      res.data = manualAssign(ss, json.targetUid, json.resourceId, json.adminId);
       res.success = true;
     }
 
@@ -51,10 +52,10 @@ function doPost(e) {
   return sendResponse(res);
 }
 
-function manualAssign(ss, uid, resourceId) {
+function manualAssign(ss, uid, resourceId, adminId) {
   const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt']);
+    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt', 'AssignedBy']);
   }
   const data = sheet.getDataRange().getValues();
   let foundRow = -1;
@@ -67,12 +68,13 @@ function manualAssign(ss, uid, resourceId) {
   }
 
   if (foundRow === -1) {
-    sheet.appendRow([uid, resourceId, 'assigned', 0, 0, new Date()]);
+    // Adding adminId to track who performed the manual assignment
+    sheet.appendRow([uid, resourceId, 'assigned', 0, 0, new Date(), adminId || 'System']);
   } else {
-    // If it exists, ensure it is at least 'assigned' or 'open'
     const currentStatus = data[foundRow-1][2];
     if (currentStatus === 'locked') {
       sheet.getRange(foundRow, 3).setValue('assigned');
+      sheet.getRange(foundRow, 7).setValue(adminId || 'System');
     }
   }
   return { status: 'assigned' };
@@ -260,7 +262,7 @@ function updateProgress(ss, uid, resourceId, passed, score) {
     sheet.appendRow([uid, resourceId, newStatus, 1, score, new Date()]);
   }
   
-  return { status: newStatus };
+  return { status: 'newStatus' };
 }
 
 function handleBulkImport(ss, resources) {

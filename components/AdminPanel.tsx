@@ -1,10 +1,10 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon, CheckCircleIcon, XIcon, TableIcon } from './Icons';
+import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
 interface AdminPanelProps {
@@ -22,6 +22,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [userList, setUserList] = useState<UserProfile[]>([]);
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
+  const [searchTerm, setSearchTerm] = useState('');
 
   const fetchUsers = async () => {
     setIsProcessing(true);
@@ -56,9 +57,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
     setIsProcessing(true);
     try {
-      await googleSheetService.assignManualResource(selectedTargetUserId, resourceId);
+      // Updated payload structure: targetUid, resourceId, adminId
+      await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
-      alert(`Successfully assigned to ${studentName}`);
+      alert(`Successfully assigned module to ${studentName}`);
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed.");
@@ -66,6 +68,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       setIsProcessing(false);
     }
   };
+
+  const filteredResources = useMemo(() => {
+    if (!searchTerm) return globalResources;
+    const low = searchTerm.toLowerCase();
+    return globalResources.filter(r => 
+      r.title.toLowerCase().includes(low) || 
+      r.tags.some(t => t.toLowerCase().includes(low)) ||
+      r.level.toLowerCase().includes(low)
+    );
+  }, [globalResources, searchTerm]);
 
   const exportToCsv = () => {
     if (userList.length === 0) return;
@@ -93,10 +105,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           </h1>
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Enterprise Console</p>
         </div>
-        <div className="flex bg-tp-purple/5 p-1 rounded-2xl overflow-x-auto max-w-full">
+        <div className="flex bg-tp-purple/5 p-1 rounded-2xl overflow-x-auto max-w-full shadow-inner">
           {[
             { id: 'users', label: 'Roster' },
-            { id: 'library', label: 'Library' },
+            { id: 'library', label: 'Resource Library' },
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'content', label: 'Import' }
           ].map((tab) => (
@@ -113,10 +125,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-center px-2">
              <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Roster</h3>
              <button onClick={exportToCsv} disabled={userList.length === 0} className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50">
-                <DownloadIcon className="w-4 h-4" /> Export
+                <DownloadIcon className="w-4 h-4" /> Export Registry
              </button>
           </div>
           <div className="overflow-x-auto border border-gray-100 rounded-[32px] shadow-inner bg-gray-50/30">
@@ -139,18 +151,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                     <td className="px-4 py-5 text-center font-black text-tp-red">{user.languageLevel}</td>
                     <td className="px-4 py-5 text-center font-black text-tp-purple">{user.shlData?.svar?.overall ?? '--'}</td>
                     <td className="px-8 py-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
                           className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all"
                         >
-                          Assign
+                          Manual Assign
                         </button>
                         <button 
                           onClick={() => onImpersonate(user)} 
                           className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all"
                         >
-                          View
+                          View Hub
                         </button>
                       </div>
                     </td>
@@ -164,67 +176,93 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
       {activeTab === 'library' && (
         <div className="space-y-8 animate-fadeIn">
-          <div className="sticky top-0 bg-tp-purple rounded-[24px] p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 z-30">
-            <div className="flex items-center gap-4">
-              <div className="p-2.5 bg-white/10 rounded-xl text-white">
-                <UserIcon className="w-5 h-5" />
+          <div className="sticky top-0 bg-tp-purple rounded-[32px] p-8 shadow-2xl flex flex-col gap-6 z-30 border border-white/10">
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="p-2.5 bg-white/10 rounded-xl text-white">
+                  <UserIcon className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-white text-[10px] font-black uppercase tracking-[0.2em] mb-1">Target Student Selector</p>
+                  <p className="text-white/50 text-[9px] font-medium uppercase italic">Assigned modules will sync immediately to their dashboard.</p>
+                </div>
               </div>
-              <p className="text-white text-[10px] font-black uppercase tracking-widest">Target Student:</p>
+              <select 
+                value={selectedTargetUserId}
+                onChange={(e) => setSelectedTargetUserId(e.target.value)}
+                className="w-full md:w-auto md:min-w-[320px] bg-white text-tp-purple font-black text-[11px] uppercase tracking-widest px-6 py-4 rounded-2xl outline-none border-2 border-transparent focus:border-tp-red transition-all shadow-xl"
+              >
+                <option value="">Select an agent from the roster...</option>
+                {userList.filter(u => u.role === 'agent').map(u => (
+                  <option key={u.id} value={u.id}>{u.name} — {u.languageLevel}</option>
+                ))}
+              </select>
             </div>
-            <select 
-              value={selectedTargetUserId}
-              onChange={(e) => setSelectedTargetUserId(e.target.value)}
-              className="flex-1 max-w-md bg-white text-tp-purple font-bold px-6 py-3 rounded-xl outline-none border-2 border-transparent focus:border-tp-red transition-all"
-            >
-              <option value="">Select a student to assign modules...</option>
-              {userList.filter(u => u.role === 'agent').map(u => (
-                <option key={u.id} value={u.id}>{u.name} ({u.languageLevel})</option>
-              ))}
-            </select>
+
+            <div className="relative">
+               <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-white/40">
+                 <SearchIcon className="w-5 h-5" />
+               </div>
+               <input 
+                 type="text"
+                 placeholder="Search by module title, tag, or CEFR level..."
+                 className="w-full bg-white/10 border border-white/20 rounded-2xl px-12 py-4 text-white text-sm outline-none focus:bg-white/20 transition-all placeholder:text-white/30"
+                 value={searchTerm}
+                 onChange={(e) => setSearchTerm(e.target.value)}
+               />
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {globalResources.map(res => (
-              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-xl transition-all flex justify-between items-center group">
-                <div className="flex-1 pr-4">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[8px] font-black bg-tp-purple/5 text-tp-purple px-2 py-0.5 rounded uppercase">{res.tags[0]}</span>
-                    <span className="text-[9px] font-black text-tp-red uppercase tracking-widest">{res.level}</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {filteredResources.map(res => (
+              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[200px] hover:-translate-y-1">
+                <div>
+                  <div className="flex items-center justify-between mb-4">
+                    <span className="text-[9px] font-black bg-tp-purple/5 text-tp-purple px-2 py-1 rounded-lg uppercase tracking-widest">{res.tags[0]}</span>
+                    <span className="text-[10px] font-black text-tp-red uppercase tracking-widest">{res.level}</span>
                   </div>
-                  <h4 className="font-black text-tp-purple text-base leading-tight">{res.title}</h4>
-                  <p className="text-[10px] text-gray-400 mt-1 line-clamp-1">{res.objective}</p>
+                  <h4 className="font-black text-tp-purple text-base leading-tight group-hover:text-tp-red transition-colors">{res.title}</h4>
+                  <p className="text-[10px] text-gray-400 mt-2 line-clamp-2 italic font-medium">"{res.objective}"</p>
                 </div>
-                <button 
-                  onClick={() => handleManualAssign(res.id)}
-                  disabled={isProcessing}
-                  className="bg-tp-navy text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-tp-red transition-all shadow-lg disabled:opacity-50"
-                  title="Assign to selected user"
-                >
-                  <PlusIcon className="w-5 h-5" />
-                </button>
+                <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
+                   <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">{res.type}</span>
+                   <button 
+                    onClick={() => handleManualAssign(res.id)}
+                    disabled={isProcessing || !selectedTargetUserId}
+                    className={`flex items-center gap-2 bg-tp-navy text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30`}
+                    title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
+                  >
+                    <PlusIcon className="w-4 h-4" /> Assign
+                  </button>
+                </div>
               </div>
             ))}
+            {filteredResources.length === 0 && (
+              <div className="col-span-full py-20 text-center text-gray-300 font-black uppercase text-xs tracking-[0.3em]">
+                No matching resources found in the library.
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {activeTab === 'onboarding' && (
         <div className="space-y-8 animate-fadeIn max-w-2xl mx-auto py-10">
-          <div className="border-4 border-dashed border-tp-purple/5 rounded-[40px] p-16 text-center hover:border-tp-purple/20 transition-all bg-gray-50/50">
-            <ClipboardListIcon className="w-20 h-20 text-tp-purple mx-auto mb-8" />
-            <h3 className="text-2xl font-black text-tp-purple mb-4 uppercase">Automated Onboarding</h3>
-            <p className="text-sm text-gray-500 mb-10">Upload evaluation PDFs for intelligent parsing.</p>
-            <label className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer shadow-xl hover:bg-tp-navy transition-all">
-              {isProcessing ? 'Syncing...' : 'Upload Report'}
+          <div className="border-4 border-dashed border-tp-purple/5 rounded-[40px] p-16 text-center hover:border-tp-purple/20 transition-all bg-gray-50/50 shadow-inner">
+            <ClipboardListIcon className="w-20 h-20 text-tp-purple mx-auto mb-8 opacity-40" />
+            <h3 className="text-2xl font-black text-tp-purple mb-4 uppercase tracking-tight">Automated Onboarding Pipeline</h3>
+            <p className="text-sm text-gray-500 mb-10 font-medium">Gemini 3 Pro handles deep extraction of SHL PDF metrics.</p>
+            <label className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest cursor-pointer shadow-2xl hover:bg-tp-navy transition-all">
+              {isProcessing ? 'Synchronizing Node...' : 'Upload Evaluation Report'}
               <input type="file" className="hidden" accept=".pdf" onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
                 setIsProcessing(true);
                 try {
                   await shlService.processAndRegister(file);
-                  alert("Success! Agent registered.");
+                  alert("Success: Candidate intelligence integrated into registry.");
                   fetchUsers();
-                } catch (err) { alert("Registration Failed"); }
+                } catch (err) { alert("Registration Failed: Sync Timeout"); }
                 finally { setIsProcessing(false); }
               }} disabled={isProcessing} />
             </label>

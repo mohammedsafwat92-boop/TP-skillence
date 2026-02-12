@@ -84,6 +84,6 @@ export const googleSheetService = {
   unlockResource: (uid: string, resourceId: string) =>
     callApi('admin_unlock_resource', { uid, resourceId }),
 
-  assignManualResource: (uid: string, resourceId: string) =>
-    callApi('assign_manual_resource', { uid, resourceId })
+  assignManualResource: (targetUid: string, resourceId: string, adminId: string) =>
+    callApi('assign_manual_resource', { targetUid, resourceId, adminId })
 };

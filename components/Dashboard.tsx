@@ -73,6 +73,23 @@ const RadarChart: React.FC<{ data: { label: string; value: number }[] }> = ({ da
         ))}
 
         <polygon points={points} className="fill-tp-red/20 stroke-tp-red stroke-2 transition-all duration-500" />
+        
+        {/* Markers on the vertices for better data visibility */}
+        {data.map((d, i) => {
+          const angle = i * angleStep - Math.PI / 2;
+          const r = (Math.min(d.value, 100) / 100) * radius;
+          const x = center + r * Math.cos(angle);
+          const y = center + r * Math.sin(angle);
+          return (
+            <circle 
+              key={i} 
+              cx={x} 
+              cy={y} 
+              r="4" 
+              className="fill-tp-purple stroke-white stroke-2 shadow-sm"
+            />
+          );
+        })}
       </svg>
     </div>
   );
@@ -91,24 +108,20 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     const s = user.shlData?.svar;
     const w = user.shlData?.writex;
 
+    // Helper to distinguish 10-pt SVAR vs 100-pt WriteX
+    const normalizeSVAR = (v: any) => normalizeScore(Number(v) || 0);
+    const normalizeWriteX = (v: any) => Number(v) || 0;
+
     return [
-      { label: 'Fluency', val: normalizeScore(s?.fluency || 0), raw: s?.fluency || 0, tag: 'Speaking' },
-      { label: 'Pronunciation', val: normalizeScore(s?.pronunciation || 0), raw: s?.pronunciation || 0, tag: 'Speaking' },
-      { label: 'Listening', val: normalizeScore(s?.activeListening || 0), raw: s?.activeListening || 0, tag: 'Listening' },
-      { label: 'Vocabulary', val: normalizeScore(s?.vocabulary || 0), raw: s?.vocabulary || 0, tag: 'Reading' },
-      { label: 'Grammar', val: normalizeScore(w?.grammar || 0), raw: w?.grammar || 0, tag: 'Writing' },
-      { label: 'Coherence', val: normalizeScore(w?.coherence || 0), raw: w?.coherence || 0, tag: 'Writing' }
+      { label: 'Fluency', val: normalizeSVAR(s?.fluency), raw: s?.fluency || 0, tag: 'Speaking' },
+      { label: 'Pronunciation', val: normalizeSVAR(s?.pronunciation), raw: s?.pronunciation || 0, tag: 'Speaking' },
+      { label: 'Listening', val: normalizeSVAR(s?.activeListening), raw: s?.activeListening || 0, tag: 'Listening' },
+      { label: 'Vocabulary', val: normalizeSVAR(s?.vocabulary), raw: s?.vocabulary || 0, tag: 'Reading' },
+      { label: 'Grammar', val: normalizeWriteX(w?.grammar), raw: w?.grammar || 0, tag: 'Writing' },
+      { label: 'Coherence', val: normalizeWriteX(w?.coherence), raw: w?.coherence || 0, tag: 'Writing' }
     ];
   }, [user.shlData]);
 
-  /**
-   * Filtered logic based on:
-   * 1. progress.status === 'assigned' (Manual Assignment)
-   * 2. SHL Gap Match (AI Recommended)
-   * 3. Completed (History)
-   * 
-   * General level matches that are neither gaps nor manual assignments are HIDDEN.
-   */
   const { recommended, filteredCurriculum } = useMemo(() => {
     const lowScores = metrics.filter(m => m.val < GAP_THRESHOLD_NORMALIZED);
     const gapTags = lowScores.map(m => m.tag.toLowerCase());
@@ -124,7 +137,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
       const isGapMatch = res.tags.some(t => gapTags.includes(t.toLowerCase()));
       const isCompleted = res.progress?.status === 'completed';
 
-      // Only show if it's manual, a gap match, or already completed
+      // Strictly show only manual assignments, gap matches, or history of work
       if (isManual || isGapMatch || isCompleted) {
         if (isManual || (isGapMatch && !isCompleted)) {
           recs.push(res);
@@ -149,13 +162,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
             <div className="p-2.5 bg-tp-purple text-white rounded-xl shadow-lg">
               <BrainIcon className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black text-tp-purple uppercase tracking-[0.4em]">Personalized Path</span>
+            <span className="text-[10px] font-black text-tp-purple uppercase tracking-[0.4em]">Personalized Academy</span>
           </div>
           <h1 className="text-5xl font-black text-tp-purple tracking-tighter leading-none">
             {user.name.split(' ')[0]}'s Hub
           </h1>
           <p className="text-gray-500 font-bold uppercase tracking-[0.2em] text-[10px] mt-4">
-            CEFR: {user.languageLevel} • ID: {user.id}
+            CEFR: {user.languageLevel} • Roster: {user.rosterId || 'Enterprise'}
           </p>
         </div>
 
@@ -163,7 +176,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
           <div className="bg-white px-8 py-5 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-6 w-fit ml-auto">
             <div className="text-center">
               <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
-              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Proficiency</p>
+              <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Module Mastery</p>
             </div>
             <div className="w-12 h-12 bg-tp-red/10 rounded-full flex items-center justify-center text-tp-red">
               <TrendingUpIcon className="w-6 h-6" />
@@ -181,8 +194,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
               <button
                 key={skill.name}
                 onClick={() => setActiveSkill(skill.name as SkillCategory)}
-                className={`flex items-center gap-2 px-4 py-2.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${
-                  activeSkill === skill.name ? 'bg-tp-purple text-white shadow-lg' : 'text-gray-400 hover:text-tp-purple'
+                className={`flex items-center gap-2 px-5 py-2.5 rounded-[18px] text-[10px] font-black uppercase tracking-widest transition-all ${
+                  activeSkill === skill.name ? 'bg-tp-purple text-white shadow-lg shadow-tp-purple/20' : 'text-gray-400 hover:text-tp-purple'
                 }`}
               >
                 {skill.name}
@@ -193,29 +206,29 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
       </div>
 
       {recommended.length > 0 && (
-        <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden">
-          <div className="absolute top-0 right-0 p-10 opacity-[0.05] pointer-events-none">
-            <TargetIcon className="w-64 h-64 text-white" />
+        <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/30">
+          <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none">
+            <TargetIcon className="w-80 h-80 text-white" />
           </div>
           <div className="relative z-10">
             <h2 className="text-2xl font-black flex items-center tracking-tight uppercase mb-8">
-              <TargetIcon className="mr-3 text-tp-red" /> Priority Modules
+              <TargetIcon className="mr-3 text-tp-red" /> Active Priority Path
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {recommended.map((res) => (
-                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 transition-all cursor-pointer flex flex-col justify-between h-[180px]">
+                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 transition-all cursor-pointer flex flex-col justify-between h-[180px] group">
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-[10px] font-black text-tp-red uppercase tracking-[0.2em]">{res.tags[0]}</p>
-                      <span className="text-[8px] font-bold bg-white/20 px-2 py-0.5 rounded uppercase">
-                        {res.progress?.status === 'assigned' ? 'MANUAL' : 'GAP MATCH'}
+                      <span className="text-[8px] font-black bg-white/20 px-2 py-0.5 rounded-lg uppercase tracking-widest">
+                        {res.progress?.status === 'assigned' ? 'COACH ASSIGNMENT' : 'AI GAP MATCH'}
                       </span>
                     </div>
-                    <h3 className="font-bold text-lg leading-tight line-clamp-2">{res.title}</h3>
+                    <h3 className="font-bold text-lg leading-tight line-clamp-2 group-hover:text-white transition-colors">{res.title}</h3>
                   </div>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">{res.type}</span>
-                    <span className="text-xs font-black uppercase tracking-widest hover:text-tp-red transition-colors">Start →</span>
+                    <span className="text-xs font-black uppercase tracking-widest group-hover:text-tp-red transition-all">Launch Module →</span>
                   </div>
                 </div>
               ))}
@@ -226,15 +239,22 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-4">
-          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl h-full">
-            <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em] mb-6">Skill Calibration</h3>
+          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl h-full flex flex-col">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-1.5 h-6 bg-tp-red rounded-full"></div>
+              <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Competency Calibration</h3>
+            </div>
+            
             <RadarChart data={metrics.map(m => ({ label: m.label, value: m.val }))} />
-            <div className="w-full space-y-4 mt-8">
+            
+            <div className="w-full space-y-4 mt-auto">
               {metrics.map(({ label, val, raw }) => (
                 <div key={label}>
                   <div className="flex justify-between text-[10px] font-black uppercase mb-1">
                     <span className="text-tp-purple">{label}</span>
-                    <span className={val < GAP_THRESHOLD_NORMALIZED ? 'text-tp-red' : 'text-green-600'}>{raw}</span>
+                    <span className={val < GAP_THRESHOLD_NORMALIZED ? 'text-tp-red' : 'text-green-600'}>
+                      {typeof raw === 'number' ? raw.toFixed(1) : raw}
+                    </span>
                   </div>
                   <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
                     <div className={`h-full transition-all duration-1000 ${val < GAP_THRESHOLD_NORMALIZED ? 'bg-tp-red' : 'bg-tp-purple'}`} style={{ width: `${Math.min(val, 100)}%` }}></div>
@@ -248,23 +268,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         <div className="lg:col-span-8">
           <div className="flex items-center justify-between mb-8 px-4">
              <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">Mastery Log</h2>
-             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Completed</p>
+             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Certified Records</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
             {filteredCurriculum.map((res) => (
-              <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-lg cursor-pointer grayscale opacity-60">
+              <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-lg cursor-pointer grayscale opacity-50 hover:grayscale-0 hover:opacity-100 group">
                  <div className="flex justify-between items-start mb-4">
-                    <div className="p-2.5 rounded-xl bg-green-100 text-green-600">
+                    <div className="p-2.5 rounded-xl bg-green-100 text-green-600 group-hover:bg-tp-red group-hover:text-white transition-colors">
                       <CheckCircleIcon className="w-5 h-5" filled />
                     </div>
-                    <span className="text-[9px] font-black text-gray-400 uppercase">{res.level}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[8px] font-black bg-tp-purple/5 text-tp-purple px-2 py-0.5 rounded uppercase">{res.tags[0]}</span>
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{res.level}</span>
+                    </div>
                  </div>
                  <h3 className="font-black text-tp-purple text-base leading-tight">{res.title}</h3>
               </div>
             ))}
             {filteredCurriculum.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-400 font-bold uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px]">
-                No completed records found.
+              <div className="col-span-full py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px]">
+                Awaiting certification milestones.
               </div>
             )}
           </div>
