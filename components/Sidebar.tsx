@@ -51,7 +51,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
             <>
               <NavItem view={{ type: 'admin' }} currentView={currentView} onNavigate={onNavigate}>
                   <AdminIcon />
-                  <span className="ml-3">Admin Panel</span>
+                  <span className="ml-3 font-bold">Admin Panel</span>
               </NavItem>
               <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
                 <SpeakingIcon className="w-5 h-5" />
@@ -63,28 +63,28 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
           {isCoach && (
             <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
                <AdminIcon className="w-5 h-5" />
-               <span className="ml-3">Coach Hub</span>
+               <span className="ml-3 font-bold">Coach Hub</span>
             </NavItem>
           )}
         </ul>
 
-        <div className="mt-8 mb-4 px-6"><h2 className="text-xs font-bold text-white/60 uppercase tracking-[0.2em]">Development Areas</h2></div>
+        <div className="mt-8 mb-4 px-6"><h2 className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Core Skills</h2></div>
         <ul>
             <NavItem view={{ type: 'dashboard', skill: 'Listening' }} currentView={currentView} onNavigate={onNavigate}>
-                <ListeningIcon className="w-5 h-5 opacity-80 text-tp-red" />
-                <span className="ml-3">Listening Skill</span>
+                <ListeningIcon className="w-5 h-5 opacity-80" />
+                <span className="ml-3">Listening</span>
             </NavItem>
             <NavItem view={{ type: 'dashboard', skill: 'Speaking' }} currentView={currentView} onNavigate={onNavigate}>
-                <SpeakingIcon className="w-5 h-5 opacity-80 text-tp-red" />
-                <span className="ml-3">Speaking Skill</span>
+                <SpeakingIcon className="w-5 h-5 opacity-80" />
+                <span className="ml-3">Speaking</span>
             </NavItem>
             <NavItem view={{ type: 'dashboard', skill: 'Reading' }} currentView={currentView} onNavigate={onNavigate}>
-                <ReadingIcon className="w-5 h-5 opacity-80 text-tp-red" />
-                <span className="ml-3">Reading Skill</span>
+                <ReadingIcon className="w-5 h-5 opacity-80" />
+                <span className="ml-3">Reading</span>
             </NavItem>
             <NavItem view={{ type: 'dashboard', skill: 'Writing' }} currentView={currentView} onNavigate={onNavigate}>
-                <PracticeIcon className="w-5 h-5 opacity-80 text-tp-red" />
-                <span className="ml-3">Writing Skill</span>
+                <PracticeIcon className="w-5 h-5 opacity-80" />
+                <span className="ml-3">Writing</span>
             </NavItem>
         </ul>
         
@@ -94,15 +94,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
             className="flex items-center w-full py-3 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
           >
             <ExitIcon className="w-5 h-5" />
-            <span className="ml-3 text-sm font-bold uppercase tracking-widest">Logout Session</span>
+            <span className="ml-3 text-[11px] font-black uppercase tracking-widest">Logout Session</span>
           </button>
         </div>
       </nav>
 
       <div className="p-6 border-t border-white/5">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest">Lufthansa Specialized Track</p>
-              <p className="text-[9px] text-white/30 font-medium mt-1 uppercase tracking-widest">Academy © 2025</p>
+              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest leading-tight">Lufthansa Specialized Track</p>
+              <p className="text-[9px] text-white/30 font-medium mt-1 uppercase tracking-widest">Skillence © 2025</p>
           </div>
       </div>
     </div>

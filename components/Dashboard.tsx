@@ -35,7 +35,6 @@ const RadarChart: React.FC<{ data: { label: string; value: number }[] }> = ({ da
   const radius = size * 0.4;
   const angleStep = (Math.PI * 2) / data.length;
 
-  // Calculate coordinates for the polygon
   const points = data.map((d, i) => {
     const angle = i * angleStep - Math.PI / 2;
     const r = (Math.min(d.value, 100) / 100) * radius;
@@ -56,7 +55,6 @@ const RadarChart: React.FC<{ data: { label: string; value: number }[] }> = ({ da
   return (
     <div className="flex justify-center items-center w-full my-4">
       <svg width={size} height={size + 40} viewBox={`0 0 ${size} ${size + 40}`} className="overflow-visible">
-        {/* Background webs */}
         {[0.2, 0.4, 0.6, 0.8, 1].map((lvl) => (
           <polygon
             key={lvl}
@@ -71,34 +69,20 @@ const RadarChart: React.FC<{ data: { label: string; value: number }[] }> = ({ da
           />
         ))}
 
-        {/* Axes */}
         {axisLines.map((line, i) => (
           <g key={i}>
             <line x1={center} y1={center} x2={line.x} y2={line.y} className="stroke-gray-100 stroke-1" />
-            <text
-              x={line.labelX}
-              y={line.labelY}
-              textAnchor="middle"
-              className="text-[9px] font-black fill-tp-purple uppercase tracking-tighter"
-            >
-              {line.label}
-            </text>
+            <text x={line.labelX} y={line.labelY} textAnchor="middle" className="text-[9px] font-black fill-tp-purple uppercase tracking-tighter">{line.label}</text>
           </g>
         ))}
 
-        {/* Data points */}
-        <polygon
-          points={points}
-          className="fill-tp-red/20 stroke-tp-red stroke-2 transition-all duration-500"
-        />
+        <polygon points={points} className="fill-tp-red/20 stroke-tp-red stroke-2 transition-all duration-500" />
         {data.map((d, i) => {
           const angle = i * angleStep - Math.PI / 2;
           const r = (Math.min(d.value, 100) / 100) * radius;
           const x = center + r * Math.cos(angle);
           const y = center + r * Math.sin(angle);
-          return (
-            <circle key={i} cx={x} cy={y} r="3" className="fill-white stroke-tp-red stroke-1" />
-          );
+          return <circle key={i} cx={x} cy={y} r="3" className="fill-white stroke-tp-red stroke-1" />;
         })}
       </svg>
     </div>
@@ -109,12 +93,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
   const [activeSkill, setActiveSkill] = useState<SkillCategory>(initialSkill || 'All');
 
   useEffect(() => {
-    if (initialSkill) {
-      setActiveSkill(initialSkill);
-    }
+    if (initialSkill) setActiveSkill(initialSkill);
   }, [initialSkill]);
 
-  // Threshold for identifying an "Opportunity" (Gap)
   const GAP_THRESHOLD_NORMALIZED = 80;
 
   const metrics = useMemo(() => {
@@ -132,7 +113,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
   }, [user.shlData]);
 
   const { recommended, filteredCurriculum } = useMemo(() => {
-    // Identify Gaps based on the 80 normalized threshold
     const lowScores = metrics.filter(m => m.val < GAP_THRESHOLD_NORMALIZED);
     const gapTags = lowScores.map(m => m.tag.toLowerCase());
 
@@ -140,28 +120,17 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     const curriculum: Resource[] = [];
 
     resources.forEach(res => {
-      const isCompleted = res.progress?.status === 'completed';
+      const matchesSkill = activeSkill === 'All' || res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
       const isRelevantToGap = res.tags.some(t => gapTags.includes(t.toLowerCase()));
 
-      const matchesSkill = activeSkill === 'All' || res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
-
       if (matchesSkill) {
-        if (isRelevantToGap && !isCompleted) {
+        if (isRelevantToGap && res.progress?.status !== 'completed') {
           recs.push(res);
         } else {
           curriculum.push(res);
         }
       }
     });
-
-    const sortFn = (a: Resource, b: Resource) => {
-      const aDone = a.progress?.status === 'completed' ? 1 : 0;
-      const bDone = b.progress?.status === 'completed' ? 1 : 0;
-      return aDone - bDone;
-    };
-
-    recs.sort(sortFn);
-    curriculum.sort(sortFn);
 
     return {
       recommended: recs.slice(0, 3), 
@@ -183,29 +152,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
 
   return (
     <div className="space-y-10 animate-fadeIn">
-      {/* Header & Skill Selector */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
           <div className="flex items-center gap-3 mb-3">
             <div className="p-2.5 bg-tp-purple text-white rounded-xl shadow-lg">
               <BrainIcon className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-black text-tp-purple uppercase tracking-[0.4em]">Skill-Gap Mapping</span>
+            <span className="text-[10px] font-black text-tp-purple uppercase tracking-[0.4em]">Dual-Scale Gap Analysis</span>
           </div>
           <h1 className="text-5xl font-black text-tp-purple tracking-tighter leading-none">
             {user.name.split(' ')[0]}'s Hub
           </h1>
-          <div className="flex items-center gap-4 mt-4">
+          <div className="mt-4">
             <p className="text-gray-500 font-bold uppercase tracking-[0.2em] text-[10px] flex items-center">
               <span className="w-12 h-0.5 bg-tp-red mr-4"></span>
-              Level: {user.languageLevel} • ID: {user.id}
+              Proficiency: {user.languageLevel} • Account: {user.id}
             </p>
           </div>
         </div>
 
         <div className="flex flex-col items-end gap-6 w-full md:w-auto">
-          {/* Overall Mastery Card */}
-          <div className="bg-white px-8 py-5 rounded-[32px] shadow-[0_20px_40px_rgba(46,8,84,0.05)] border border-gray-100 flex items-center gap-6 w-fit ml-auto">
+          <div className="bg-white px-8 py-5 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-6 w-fit ml-auto">
             <div className="text-center">
               <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Overall Mastery</p>
@@ -215,8 +182,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
             </div>
           </div>
 
-          {/* 4-Skill Selector Panel */}
-          <div className="bg-white p-1.5 rounded-[24px] shadow-sm border border-gray-100 flex flex-wrap gap-1 justify-center md:justify-end">
+          {/* 4-Skill Selector on the Right */}
+          <div className="bg-white p-1.5 rounded-[24px] shadow-sm border border-gray-100 flex flex-wrap gap-1 justify-end ml-auto">
             {skillButtons.map((skill) => (
               <button
                 key={skill.name}
@@ -235,27 +202,18 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
       </div>
 
-      {/* Opportunities / Gap Remediation */}
       {recommended.length > 0 && (
         <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/20">
           <div className="absolute top-0 right-0 p-10 opacity-[0.05] pointer-events-none">
             <TargetIcon className="w-64 h-64 text-white" />
           </div>
           <div className="relative z-10">
-            <div className="flex flex-col mb-8">
-              <h2 className="text-2xl font-black flex items-center tracking-tight uppercase">
-                <TargetIcon className="mr-3 text-tp-red" /> Development Opportunities
-              </h2>
-              <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest mt-1">High-impact tasks addressing scores below {GAP_THRESHOLD_NORMALIZED}% normalized</p>
-            </div>
-
+            <h2 className="text-2xl font-black flex items-center tracking-tight uppercase mb-8">
+              <TargetIcon className="mr-3 text-tp-red" /> Priority Opportunities
+            </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {recommended.map((res) => (
-                <div 
-                  key={res.id} 
-                  onClick={() => onOpenResource(res)}
-                  className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 hover:scale-[1.02] transition-all cursor-pointer group flex flex-col justify-between h-[180px]"
-                >
+                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 hover:scale-[1.02] transition-all cursor-pointer group flex flex-col justify-between h-[180px]">
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-[10px] font-black text-tp-red uppercase tracking-[0.2em] truncate">{res.tags[0]}</p>
@@ -265,7 +223,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                   </div>
                   <div className="flex items-center justify-between mt-4">
                     <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">{res.type}</span>
-                    <span className="text-xs font-black uppercase tracking-widest group-hover:text-tp-red transition-colors">Improve Gap →</span>
+                    <span className="text-xs font-black uppercase tracking-widest group-hover:text-tp-red transition-colors">Start Path →</span>
                   </div>
                 </div>
               ))}
@@ -274,9 +232,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
       )}
 
-      {/* Stats Visualization Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Competency Visualization (Powered by normalized SHL data) */}
         <div className="lg:col-span-4">
           <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl relative overflow-hidden h-full flex flex-col items-center">
             <div className="absolute top-0 left-0 w-2 h-full bg-tp-red"></div>
@@ -284,7 +240,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
               <div className="w-10 h-10 bg-tp-red/10 rounded-xl flex items-center justify-center text-tp-red">
                 <TargetIcon className="w-5 h-5" />
               </div>
-              <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Competency Radar</h3>
+              <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Skill Radar (100% Scale)</h3>
             </div>
             
             <RadarChart data={metrics.map(m => ({ label: m.label, value: m.val }))} />
@@ -299,38 +255,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                     </span>
                   </div>
                   <div className="w-full h-1 bg-gray-100 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full transition-all duration-1000 ${val < GAP_THRESHOLD_NORMALIZED ? 'bg-tp-red' : 'bg-tp-purple'}`} 
-                      style={{ width: `${Math.min(val, 100)}%` }}
-                    ></div>
+                    <div className={`h-full transition-all duration-1000 ${val < GAP_THRESHOLD_NORMALIZED ? 'bg-tp-red' : 'bg-tp-purple'}`} style={{ width: `${Math.min(val, 100)}%` }}></div>
                   </div>
                 </div>
               ))}
             </div>
-
-            <div className="mt-8 p-6 bg-tp-purple text-white rounded-3xl w-full text-center">
-               <p className="text-[10px] font-black text-white/50 uppercase tracking-widest mb-1">Lufthansa Proficiency</p>
-               <p className="text-2xl font-black">{user.languageLevel}</p>
-            </div>
           </div>
         </div>
 
-        {/* Filtered Curriculum List */}
         <div className="lg:col-span-8">
           <div className="flex items-center justify-between mb-8 px-4">
             <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">
-              {activeSkill === 'All' ? 'Assigned Curriculum' : `${activeSkill} Specialized Track`}
+              {activeSkill === 'All' ? 'Full Curriculum' : `${activeSkill} Focused Path`}
             </h2>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Items Found</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Modules</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
             {filteredCurriculum.map((res) => (
-              <div 
-                key={res.id} 
-                onClick={() => onOpenResource(res)}
-                className={`group bg-white p-6 rounded-[32px] border border-gray-100 shadow-[0_15px_30px_rgba(0,0,0,0.03)] transition-all hover:shadow-2xl hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[140px] ${res.progress?.status === 'completed' ? 'grayscale opacity-60' : ''}`}
-              >
+              <div key={res.id} onClick={() => onOpenResource(res)} className={`group bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-2xl hover:-translate-y-1 cursor-pointer flex flex-col justify-between min-h-[140px] ${res.progress?.status === 'completed' ? 'grayscale opacity-60' : ''}`}>
                 <div className="flex justify-between items-start mb-4">
                   <div className={`p-2.5 rounded-xl ${res.progress?.status === 'completed' ? 'bg-green-100 text-green-600' : 'bg-tp-purple/5 text-tp-purple'}`}>
                     <CheckCircleIcon className="w-5 h-5" filled={res.progress?.status === 'completed'} />

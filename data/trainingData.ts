@@ -5,9 +5,9 @@ import { ListeningIcon, SpeakingIcon, ReadingIcon, AirlineIcon, GlobeIcon, Phone
 import { ResourceType } from '../types';
 
 const listeningLessons: Lesson[] = [
-    { title: 'Global Business Phonetics', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep50', duration: '15 min', objective: 'Mastering professional greetings and phonetic clarity.' },
-    { title: 'Active Listening for Client Care', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep68', duration: '20 min', objective: 'Handling complex multi-part requests and technical details.' },
-    { title: 'De-escalation & Empathy Skills', level: 'B2', type: ResourceType.Listen, link: 'https://thebusinessenglishpodcast.com/blog-ep15', duration: '25 min', objective: 'Managing frustrated clients with high-stakes communication.' },
+    { title: 'Global Business Phonetics', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglish podcast.com/blog-ep50', duration: '15 min', objective: 'Mastering professional greetings and phonetic clarity.' },
+    { title: 'Active Listening for Client Care', level: 'B1', type: ResourceType.Listen, link: 'https://thebusinessenglish podcast.com/blog-ep68', duration: '20 min', objective: 'Handling complex multi-part requests and technical details.' },
+    { title: 'De-escalation & Empathy Skills', level: 'B2', type: ResourceType.Listen, link: 'https://thebusinessenglish podcast.com/blog-ep15', duration: '25 min', objective: 'Managing frustrated clients with high-stakes communication.' },
 ];
 
 const cultureLessons: Lesson[] = [
@@ -58,15 +58,4 @@ export const allTrainingModules: { [id: string]: Module } = {
   }
 };
 
-export const quizzes: Quiz[] = [
-    {
-        id: 'core_proficiency',
-        title: 'Academy Core Calibration',
-        description: 'Verifying language fundamentals and service etiquette.',
-    },
-    {
-        id: 'sales_mastery',
-        title: 'Strategic Sales Assessment',
-        description: 'Evaluating upselling techniques and value positioning.',
-    }
-];
+export const quizzes: Quiz[] = []; // Obsolete quizzes removed

@@ -66,7 +66,7 @@ export const googleSheetService = {
   },
     
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
-    callApi('create_user', userData),
+    callApi('register_shl_user', userData), // Action updated to match dual-scale backend
     
   fetchAllUsers: () => 
     callApi('admin_get_users'),
