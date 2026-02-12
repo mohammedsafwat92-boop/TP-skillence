@@ -9,6 +9,8 @@ export enum ResourceType {
   Practice = 'Practice',
 }
 
+export type SkillCategory = 'All' | 'Listening' | 'Speaking' | 'Reading' | 'Writing';
+
 export interface ResourceProgress {
   status: 'locked' | 'assigned' | 'open' | 'completed';
   attempts: number;
@@ -109,7 +111,7 @@ export interface Quiz {
 }
 
 export type View = 
-  | { type: 'dashboard' }
+  | { type: 'dashboard', skill?: SkillCategory }
   | { type: 'module'; moduleId: string }
   | { type: 'admin' }
   | { type: 'lesson'; resource: Resource; fromModuleId?: string }

@@ -1,7 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { googleSheetService } from '../../services/googleSheetService';
-import { DownloadIcon, PlusIcon, ClipboardListIcon, CheckCircleIcon, ExclamationCircleIcon } from '../Icons';
+import { geminiService } from '../../services/geminiService';
+import { DownloadIcon, PlusIcon, ClipboardListIcon, CheckCircleIcon, BrainIcon, LightningIcon } from '../Icons';
 
 interface ResourceUploaderProps {
   onSuccess: () => void;
@@ -10,6 +11,8 @@ interface ResourceUploaderProps {
 const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [isAuditing, setIsAuditing] = useState(false);
+  const [auditProgress, setAuditProgress] = useState({ current: 0, total: 0 });
   const [previewResources, setPreviewResources] = useState<any[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,8 +52,6 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
         if (fileName.includes('culture')) autoTags.push('Culture');
         if (fileName.includes('reading')) autoTags.push('Reading');
         if (fileName.includes('speaking')) autoTags.push('Speaking');
-        if (fileName.includes('fluency')) autoTags.push('Fluency');
-        if (fileName.includes('grammar')) autoTags.push('Grammar');
 
         const timestamp = new Date().getTime();
         const resources = lines.slice(1).map((line, idx) => {
@@ -58,7 +59,6 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
           const url = (cols[urlIdx] || '').trim();
           if (!url || !url.startsWith('http')) return null;
 
-          // Type Logic
           let type = 'Article';
           if (url.includes('youtube.com') || url.includes('youtu.be')) type = 'Video';
           else if (typeIdx !== -1 && cols[typeIdx]) {
@@ -67,7 +67,6 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
             else if (rawType.includes('audio')) type = 'Audio';
           }
 
-          // Strict Level Normalization for Gap Analysis
           let levelRaw = levelIdx !== -1 ? (cols[levelIdx] || 'All').trim() : 'All';
           const validLevels = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'All'];
           const levelMatched = validLevels.find(v => levelRaw.toUpperCase() === v.toUpperCase()) || 'All';
@@ -89,12 +88,68 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
     });
   };
 
+  const handleAiAudit = async () => {
+    setIsAuditing(true);
+    try {
+      // 1. Fetch current global resources
+      const currentResources = await googleSheetService.fetchGlobalResources();
+      if (!currentResources || currentResources.length === 0) {
+        alert("Registry is currently empty. Add resources before auditing.");
+        return;
+      }
+
+      setAuditProgress({ current: 0, total: currentResources.length });
+      const auditedResources = [];
+
+      // 2. Loop and analyze with Gemini
+      for (let i = 0; i < currentResources.length; i++) {
+        const res = currentResources[i];
+        
+        // Artificial delay to avoid burst rate limiting
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+
+        try {
+          const auditResult = await geminiService.analyzeResource({
+            title: res.title,
+            url: res.url,
+            objective: res.objective
+          });
+
+          // 3. Merge AI findings back into the resource object
+          auditedResources.push({
+            ...res,
+            tags: [auditResult.primarySkill, ...auditResult.subSkills],
+            objective: auditResult.refinedObjective
+          });
+        } catch (e) {
+          console.error(`Audit failed for ${res.title}:`, e);
+          // If we hit a fatal error even with retry, keep original but continue
+          auditedResources.push(res); 
+        }
+        setAuditProgress(prev => ({ ...prev, current: i + 1 }));
+      }
+
+      // 4. Batch push back to Google Sheets (Upsert Logic)
+      await googleSheetService.bulkImportResources(auditedResources);
+      alert(`AI Content Audit Complete: ${auditedResources.length} modules categorized with deep sub-skills.`);
+      onSuccess();
+    } catch (err) {
+      alert("AI Audit Failed: " + (err as Error).message);
+    } finally {
+      setIsAuditing(false);
+      setAuditProgress({ current: 0, total: 0 });
+    }
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
     setIsProcessing(true);
     let allFound: any[] = [];
-    for (const file of Array.from(files)) {
+    // Fix: Explicitly cast to File[] to avoid 'unknown' type errors during FileList iteration.
+    for (const file of Array.from(files) as File[]) {
       if (file.name.toLowerCase().endsWith('.csv')) {
         const results = await processFile(file);
         allFound = [...allFound, ...results];
@@ -128,7 +183,8 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
         onDrop={async (e) => {
           e.preventDefault();
           setIsDragging(false);
-          const files = Array.from(e.dataTransfer.files).filter(f => f.name.endsWith('.csv'));
+          // Fix: Explicitly cast FileList to File[] to avoid 'unknown' type errors when accessing .name and passing to processFile.
+          const files = (Array.from(e.dataTransfer.files) as File[]).filter(f => f.name.endsWith('.csv'));
           setIsProcessing(true);
           let allFound: any[] = [];
           for (const f of files) {
@@ -148,31 +204,56 @@ const ResourceUploader: React.FC<ResourceUploaderProps> = ({ onSuccess }) => {
           </div>
           <h3 className="text-3xl font-black text-white uppercase tracking-tight mb-4">Master Content Registry</h3>
           <p className="text-white/60 font-medium mb-10 leading-relaxed px-4">
-            Upload CSV exports from <strong>Lufthansa Training Portals</strong>. Content will be mapped to the Gap Analysis Engine based on level and skill tags.
+            Upload CSV exports from <strong>Lufthansa Training Portals</strong>. Trigger the AI Auditor to deep-categorize modules for the Gap Analysis Engine.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button 
               onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing || isSyncing}
+              disabled={isProcessing || isSyncing || isAuditing}
               className="bg-white text-tp-purple px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-tp-red hover:text-white transition-all shadow-xl disabled:opacity-50"
             >
               {isProcessing ? 'Reading Files...' : 'Select CSV Files'}
             </button>
             
+            <button 
+              onClick={handleAiAudit}
+              disabled={isProcessing || isSyncing || isAuditing}
+              className={`flex items-center gap-3 bg-tp-purple text-white px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-tp-navy transition-all shadow-xl disabled:opacity-50 border border-white/10 ${isAuditing ? 'animate-pulse' : ''}`}
+            >
+              <BrainIcon className="w-4 h-4" />
+              {isAuditing ? `Auditing ${auditProgress.current}/${auditProgress.total}` : 'AI Content Audit'}
+            </button>
+
             {previewResources.length > 0 && (
               <button 
                 onClick={handleConfirm}
-                disabled={isProcessing || isSyncing}
-                className="bg-tp-red text-white px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-700 transition-all shadow-xl animate-bounce"
+                disabled={isProcessing || isSyncing || isAuditing}
+                className="bg-tp-red text-white px-10 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest hover:bg-red-700 transition-all shadow-xl"
               >
-                {isSyncing ? 'Writing to Cloud...' : `Sync ${previewResources.length} Items`}
+                {isSyncing ? 'Writing...' : `Sync ${previewResources.length} Items`}
               </button>
             )}
           </div>
           <input type="file" ref={fileInputRef} className="hidden" multiple accept=".csv" onChange={handleFileChange} />
         </div>
       </div>
+
+      {isAuditing && (
+        <div className="bg-white/5 border border-white/10 p-6 rounded-[32px] animate-fadeIn">
+          <div className="flex justify-between items-center mb-4">
+            <span className="text-[10px] font-black text-white/50 uppercase tracking-[0.4em]">Gemini 3 Pro Audit Pulse</span>
+            <span className="text-[10px] font-black text-tp-red uppercase">{Math.round((auditProgress.current / auditProgress.total) * 100)}%</span>
+          </div>
+          <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+             <div 
+               className="h-full bg-tp-red transition-all duration-500" 
+               style={{ width: `${(auditProgress.current / auditProgress.total) * 100}%` }}
+             ></div>
+          </div>
+          <p className="text-[9px] text-white/30 font-black uppercase tracking-widest mt-4 text-center">Identifying sub-skills and refining objectives for registry members...</p>
+        </div>
+      )}
 
       {previewResources.length > 0 && (
         <div className="bg-white rounded-[32px] p-8 border border-gray-100 shadow-xl animate-fadeIn">

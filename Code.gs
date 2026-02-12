@@ -26,6 +26,9 @@ function doPost(e) {
     } else if (action === 'get_user_plan') {
       res.data = getUserPlan(ss, json.uid);
       res.success = true;
+    } else if (action === 'get_all_resources') {
+      res.data = getAllResources(ss);
+      res.success = true;
     } else if (action === 'admin_get_users') {
       res.data = fetchAllUsers(ss);
       res.success = true;
@@ -47,7 +50,6 @@ function doPost(e) {
 
 /**
  * Helper to safely parse JSON strings from the spreadsheet.
- * This prevents the frontend from receiving raw strings that break charts.
  */
 function safeParse(str) {
   if (!str) return {};
@@ -59,26 +61,15 @@ function safeParse(str) {
   }
 }
 
-/**
- * Flexible Level Match Logic.
- * Handles exact matches, 'All', and ranges like 'B1-B2' or 'B2+'.
- */
 function isLevelMatch(resourceLevel, userLevel) {
   const r = String(resourceLevel || 'All').toUpperCase();
   const u = String(userLevel || '').toUpperCase();
-  
   if (r === 'ALL') return true;
   if (r === u) return true;
-  
-  // Range Match: Check if user level (e.g. B2) is contained in resource string (e.g. B1-B2)
   if (u && r.indexOf(u) !== -1) return true;
-  
   return false;
 }
 
-/**
- * Returns a filtered user plan with flexible level mapping.
- */
 function getUserPlan(ss, uid) {
   const userSheet = ss.getSheetByName('Users');
   const resSheet = ss.getSheetByName('Resources');
@@ -144,6 +135,26 @@ function getUserPlan(ss, uid) {
     });
   }
   return userPlan;
+}
+
+function getAllResources(ss) {
+  const sheet = ss.getSheetByName('Resources');
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  if (data.length < 2) return [];
+  const headers = data[0].map(h => h.toLowerCase());
+  
+  return data.slice(1).map(row => {
+    return {
+      id: String(row[headers.indexOf('id')]),
+      title: String(row[headers.indexOf('title')]),
+      url: String(row[headers.indexOf('url')]),
+      type: String(row[headers.indexOf('type')]),
+      tags: String(row[headers.indexOf('tags')] || "").split(',').filter(Boolean),
+      level: String(row[headers.indexOf('level')] || 'All'),
+      objective: String(row[headers.indexOf('objective')] || '')
+    };
+  });
 }
 
 function findUser(ss, email, password) {
@@ -222,23 +233,47 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   return { status: newStatus };
 }
 
+/**
+ * Advanced Bulk Import (Upsert Logic)
+ * If the resource ID exists, update the row. Otherwise, append.
+ */
 function handleBulkImport(ss, resources) {
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
   }
-  const timestamp = new Date().getTime();
-  const dataToPush = resources.map((res, index) => [
-    String(res.id || 'r-' + timestamp + '-' + index),
-    String(res.title || 'Untitled'),
-    String(res.url || '').trim(),
-    String(res.type || 'Article'),
-    Array.isArray(res.tags) ? res.tags.join(',') : String(res.tags || 'General'),
-    String(res.level || 'All'),
-    String(res.objective || 'N/A')
-  ]);
-  sheet.getRange(sheet.getLastRow() + 1, 1, dataToPush.length, 7).setValues(dataToPush);
-  return { count: dataToPush.length, status: 'Success' };
+  
+  const data = sheet.getDataRange().getValues();
+  const headers = data[0];
+  const idColIdx = 0; // 'id' is always 1st column
+
+  const existingIds = data.slice(1).map(row => String(row[idColIdx]));
+  
+  resources.forEach(res => {
+    const resId = String(res.id);
+    const rowIdx = existingIds.indexOf(resId);
+    const rowData = [
+      resId,
+      String(res.title || 'Untitled'),
+      String(res.url || '').trim(),
+      String(res.type || 'Article'),
+      Array.isArray(res.tags) ? res.tags.join(',') : String(res.tags || 'General'),
+      String(res.level || 'All'),
+      String(res.objective || 'N/A')
+    ];
+
+    if (rowIdx !== -1) {
+      // Update existing (rowIdx is 0-based for the data slice, so +2 for 1-based sheet row)
+      sheet.getRange(rowIdx + 2, 1, 1, 7).setValues([rowData]);
+    } else {
+      // Append new
+      sheet.appendRow(rowData);
+      existingIds.push(resId);
+    }
+  });
+
+  SpreadsheetApp.flush();
+  return { count: resources.length, status: 'Success' };
 }
 
 function sendResponse(obj) {

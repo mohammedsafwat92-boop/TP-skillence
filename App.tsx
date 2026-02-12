@@ -193,6 +193,7 @@ const App: React.FC = () => {
         resources={userPlan} 
         onNavigate={handleNavigate} 
         onOpenResource={(res) => setView({ type: 'lesson', resource: res })} 
+        initialSkill={view.type === 'dashboard' ? view.skill : undefined}
       />
     );
   };

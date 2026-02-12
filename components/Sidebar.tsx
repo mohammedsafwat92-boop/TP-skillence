@@ -70,19 +70,19 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
 
         <div className="mt-8 mb-4 px-6"><h2 className="text-xs font-bold text-white/60 uppercase tracking-[0.2em]">Development Areas</h2></div>
         <ul>
-            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+            <NavItem view={{ type: 'dashboard', skill: 'Listening' }} currentView={currentView} onNavigate={onNavigate}>
                 <ListeningIcon className="w-5 h-5 opacity-80 text-tp-red" />
                 <span className="ml-3">Listening Skill</span>
             </NavItem>
-            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+            <NavItem view={{ type: 'dashboard', skill: 'Speaking' }} currentView={currentView} onNavigate={onNavigate}>
                 <SpeakingIcon className="w-5 h-5 opacity-80 text-tp-red" />
                 <span className="ml-3">Speaking Skill</span>
             </NavItem>
-            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+            <NavItem view={{ type: 'dashboard', skill: 'Reading' }} currentView={currentView} onNavigate={onNavigate}>
                 <ReadingIcon className="w-5 h-5 opacity-80 text-tp-red" />
                 <span className="ml-3">Reading Skill</span>
             </NavItem>
-            <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
+            <NavItem view={{ type: 'dashboard', skill: 'Writing' }} currentView={currentView} onNavigate={onNavigate}>
                 <PracticeIcon className="w-5 h-5 opacity-80 text-tp-red" />
                 <span className="ml-3">Writing Skill</span>
             </NavItem>
