@@ -39,6 +39,9 @@ function doPost(e) {
       const result = handleBulkImport(ss, json.resources);
       res.data = result;
       res.success = true;
+    } else if (action === 'assign_manual_resource') {
+      res.data = manualAssign(ss, json.uid, json.resourceId);
+      res.success = true;
     }
 
   } catch (err) {
@@ -46,6 +49,33 @@ function doPost(e) {
     console.error("Critical Backend Failure:", err);
   }
   return sendResponse(res);
+}
+
+function manualAssign(ss, uid, resourceId) {
+  const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt']);
+  }
+  const data = sheet.getDataRange().getValues();
+  let foundRow = -1;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(uid) && String(data[i][1]) === String(resourceId)) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  if (foundRow === -1) {
+    sheet.appendRow([uid, resourceId, 'assigned', 0, 0, new Date()]);
+  } else {
+    // If it exists, ensure it is at least 'assigned' or 'open'
+    const currentStatus = data[foundRow-1][2];
+    if (currentStatus === 'locked') {
+      sheet.getRange(foundRow, 3).setValue('assigned');
+    }
+  }
+  return { status: 'assigned' };
 }
 
 /**
@@ -233,10 +263,6 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   return { status: newStatus };
 }
 
-/**
- * Advanced Bulk Import (Upsert Logic)
- * If the resource ID exists, update the row. Otherwise, append.
- */
 function handleBulkImport(ss, resources) {
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
@@ -245,7 +271,7 @@ function handleBulkImport(ss, resources) {
   
   const data = sheet.getDataRange().getValues();
   const headers = data[0];
-  const idColIdx = 0; // 'id' is always 1st column
+  const idColIdx = 0; 
 
   const existingIds = data.slice(1).map(row => String(row[idColIdx]));
   
@@ -263,10 +289,8 @@ function handleBulkImport(ss, resources) {
     ];
 
     if (rowIdx !== -1) {
-      // Update existing (rowIdx is 0-based for the data slice, so +2 for 1-based sheet row)
       sheet.getRange(rowIdx + 2, 1, 1, 7).setValues([rowData]);
     } else {
-      // Append new
       sheet.appendRow(rowData);
       existingIds.push(resId);
     }

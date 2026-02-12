@@ -66,7 +66,7 @@ export const googleSheetService = {
   },
     
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
-    callApi('register_shl_user', userData), // Action updated to match dual-scale backend
+    callApi('register_shl_user', userData),
     
   fetchAllUsers: () => 
     callApi('admin_get_users'),
@@ -78,10 +78,12 @@ export const googleSheetService = {
     callApi('admin_import_resource', resourceData),
 
   bulkImportResources: (resources: any[]) => {
-    console.log(`[googleSheetService] Bulk Import Payload Size: ${resources.length} units`);
     return callApi('bulk_import_resources', { resources });
   },
 
   unlockResource: (uid: string, resourceId: string) =>
-    callApi('admin_unlock_resource', { uid, resourceId })
+    callApi('admin_unlock_resource', { uid, resourceId }),
+
+  assignManualResource: (uid: string, resourceId: string) =>
+    callApi('assign_manual_resource', { uid, resourceId })
 };

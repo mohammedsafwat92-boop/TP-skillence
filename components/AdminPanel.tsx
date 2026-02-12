@@ -4,8 +4,8 @@ import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon, CheckCircleIcon } from './Icons';
-import type { UserProfile } from '../types';
+import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, LightningIcon, CheckCircleIcon, XIcon, TableIcon } from './Icons';
+import type { UserProfile, Resource } from '../types';
 
 interface AdminPanelProps {
   onUpdateContent: () => void;
@@ -15,74 +15,53 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
-  // Hard Failsafe: Only Admins can render this component logic
   if (currentUser.role !== 'admin') return null;
 
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'content'>('users');
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
-  const [urlInput, setUrlInput] = useState('');
   const [userList, setUserList] = useState<UserProfile[]>([]);
+  const [globalResources, setGlobalResources] = useState<Resource[]>([]);
+  const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
 
   const fetchUsers = async () => {
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
-      const realUsers = Array.isArray(users) ? users : [];
-      setUserList(realUsers);
-      console.log("[AdminPanel] Fetched Registry:", realUsers);
+      setUserList(Array.isArray(users) ? users : []);
     } catch (err) {
-      console.error("Failed to fetch registry:", err);
       setUserList([]);
     } finally {
       setIsProcessing(false);
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'users') fetchUsers();
-  }, [activeTab]);
-
-  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (onFileProcessed) {
-      await onFileProcessed(file);
-    } else {
-      setIsProcessing(true);
-      try {
-        const result = await shlService.processAndRegister(file);
-        alert(`Success! Registry updated for ${result.shlData.candidateName}.`);
-        onUpdateContent();
-        if (activeTab === 'users') fetchUsers();
-      } catch (err) {
-        alert("Multimodal Registration Failed: " + (err as Error).message);
-      } finally {
-        setIsProcessing(false);
-      }
+  const fetchResources = async () => {
+    try {
+      const res = await googleSheetService.fetchGlobalResources();
+      setGlobalResources(Array.isArray(res) ? res : []);
+    } catch (e) {
+      setGlobalResources([]);
     }
-    
-    if (e.target) e.target.value = "";
   };
 
-  const handleUrlAnalysis = async () => {
-    if (!urlInput) return;
+  useEffect(() => {
+    fetchUsers();
+    fetchResources();
+  }, [activeTab]);
+
+  const handleManualAssign = async (resourceId: string) => {
+    if (!selectedTargetUserId) {
+      alert("Please select a target student first.");
+      return;
+    }
     setIsProcessing(true);
     try {
-      const analysis = await geminiService.analyzeResourceUrl(urlInput);
-      await googleSheetService.importResource({ 
-        title: analysis.title,
-        level: analysis.level,
-        tags: [analysis.skillTag],
-        objective: analysis.objective,
-        type: 'Hyperlink',
-        url: urlInput 
-      });
-      alert("Resource analyzed and deployed globally.");
-      setUrlInput('');
+      await googleSheetService.assignManualResource(selectedTargetUserId, resourceId);
+      const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
+      alert(`Successfully assigned to ${studentName}`);
       onUpdateContent();
-    } catch (err) {
-      alert("Resource Analysis Failed");
+    } catch (e) {
+      alert("Manual assignment failed.");
     } finally {
       setIsProcessing(false);
     }
@@ -94,28 +73,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     const rows = userList.map(u => {
       const svar = u.shlData?.svar?.overall ?? 'N/A';
       const writex = u.shlData?.writex?.grammar ?? 'N/A';
-      return [
-        u.id,
-        `"${u.name}"`,
-        u.email || 'N/A',
-        u.role,
-        u.languageLevel || 'N/A',
-        svar,
-        writex,
-        u.assignedCoach || 'Unassigned'
-      ].join(',');
+      return [u.id, `"${u.name}"`, u.email || 'N/A', u.role, u.languageLevel || 'N/A', svar, writex, u.assignedCoach || 'Unassigned'].join(',');
     }).join('\n');
 
     const csvContent = `${headers}\n${rows}`;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Academy_Registry_Export_${new Date().toISOString().slice(0,10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
+    link.href = URL.createObjectURL(blob);
+    link.download = `Registry_Export_${new Date().toISOString().slice(0,10)}.csv`;
     link.click();
-    document.body.removeChild(link);
   };
 
   return (
@@ -123,37 +89,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-12 gap-6">
         <div>
           <h1 className="text-3xl font-black text-tp-purple flex items-center tracking-tight uppercase">
-            <BrainIcon className="mr-4 text-tp-red" /> Admin Registry Hub
+            <BrainIcon className="mr-4 text-tp-red" /> Registry Master
           </h1>
-          <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Management Console</p>
+          <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Enterprise Console</p>
         </div>
-        <div className="flex bg-tp-purple/5 p-1 rounded-2xl">
-          {['users', 'onboarding', 'content'].map((tab) => (
+        <div className="flex bg-tp-purple/5 p-1 rounded-2xl overflow-x-auto max-w-full">
+          {[
+            { id: 'users', label: 'Roster' },
+            { id: 'library', label: 'Library' },
+            { id: 'onboarding', label: 'Onboarding' },
+            { id: 'content', label: 'Import' }
+          ].map((tab) => (
             <button 
-              key={tab}
-              onClick={() => setActiveTab(tab as any)} 
-              className={`px-8 py-3 rounded-xl text-xs font-black uppercase transition-all ${activeTab === tab ? 'bg-white text-tp-purple shadow-sm' : 'text-gray-500 hover:text-tp-purple'}`}
+              key={tab.id} 
+              onClick={() => setActiveTab(tab.id as any)} 
+              className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-tp-purple shadow-sm' : 'text-gray-500 hover:text-tp-purple'}`}
             >
-              {tab}
+              {tab.label}
             </button>
           ))}
         </div>
       </div>
 
-      {activeTab === 'content' && (
-        <ResourceUploader onSuccess={onUpdateContent} />
-      )}
-
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           <div className="flex justify-between items-center">
-             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Global Member Directory</h3>
-             <button 
-                onClick={exportToCsv}
-                disabled={userList.length === 0}
-                className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50"
-             >
-                <DownloadIcon className="w-4 h-4" /> Export Registry
+             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Roster</h3>
+             <button onClick={exportToCsv} disabled={userList.length === 0} className="flex items-center gap-3 bg-tp-navy text-white px-6 py-3 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50">
+                <DownloadIcon className="w-4 h-4" /> Export
              </button>
           </div>
           <div className="overflow-x-auto border border-gray-100 rounded-[32px] shadow-inner bg-gray-50/30">
@@ -161,118 +124,115 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               <thead>
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Name</th>
-                  <th className="px-8 py-5">Role</th>
-                  <th className="px-4 py-5 text-center">CEFR</th>
+                  <th className="px-4 py-5 text-center">Level</th>
                   <th className="px-4 py-5 text-center">SVAR</th>
-                  <th className="px-4 py-5 text-center">WriteX</th>
-                  <th className="px-8 py-5">Assigned Coach</th>
-                  <th className="px-8 py-5 text-right">Actions</th>
+                  <th className="px-8 py-5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {userList.map((user, idx) => {
-                  const svar = user.shlData?.svar?.overall ?? '--';
-                  const writex = user.shlData?.writex?.grammar ?? '--';
-
-                  return (
-                    <tr key={user.id || idx} className="hover:bg-tp-purple/[0.02] transition-colors group">
-                      <td className="px-8 py-5">
-                        <p className="font-bold text-tp-purple text-base leading-none">{user.name}</p>
-                        <p className="text-[10px] text-gray-400 font-medium mt-1">{user.email || 'N/A'}</p>
-                      </td>
-                      <td className="px-8 py-5">
-                        <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-[9px] font-black uppercase tracking-widest border border-gray-200">
-                          {user.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-5 text-center">
-                        <span className="text-tp-red font-black text-lg">{user.languageLevel || '--'}</span>
-                      </td>
-                      <td className="px-4 py-5 text-center">
-                        <span className="text-tp-purple font-black text-base">{svar}</span>
-                      </td>
-                      <td className="px-4 py-5 text-center">
-                        <span className="text-tp-purple font-black text-base">{writex}</span>
-                      </td>
-                      <td className="px-8 py-5">
-                        <p className="text-xs text-tp-purple font-bold italic">{user.assignedCoach || 'Unassigned'}</p>
-                      </td>
-                      <td className="px-8 py-5 text-right">
-                        {user.role === 'agent' ? (
-                          <button 
-                            onClick={() => onImpersonate(user)}
-                            className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md group-hover:scale-105"
-                          >
-                            View Profile
-                          </button>
-                        ) : (
-                          <span className="text-[9px] font-black text-tp-red uppercase tracking-widest bg-tp-red/10 px-3 py-1.5 rounded-lg border border-tp-red/20 inline-block">
-                            Internal Account
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!isProcessing && userList.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="py-20 text-center text-gray-400 font-black uppercase text-xs tracking-widest">
-                      No registered users found in database.
+                {userList.map((user) => (
+                  <tr key={user.id} className="hover:bg-tp-purple/[0.02] transition-colors group">
+                    <td className="px-8 py-5">
+                      <p className="font-bold text-tp-purple text-base leading-none">{user.name}</p>
+                      <p className="text-[10px] text-gray-400 font-medium mt-1">{user.email}</p>
+                    </td>
+                    <td className="px-4 py-5 text-center font-black text-tp-red">{user.languageLevel}</td>
+                    <td className="px-4 py-5 text-center font-black text-tp-purple">{user.shlData?.svar?.overall ?? '--'}</td>
+                    <td className="px-8 py-5 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button 
+                          onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
+                          className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all"
+                        >
+                          Assign
+                        </button>
+                        <button 
+                          onClick={() => onImpersonate(user)} 
+                          className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all"
+                        >
+                          View
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                )}
+                ))}
               </tbody>
             </table>
-            {isProcessing && (
-              <div className="py-20 text-center text-tp-purple font-black uppercase text-xs tracking-widest animate-pulse">Synchronizing database...</div>
-            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'library' && (
+        <div className="space-y-8 animate-fadeIn">
+          <div className="sticky top-0 bg-tp-purple rounded-[24px] p-6 shadow-xl flex flex-col md:flex-row items-center justify-between gap-4 z-30">
+            <div className="flex items-center gap-4">
+              <div className="p-2.5 bg-white/10 rounded-xl text-white">
+                <UserIcon className="w-5 h-5" />
+              </div>
+              <p className="text-white text-[10px] font-black uppercase tracking-widest">Target Student:</p>
+            </div>
+            <select 
+              value={selectedTargetUserId}
+              onChange={(e) => setSelectedTargetUserId(e.target.value)}
+              className="flex-1 max-w-md bg-white text-tp-purple font-bold px-6 py-3 rounded-xl outline-none border-2 border-transparent focus:border-tp-red transition-all"
+            >
+              <option value="">Select a student to assign modules...</option>
+              {userList.filter(u => u.role === 'agent').map(u => (
+                <option key={u.id} value={u.id}>{u.name} ({u.languageLevel})</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {globalResources.map(res => (
+              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-xl transition-all flex justify-between items-center group">
+                <div className="flex-1 pr-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[8px] font-black bg-tp-purple/5 text-tp-purple px-2 py-0.5 rounded uppercase">{res.tags[0]}</span>
+                    <span className="text-[9px] font-black text-tp-red uppercase tracking-widest">{res.level}</span>
+                  </div>
+                  <h4 className="font-black text-tp-purple text-base leading-tight">{res.title}</h4>
+                  <p className="text-[10px] text-gray-400 mt-1 line-clamp-1">{res.objective}</p>
+                </div>
+                <button 
+                  onClick={() => handleManualAssign(res.id)}
+                  disabled={isProcessing}
+                  className="bg-tp-navy text-white w-10 h-10 rounded-full flex items-center justify-center hover:bg-tp-red transition-all shadow-lg disabled:opacity-50"
+                  title="Assign to selected user"
+                >
+                  <PlusIcon className="w-5 h-5" />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       )}
 
       {activeTab === 'onboarding' && (
-        <div className="space-y-8 animate-fadeIn max-w-2xl mx-auto">
-          <div className="border-4 border-dashed border-tp-purple/5 rounded-[40px] p-16 text-center hover:border-tp-purple/20 transition-all group bg-gray-50/50">
-            <div className="w-24 h-24 bg-tp-purple text-white rounded-[32px] flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform shadow-2xl">
-              <ClipboardListIcon className="w-12 h-12" />
-            </div>
-            <h3 className="text-2xl font-black text-tp-purple mb-4 uppercase tracking-tight">Smart Agent Onboarding</h3>
-            <p className="text-sm text-gray-500 mb-10 max-w-sm mx-auto font-medium">Upload Language Evaluation PDFs. Gemini extracts CEFR levels and sub-scores to build a remedial curriculum automatically.</p>
-            <label className={`bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer hover:bg-tp-navy transition-all shadow-xl block ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}>
-              {isProcessing ? 'Multimodal Syncing...' : 'Upload Performance File'}
-              <input type="file" className="hidden" accept=".pdf" onChange={handlePdfUpload} disabled={isProcessing} />
+        <div className="space-y-8 animate-fadeIn max-w-2xl mx-auto py-10">
+          <div className="border-4 border-dashed border-tp-purple/5 rounded-[40px] p-16 text-center hover:border-tp-purple/20 transition-all bg-gray-50/50">
+            <ClipboardListIcon className="w-20 h-20 text-tp-purple mx-auto mb-8" />
+            <h3 className="text-2xl font-black text-tp-purple mb-4 uppercase">Automated Onboarding</h3>
+            <p className="text-sm text-gray-500 mb-10">Upload evaluation PDFs for intelligent parsing.</p>
+            <label className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-xs cursor-pointer shadow-xl hover:bg-tp-navy transition-all">
+              {isProcessing ? 'Syncing...' : 'Upload Report'}
+              <input type="file" className="hidden" accept=".pdf" onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setIsProcessing(true);
+                try {
+                  await shlService.processAndRegister(file);
+                  alert("Success! Agent registered.");
+                  fetchUsers();
+                } catch (err) { alert("Registration Failed"); }
+                finally { setIsProcessing(false); }
+              }} disabled={isProcessing} />
             </label>
           </div>
         </div>
       )}
 
-      {activeTab === 'content' && (
-        <div className="space-y-8 animate-fadeIn max-w-3xl mx-auto">
-          <div className="bg-tp-navy text-white rounded-[40px] p-12 relative overflow-hidden shadow-2xl">
-            <div className="absolute top-0 right-0 p-12 opacity-10"><PlusIcon className="w-48 h-48" /></div>
-            <h3 className="text-2xl font-black mb-4 flex items-center uppercase tracking-tight">
-              <LightningIcon className="mr-4 text-tp-red" /> Global Content Engine
-            </h3>
-            <p className="text-gray-400 mb-10 max-w-md font-medium">Add learning URLs. Gemini will auto-tag them for the registry based on CEFR level and primary skill gap.</p>
-            <div className="flex flex-col sm:flex-row gap-4 relative z-10">
-              <input 
-                type="text" 
-                placeholder="Paste Educational URL..." 
-                className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-6 py-4 text-white outline-none focus:ring-2 focus:ring-tp-red placeholder-white/30 text-sm font-medium"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-              />
-              <button 
-                onClick={handleUrlAnalysis}
-                disabled={isProcessing}
-                className="bg-tp-red text-white px-12 py-4 rounded-2xl font-black uppercase text-[10px] tracking-[0.2em] hover:bg-red-700 transition-all shadow-xl disabled:opacity-50"
-              >
-                {isProcessing ? 'Analyzing...' : 'Auto-Import'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'content' && <ResourceUploader onSuccess={onUpdateContent} />}
     </div>
   );
 };
