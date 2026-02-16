@@ -37,7 +37,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      // Fix: Fetch the library via getUserPlan with role 'coach'
+      // Pass role 'coach' strictly
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'coach');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
@@ -56,22 +56,19 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
 
   const handleManualAssign = async (resourceId: string) => {
     if (!selectedTargetUserId) {
-      alert("Please select an agent first from your roster dropdown.");
-      return;
+      return alert('Please select a user first');
     }
     
     setIsProcessing(true);
     setAssignmentSuccess(null);
     try {
-      // Correct Payload: targetUid, resourceId, adminId (using current coach's ID)
+      // Use targetUid and adminId (currentUser.id)
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Agent';
       setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
       
-      // Auto-clear success message
       setTimeout(() => setAssignmentSuccess(null), 3000);
-      
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed. Please check registry connection.");

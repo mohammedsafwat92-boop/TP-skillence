@@ -26,6 +26,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
 
   const fetchUsers = async () => {
+    if (currentUser.role !== 'admin') return;
     setIsProcessing(true);
     try {
       const users = await googleSheetService.fetchAllUsers();
@@ -39,7 +40,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      // Fix: Fetch the library via getUserPlan with role 'admin'
+      // Fix Admin Library Visibility: Pass role 'admin'
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
@@ -57,9 +58,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   }, [activeTab]);
 
   const handleManualAssign = async (resourceId: string) => {
+    // Crucial: check if (!selectedUser)
     if (!selectedTargetUserId) {
-      alert("Please select a target student first from the roster dropdown.");
-      return;
+      return alert('Please select a user first');
     }
     
     setIsProcessing(true);
@@ -69,11 +70,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
+      // UI Feedback: Assignment Saved
       setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
       
-      // Auto-clear success message
       setTimeout(() => setAssignmentSuccess(null), 3000);
-      
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed. Please check registry connection.");
