@@ -40,7 +40,6 @@ function doPost(e) {
       res.data = result;
       res.success = true;
     } else if (action === 'assign_manual_resource') {
-      // New payload structure: targetUid, resourceId, adminId
       res.data = manualAssign(ss, json.targetUid, json.resourceId, json.adminId);
       res.success = true;
     }
@@ -68,11 +67,11 @@ function manualAssign(ss, uid, resourceId, adminId) {
   }
 
   if (foundRow === -1) {
-    // Adding adminId to track who performed the manual assignment
     sheet.appendRow([uid, resourceId, 'assigned', 0, 0, new Date(), adminId || 'System']);
   } else {
     const currentStatus = data[foundRow-1][2];
-    if (currentStatus === 'locked') {
+    // Allow overwriting status to 'assigned' if currently open or locked
+    if (currentStatus === 'locked' || currentStatus === 'open' || !currentStatus) {
       sheet.getRange(foundRow, 3).setValue('assigned');
       sheet.getRange(foundRow, 7).setValue(adminId || 'System');
     }
@@ -80,26 +79,31 @@ function manualAssign(ss, uid, resourceId, adminId) {
   return { status: 'assigned' };
 }
 
-/**
- * Helper to safely parse JSON strings from the spreadsheet.
- */
-function safeParse(str) {
-  if (!str) return {};
-  try {
-    return typeof str === 'string' ? JSON.parse(str) : str;
-  } catch (e) {
-    console.error("JSON Parse Error:", e);
-    return {};
+function updateProgress(ss, uid, resourceId, passed, score) {
+  const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt', 'AssignedBy']);
   }
-}
+  const data = sheet.getDataRange().getValues();
+  let foundRow = -1;
 
-function isLevelMatch(resourceLevel, userLevel) {
-  const r = String(resourceLevel || 'All').toUpperCase();
-  const u = String(userLevel || '').toUpperCase();
-  if (r === 'ALL') return true;
-  if (r === u) return true;
-  if (u && r.indexOf(u) !== -1) return true;
-  return false;
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(uid) && String(data[i][1]) === String(resourceId)) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+
+  const newStatus = passed ? 'completed' : 'assigned';
+  if (foundRow !== -1) {
+    const currentAttempts = data[foundRow-1][3] || 0;
+    sheet.getRange(foundRow, 3, 1, 3).setValues([[newStatus, currentAttempts + 1, score]]);
+    sheet.getRange(foundRow, 6).setValue(new Date());
+  } else {
+    sheet.appendRow([uid, resourceId, newStatus, 1, score, new Date(), 'System']);
+  }
+  
+  return { status: newStatus };
 }
 
 function getUserPlan(ss, uid) {
@@ -139,9 +143,10 @@ function getUserPlan(ss, uid) {
     const resRow = resData[i];
     const resourceLevel = resRow[levelIdx];
     
+    // Fuzzy matching logic included in isLevelMatch
     if (!isLevelMatch(resourceLevel, userLevel)) continue;
 
-    let progress = { status: 'assigned', attempts: 0, score: 0 };
+    let progress = { status: 'open', attempts: 0, score: 0 };
     if (progData.length > 1) {
       for (let j = 1; j < progData.length; j++) {
         if (String(progData[j][0]) === String(uid) && String(progData[j][1]) === String(resRow[idIdx])) {
@@ -239,32 +244,6 @@ function fetchAllUsers(ss) {
   return users;
 }
 
-function updateProgress(ss, uid, resourceId, passed, score) {
-  const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt']);
-  }
-  const data = sheet.getDataRange().getValues();
-  let foundRow = -1;
-
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(uid) && String(data[i][1]) === String(resourceId)) {
-      foundRow = i + 1;
-      break;
-    }
-  }
-
-  const newStatus = passed ? 'completed' : 'assigned';
-  if (foundRow !== -1) {
-    const currentAttempts = data[foundRow-1][3] || 0;
-    sheet.getRange(foundRow, 3, 1, 3).setValues([[newStatus, currentAttempts + 1, score]]);
-  } else {
-    sheet.appendRow([uid, resourceId, newStatus, 1, score, new Date()]);
-  }
-  
-  return { status: 'newStatus' };
-}
-
 function handleBulkImport(ss, resources) {
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
@@ -300,6 +279,26 @@ function handleBulkImport(ss, resources) {
 
   SpreadsheetApp.flush();
   return { count: resources.length, status: 'Success' };
+}
+
+function isLevelMatch(resourceLevel, userLevel) {
+  const r = String(resourceLevel || 'All').toUpperCase();
+  const u = String(userLevel || '').toUpperCase();
+  if (r === 'ALL') return true;
+  if (r === u) return true;
+  // Fuzzy B1/B2/etc check
+  if (u && r.indexOf(u) !== -1) return true;
+  return false;
+}
+
+function safeParse(str) {
+  if (!str) return {};
+  try {
+    return typeof str === 'string' ? JSON.parse(str) : str;
+  } catch (e) {
+    console.error("JSON Parse Error:", e);
+    return {};
+  }
 }
 
 function sendResponse(obj) {

@@ -52,18 +52,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const handleManualAssign = async (resourceId: string) => {
     if (!selectedTargetUserId) {
-      alert("Please select a target student first.");
+      alert("Please select a target student first from the roster dropdown.");
       return;
     }
     setIsProcessing(true);
     try {
-      // Updated payload structure: targetUid, resourceId, adminId
+      // Correct Payload: targetUid, resourceId, adminId
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
-      alert(`Successfully assigned module to ${studentName}`);
+      alert(`Success: Module assigned to ${studentName}`);
       onUpdateContent();
     } catch (e) {
-      alert("Manual assignment failed.");
+      alert("Manual assignment failed. Please check registry connection.");
     } finally {
       setIsProcessing(false);
     }
