@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { googleSheetService } from '../services/googleSheetService';
 import { shlService } from '../services/shlService';
-import { ClipboardListIcon, BrainIcon, UserIcon, PlusIcon, SearchIcon } from './Icons';
+import { ClipboardListIcon, BrainIcon, UserIcon, PlusIcon, SearchIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
 interface CoachPanelProps {
@@ -18,6 +18,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
 
   const fetchMyStudents = async () => {
     setIsProcessing(true);
@@ -36,30 +37,44 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      const res = await googleSheetService.fetchGlobalResources();
+      // Fix: Fetch the library via getUserPlan with role 'coach'
+      const res = await googleSheetService.fetchUserPlan(currentUser.id, 'coach');
       setGlobalResources(Array.isArray(res) ? res : []);
-    } catch (e) {}
+    } catch (e) {
+      setGlobalResources([]);
+    }
   };
 
   useEffect(() => {
-    fetchMyStudents();
-    fetchResources();
+    if (activeTab === 'roster' || activeTab === 'library') {
+      fetchMyStudents();
+    }
+    if (activeTab === 'library') {
+      fetchResources();
+    }
   }, [currentUser.email, activeTab]);
 
   const handleManualAssign = async (resourceId: string) => {
     if (!selectedTargetUserId) {
-      alert("Please select an agent first.");
+      alert("Please select an agent first from your roster dropdown.");
       return;
     }
+    
     setIsProcessing(true);
+    setAssignmentSuccess(null);
     try {
-      // Updated payload structure: targetUid, resourceId, adminId
+      // Correct Payload: targetUid, resourceId, adminId (using current coach's ID)
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
+      
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Agent';
-      alert(`Success: Manual assignment synchronized for ${studentName}.`);
+      setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
+      
+      // Auto-clear success message
+      setTimeout(() => setAssignmentSuccess(null), 3000);
+      
       onUpdateContent();
     } catch (e) {
-      alert("Manual assignment failed.");
+      alert("Manual assignment failed. Please check registry connection.");
     } finally {
       setIsProcessing(false);
     }
@@ -98,6 +113,13 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
           </button>
         </div>
       </div>
+
+      {assignmentSuccess && (
+        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircleIcon className="w-5 h-5" filled />
+          <span className="text-xs font-black uppercase tracking-widest">{assignmentSuccess}</span>
+        </div>
+      )}
 
       {activeTab === 'roster' && (
         <div className="space-y-10 animate-fadeIn">

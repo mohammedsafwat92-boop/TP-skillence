@@ -57,8 +57,8 @@ export const googleSheetService = {
   login: (email: string, pass: string) => 
     callApi('login', { email, password: pass }),
     
-  fetchUserPlan: async (uid: string) => {
-    return await callApi('get_user_plan', { uid });
+  fetchUserPlan: async (uid: string, role?: string) => {
+    return await callApi('get_user_plan', { uid, role });
   },
 
   fetchGlobalResources: async () => {

@@ -64,7 +64,7 @@ const App: React.FC = () => {
       try {
         const user = normalizeUser(JSON.parse(cachedUser));
         setCurrentUser(user);
-        await refreshPlan(user.id);
+        await refreshPlan(user.id, user.role);
         if (user.role === 'admin' || user.role === 'coach') {
           loadGlobalUsers();
         }
@@ -93,7 +93,7 @@ const App: React.FC = () => {
     const normalized = normalizeUser(user);
     setCurrentUser(normalized);
     localStorage.setItem('tp_skillence_user_session', JSON.stringify(normalized));
-    await refreshPlan(normalized.id);
+    await refreshPlan(normalized.id, normalized.role);
     if (normalized.role === 'admin' || normalized.role === 'coach') {
       loadGlobalUsers();
       if (normalized.role === 'coach') setView({ type: 'live-coach' });
@@ -108,7 +108,8 @@ const App: React.FC = () => {
       }
       const normalized = normalizeUser(targetUser);
       setCurrentUser(normalized);
-      await refreshPlan(normalized.id);
+      // Impersonated view is usually an agent view
+      await refreshPlan(normalized.id, normalized.role);
       setView({ type: 'dashboard' });
       setIsSidebarOpen(false);
     } catch (err) {
@@ -123,7 +124,7 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       setCurrentUser(originalUser);
-      await refreshPlan(originalUser.id);
+      await refreshPlan(originalUser.id, originalUser.role);
       setOriginalUser(null);
       if (originalUser.role === 'admin') setView({ type: 'admin' });
       else if (originalUser.role === 'coach') setView({ type: 'live-coach' });
@@ -135,11 +136,12 @@ const App: React.FC = () => {
     }
   };
 
-  const refreshPlan = async (uid?: string) => {
+  const refreshPlan = async (uid?: string, role?: string) => {
     const id = uid || currentUser?.id;
+    const r = role || currentUser?.role;
     if (!id) return;
     try {
-      const plan = await googleSheetService.fetchUserPlan(id);
+      const plan = await googleSheetService.fetchUserPlan(id, r);
       setUserPlan(Array.isArray(plan) ? plan : []);
     } catch (err) {
       console.error("Refresh Error:", err);
@@ -171,11 +173,11 @@ const App: React.FC = () => {
     if (!currentUser) return <Login onLoginSuccess={handleLogin} onEnterSandbox={() => {}} />;
 
     if (view.type === 'admin') {
-      return <AdminPanel onUpdateContent={refreshPlan} currentUser={currentUser} onImpersonate={handleImpersonate} />;
+      return <AdminPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} />;
     }
 
     if (view.type === 'live-coach') {
-      return <CoachPanel onUpdateContent={refreshPlan} currentUser={currentUser} onImpersonate={handleImpersonate} />;
+      return <CoachPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} />;
     }
     
     if (view.type === 'lesson') return (
@@ -183,7 +185,7 @@ const App: React.FC = () => {
         resource={view.resource} 
         uid={currentUser.id} 
         onClose={() => setView({ type: 'dashboard' })} 
-        onMasteryAchieved={refreshPlan} 
+        onMasteryAchieved={() => refreshPlan(currentUser.id, currentUser.role)} 
       />
     );
 

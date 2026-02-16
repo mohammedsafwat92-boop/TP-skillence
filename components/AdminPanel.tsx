@@ -4,7 +4,7 @@ import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon } from './Icons';
+import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
 interface AdminPanelProps {
@@ -23,6 +23,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     setIsProcessing(true);
@@ -38,7 +39,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      const res = await googleSheetService.fetchGlobalResources();
+      // Fix: Fetch the library via getUserPlan with role 'admin'
+      const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
       setGlobalResources([]);
@@ -46,8 +48,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   };
 
   useEffect(() => {
-    fetchUsers();
-    fetchResources();
+    if (activeTab === 'users' || activeTab === 'library') {
+      fetchUsers();
+    }
+    if (activeTab === 'library') {
+      fetchResources();
+    }
   }, [activeTab]);
 
   const handleManualAssign = async (resourceId: string) => {
@@ -55,12 +61,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       alert("Please select a target student first from the roster dropdown.");
       return;
     }
+    
     setIsProcessing(true);
+    setAssignmentSuccess(null);
     try {
       // Correct Payload: targetUid, resourceId, adminId
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
+      
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
-      alert(`Success: Module assigned to ${studentName}`);
+      setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
+      
+      // Auto-clear success message
+      setTimeout(() => setAssignmentSuccess(null), 3000);
+      
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed. Please check registry connection.");
@@ -122,6 +135,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           ))}
         </div>
       </div>
+
+      {assignmentSuccess && (
+        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn">
+          <CheckCircleIcon className="w-5 h-5" filled />
+          <span className="text-xs font-black uppercase tracking-widest">{assignmentSuccess}</span>
+        </div>
+      )}
 
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">

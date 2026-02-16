@@ -24,7 +24,8 @@ function doPost(e) {
         res.message = 'Invalid credentials';
       }
     } else if (action === 'get_user_plan') {
-      res.data = getUserPlan(ss, json.uid);
+      // Fix: Strictly require role for determining visibility logic
+      res.data = getUserPlan(ss, json.uid, json.role);
       res.success = true;
     } else if (action === 'get_all_resources') {
       res.data = getAllResources(ss);
@@ -40,6 +41,7 @@ function doPost(e) {
       res.data = result;
       res.success = true;
     } else if (action === 'assign_manual_resource') {
+      // Corrected Payload: targetUid, resourceId, adminId
       res.data = manualAssign(ss, json.targetUid, json.resourceId, json.adminId);
       res.success = true;
     }
@@ -106,7 +108,7 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   return { status: newStatus };
 }
 
-function getUserPlan(ss, uid) {
+function getUserPlan(ss, uid, role) {
   const userSheet = ss.getSheetByName('Users');
   const resSheet = ss.getSheetByName('Resources');
   const progSheet = ss.getSheetByName('Progress');
@@ -139,12 +141,15 @@ function getUserPlan(ss, uid) {
   const levelIdx = resHeaders.indexOf('level');
   const objectiveIdx = resHeaders.indexOf('objective');
 
+  const isAdminOrCoach = (role === 'admin' || role === 'coach');
+
   for (let i = 1; i < resData.length; i++) {
     const resRow = resData[i];
     const resourceLevel = resRow[levelIdx];
     
     // Fuzzy matching logic included in isLevelMatch
-    if (!isLevelMatch(resourceLevel, userLevel)) continue;
+    // If admin/coach, skip level filtering to see the full library
+    if (!isAdminOrCoach && !isLevelMatch(resourceLevel, userLevel)) continue;
 
     let progress = { status: 'open', attempts: 0, score: 0 };
     if (progData.length > 1) {
