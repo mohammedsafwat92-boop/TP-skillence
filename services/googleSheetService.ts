@@ -58,6 +58,7 @@ export const googleSheetService = {
     callApi('login', { email, password: pass }),
     
   fetchUserPlan: async (uid: string, role: string) => {
+    // Explicitly send uid and role as requested
     return await callApi('get_user_plan', { uid, role });
   },
 
@@ -85,5 +86,6 @@ export const googleSheetService = {
     callApi('admin_unlock_resource', { uid, resourceId }),
 
   assignManualResource: (targetUid: string, resourceId: string, adminId: string) =>
+    // Explicitly send targetUid, resourceId, and adminId as requested
     callApi('assign_manual_resource', { targetUid, resourceId, adminId })
 };

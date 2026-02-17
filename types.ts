@@ -16,6 +16,7 @@ export interface ResourceProgress {
   attempts: number;
   score: number;
   lastAttempt?: string;
+  assignedBy?: string;
 }
 
 export interface Resource {

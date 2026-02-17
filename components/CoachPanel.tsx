@@ -37,7 +37,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      // Pass role 'coach' strictly
+      // Fix: Strictly use role 'coach' for library retrieval
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'coach');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
@@ -55,20 +55,22 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
   }, [currentUser.email, activeTab]);
 
   const handleManualAssign = async (resourceId: string) => {
+    // Validation check for target student
     if (!selectedTargetUserId) {
-      return alert('Please select a user first');
+      return alert('Please select an agent from your roster first');
     }
     
     setIsProcessing(true);
     setAssignmentSuccess(null);
     try {
-      // Use targetUid and adminId (currentUser.id)
+      // Call with correct payload targetUid, resourceId, adminId (coach ID)
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Agent';
+      // UI Feedback: Visual confirmation
       setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
       
-      setTimeout(() => setAssignmentSuccess(null), 3000);
+      setTimeout(() => setAssignmentSuccess(null), 4000);
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed. Please check registry connection.");
@@ -95,16 +97,16 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
           </h1>
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Direct oversight: {currentUser.name}</p>
         </div>
-        <div className="flex bg-tp-purple/5 p-1 rounded-2xl shadow-inner">
+        <div className="flex bg-tp-purple/5 p-1 rounded-2xl shadow-inner border border-tp-purple/10">
           <button 
             onClick={() => setActiveTab('roster')} 
-            className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'roster' ? 'bg-white text-tp-purple shadow-sm' : 'text-gray-500 hover:text-tp-purple'}`}
+            className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'roster' ? 'bg-white text-tp-purple shadow-sm border border-tp-purple/5' : 'text-gray-500 hover:text-tp-purple'}`}
           >
             Agent Directory
           </button>
           <button 
             onClick={() => setActiveTab('library')} 
-            className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'library' ? 'bg-white text-tp-purple shadow-sm' : 'text-gray-500 hover:text-tp-purple'}`}
+            className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === 'library' ? 'bg-white text-tp-purple shadow-sm border border-tp-purple/5' : 'text-gray-500 hover:text-tp-purple'}`}
           >
             Resource Library
           </button>
@@ -112,8 +114,10 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
       </div>
 
       {assignmentSuccess && (
-        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn">
-          <CheckCircleIcon className="w-5 h-5" filled />
+        <div className="mb-8 bg-green-50 border border-green-200 text-green-700 p-5 rounded-3xl flex items-center gap-4 animate-fadeIn shadow-lg shadow-green-100/50">
+          <div className="bg-green-100 p-2 rounded-xl">
+            <CheckCircleIcon className="w-6 h-6" filled />
+          </div>
           <span className="text-xs font-black uppercase tracking-widest">{assignmentSuccess}</span>
         </div>
       )}
@@ -163,11 +167,11 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                       <div className="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
-                          className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all"
+                          className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-md"
                         >
                           Assign
                         </button>
-                        <button onClick={() => onImpersonate(user)} className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all">View Hub</button>
+                        <button onClick={() => onImpersonate(user)} className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md">View Hub</button>
                       </div>
                     </td>
                   </tr>
@@ -180,7 +184,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
 
       {activeTab === 'library' && (
         <div className="space-y-8 animate-fadeIn">
-          <div className="sticky top-0 bg-tp-navy rounded-[32px] p-8 shadow-2xl flex flex-col gap-6 z-30 border border-white/10">
+          <div className="sticky top-0 bg-tp-navy rounded-[32px] p-8 shadow-2xl flex flex-col gap-6 z-30 border border-white/10 shadow-tp-navy/20">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4 text-white">
                 <UserIcon className="w-5 h-5 opacity-40" />
@@ -192,7 +196,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
               <select 
                 value={selectedTargetUserId}
                 onChange={(e) => setSelectedTargetUserId(e.target.value)}
-                className="w-full md:w-auto md:min-w-[300px] bg-white text-tp-purple font-black text-[11px] uppercase tracking-widest px-6 py-4 rounded-2xl shadow-xl outline-none"
+                className="w-full md:w-auto md:min-w-[300px] bg-white text-tp-purple font-black text-[11px] uppercase tracking-widest px-6 py-4 rounded-2xl shadow-xl outline-none border-2 border-transparent focus:border-tp-red"
               >
                 <option value="">Choose an agent from your roster...</option>
                 {userList.map(u => (
@@ -215,9 +219,9 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
             {filteredResources.map(res => (
-              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[180px] hover:-translate-y-1">
+              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[200px] hover:-translate-y-1 shadow-sm">
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-[8px] font-black bg-tp-purple/5 text-tp-purple px-2 py-0.5 rounded uppercase tracking-widest">{res.tags[0]}</span>
@@ -230,7 +234,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                    <button 
                     onClick={() => handleManualAssign(res.id)}
                     disabled={isProcessing || !selectedTargetUserId}
-                    className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-lg disabled:opacity-20"
+                    className="bg-tp-purple text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-lg disabled:opacity-20 active:scale-95"
                   >
                     Assign
                   </button>

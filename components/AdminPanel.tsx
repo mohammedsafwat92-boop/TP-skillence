@@ -40,7 +40,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      // Fix Admin Library Visibility: Pass role 'admin'
+      // Fix Admin Library Visibility: Fetch full library using role 'admin'
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
@@ -58,22 +58,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   }, [activeTab]);
 
   const handleManualAssign = async (resourceId: string) => {
-    // Crucial: check if (!selectedUser)
+    // Step 2: Crucial validation check for selected user
     if (!selectedTargetUserId) {
-      return alert('Please select a user first');
+      return alert('Please select a target user from the dropdown first');
     }
     
     setIsProcessing(true);
     setAssignmentSuccess(null);
     try {
-      // Correct Payload: targetUid, resourceId, adminId
+      // Step 2: Call with correct payload targetUid, resourceId, adminId
       await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       
       const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
-      // UI Feedback: Assignment Saved
+      // Step 2 & 4: Visual Feedback
       setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
       
-      setTimeout(() => setAssignmentSuccess(null), 3000);
+      setTimeout(() => setAssignmentSuccess(null), 4000);
       onUpdateContent();
     } catch (e) {
       alert("Manual assignment failed. Please check registry connection.");
@@ -118,7 +118,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           </h1>
           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mt-1">Enterprise Console</p>
         </div>
-        <div className="flex bg-tp-purple/5 p-1 rounded-2xl overflow-x-auto max-w-full shadow-inner">
+        <div className="flex bg-tp-purple/5 p-1 rounded-2xl overflow-x-auto max-w-full shadow-inner border border-tp-purple/10">
           {[
             { id: 'users', label: 'Roster' },
             { id: 'library', label: 'Resource Library' },
@@ -128,7 +128,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             <button 
               key={tab.id} 
               onClick={() => setActiveTab(tab.id as any)} 
-              className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-tp-purple shadow-sm' : 'text-gray-500 hover:text-tp-purple'}`}
+              className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-white text-tp-purple shadow-sm border border-tp-purple/5' : 'text-gray-500 hover:text-tp-purple'}`}
             >
               {tab.label}
             </button>
@@ -137,8 +137,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       </div>
 
       {assignmentSuccess && (
-        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 p-4 rounded-2xl flex items-center gap-3 animate-fadeIn">
-          <CheckCircleIcon className="w-5 h-5" filled />
+        <div className="mb-8 bg-green-50 border border-green-200 text-green-700 p-5 rounded-3xl flex items-center gap-4 animate-fadeIn shadow-lg shadow-green-100/50">
+          <div className="bg-green-100 p-2 rounded-xl">
+            <CheckCircleIcon className="w-6 h-6" filled />
+          </div>
           <span className="text-xs font-black uppercase tracking-widest">{assignmentSuccess}</span>
         </div>
       )}
@@ -174,13 +176,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 
                           onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
-                          className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all"
+                          className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-md"
                         >
                           Manual Assign
                         </button>
                         <button 
                           onClick={() => onImpersonate(user)} 
-                          className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all"
+                          className="bg-tp-purple text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md"
                         >
                           View Hub
                         </button>
@@ -196,7 +198,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
       {activeTab === 'library' && (
         <div className="space-y-8 animate-fadeIn">
-          <div className="sticky top-0 bg-tp-purple rounded-[32px] p-8 shadow-2xl flex flex-col gap-6 z-30 border border-white/10">
+          <div className="sticky top-0 bg-tp-purple rounded-[32px] p-8 shadow-2xl flex flex-col gap-6 z-30 border border-white/10 shadow-tp-purple/20">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-4">
                 <div className="p-2.5 bg-white/10 rounded-xl text-white">
@@ -233,9 +235,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-12">
             {filteredResources.map(res => (
-              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[200px] hover:-translate-y-1">
+              <div key={res.id} className="p-6 bg-white border border-gray-100 rounded-[32px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[220px] hover:-translate-y-1 shadow-sm">
                 <div>
                   <div className="flex items-center justify-between mb-4">
                     <span className="text-[9px] font-black bg-tp-purple/5 text-tp-purple px-2 py-1 rounded-lg uppercase tracking-widest">{res.tags[0]}</span>
@@ -249,7 +251,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                    <button 
                     onClick={() => handleManualAssign(res.id)}
                     disabled={isProcessing || !selectedTargetUserId}
-                    className={`flex items-center gap-2 bg-tp-navy text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30`}
+                    className={`flex items-center gap-2 bg-tp-navy text-white px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30 active:scale-95`}
                     title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
                   >
                     <PlusIcon className="w-4 h-4" /> Assign

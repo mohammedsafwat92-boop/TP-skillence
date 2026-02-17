@@ -107,7 +107,6 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     const s = user.shlData?.svar;
     const w = user.shlData?.writex;
 
-    // Distinguish 10-pt SVAR vs 100-pt WriteX
     const normalizeSVAR = (v: any) => normalizeScore(Number(v) || 0);
     const normalizeWriteX = (v: any) => Number(v) || 0;
 
@@ -121,25 +120,24 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     ];
   }, [user.shlData]);
 
-  // Simplified Retrieval Flow:
-  // The backend already performs fuzzy level matching and manual status overrides.
-  // The client simply maps the resources into two groups: Active and History.
-  const { recommended, filteredCurriculum } = useMemo(() => {
+  // Step 3: Split Content into Active and Completed groups
+  const { activeCourses, completedCourses } = useMemo(() => {
     const active: Resource[] = [];
-    const history: Resource[] = [];
+    const completed: Resource[] = [];
 
     resources.forEach(res => {
+      // Filter by skill first if one is active
       const matchesSkill = activeSkill === 'All' || res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
       if (!matchesSkill) return;
 
       if (res.progress?.status === 'completed') {
-        history.push(res);
+        completed.push(res);
       } else {
         active.push(res);
       }
     });
 
-    return { recommended: active, filteredCurriculum: history };
+    return { activeCourses: active, completedCourses: completed };
   }, [resources, activeSkill]);
 
   const progressPercent = resources.length > 0 
@@ -165,7 +163,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
 
         <div className="flex flex-col items-end gap-6 w-full md:w-auto">
-          <div className="bg-white px-8 py-5 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-6 w-fit ml-auto">
+          <div className="bg-white px-8 py-5 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-6 w-fit ml-auto shadow-tp-purple/5">
             <div className="text-center">
               <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
               <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mt-2">Overall Mastery</p>
@@ -191,7 +189,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
       </div>
 
-      {recommended.length > 0 && (
+      {/* Step 3: Render Active Learning Path */}
+      {activeCourses.length > 0 && (
         <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/30">
           <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none">
             <TargetIcon className="w-80 h-80 text-white" />
@@ -201,12 +200,12 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
               <TargetIcon className="mr-3 text-tp-red" /> Active Learning Path
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {recommended.map((res) => (
-                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 transition-all cursor-pointer flex flex-col justify-between h-[180px] group">
+              {activeCourses.map((res) => (
+                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 transition-all cursor-pointer flex flex-col justify-between h-[180px] group border-white/5">
                   <div>
                     <div className="flex justify-between items-start mb-2">
                       <p className="text-[10px] font-black text-tp-red uppercase tracking-[0.2em]">{res.tags[0]}</p>
-                      <span className={`text-[8px] font-black bg-white/20 px-2 py-0.5 rounded-lg uppercase tracking-widest ${res.progress?.status === 'assigned' ? 'text-tp-red' : ''}`}>
+                      <span className={`text-[8px] font-black bg-white/20 px-2 py-0.5 rounded-lg uppercase tracking-widest ${res.progress?.status === 'assigned' ? 'text-tp-red bg-white text-[9px] px-3' : 'text-white/60'}`}>
                         {res.progress?.status === 'assigned' ? 'MANUAL' : 'AUTO'}
                       </span>
                     </div>
@@ -225,7 +224,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-4">
-          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl h-full flex flex-col">
+          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl h-full flex flex-col shadow-tp-purple/5">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-1.5 h-6 bg-tp-red rounded-full"></div>
               <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Competency Metrics</h3>
@@ -251,14 +250,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
           </div>
         </div>
 
+        {/* Step 3: Render Completed Mastery Log */}
         <div className="lg:col-span-8">
           <div className="flex items-center justify-between mb-8 px-4">
              <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">Mastery Log</h2>
-             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{filteredCurriculum.length} Completed</p>
+             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{completedCourses.length} Completed</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
-            {filteredCurriculum.map((res) => (
-              <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-lg cursor-pointer grayscale opacity-50 hover:grayscale-0 hover:opacity-100 group">
+            {completedCourses.map((res) => (
+              <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-lg cursor-pointer grayscale opacity-50 hover:grayscale-0 hover:opacity-100 group shadow-tp-purple/5">
                  <div className="flex justify-between items-start mb-4">
                     <div className="p-2.5 rounded-xl bg-green-100 text-green-600 group-hover:bg-tp-red group-hover:text-white transition-colors">
                       <CheckCircleIcon className="w-5 h-5" filled />
@@ -269,10 +269,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                     </div>
                  </div>
                  <h3 className="font-black text-tp-purple text-base leading-tight">{res.title}</h3>
+                 {res.progress?.score && (
+                   <p className="mt-2 text-[10px] font-black text-tp-red uppercase tracking-widest">Mastery Score: {res.progress.score}%</p>
+                 )}
               </div>
             ))}
-            {filteredCurriculum.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px]">
+            {completedCourses.length === 0 && (
+              <div className="col-span-full py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px] bg-gray-50/50">
                 No completed records in the registry.
               </div>
             )}
