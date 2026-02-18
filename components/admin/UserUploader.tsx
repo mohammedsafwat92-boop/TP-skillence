@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import type { UserProfile } from '../../types';
 import { shlService } from '../../services/shlService';
@@ -71,7 +72,7 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
       ));
 
       try {
-        const result = await shlService.processAndRegister(
+        const result = await shlService.registerUserFromPDF(
           current.file, 
           currentUser.role === 'coach' ? currentUser.email : undefined
         );

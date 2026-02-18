@@ -134,7 +134,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                 if (!file) return;
                 setIsProcessing(true);
                 try {
-                  await shlService.processAndRegister(file, currentUser.email);
+                  await shlService.registerUserFromPDF(file, currentUser.email);
                   alert(`Success: Integrated to your coaching roster.`);
                   fetchMyStudents();
                   onUpdateContent();

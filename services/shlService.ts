@@ -9,9 +9,9 @@ const MODEL_NAME = 'gemini-3-pro-preview';
 export const shlService = {
   /**
    * Main entry point for processing SHL reports.
-   * Uses inline base64 data for all files to ensure compatibility with the current environment.
+   * Renamed from processAndRegister to registerUserFromPDF to match contract.
    */
-  processAndRegister: async (file: File | undefined, coachEmail?: string) => {
+  registerUserFromPDF: async (file: File | undefined, coachEmail?: string) => {
     // Safety Guard: Immediate check for valid file object
     if (!file || !(file instanceof File)) {
       console.error("[shlService] Invalid file object received:", file);
@@ -19,12 +19,13 @@ export const shlService = {
     }
 
     const fileName = file.name || 'Candidate_Report.pdf';
-    console.log(`[shlService] Processing ${fileName} via Inline Extraction`);
+    console.log(`[shlService] Processing ${fileName} via Intelligence Extraction`);
 
     try {
       const shlData = await shlService.processInline(file);
 
       // Step 3: Register results in the global registry
+      // Explicitly matching the contract: action 'register_shl_user' is handled by googleSheetService.createUser
       const registration = await googleSheetService.createUser({
         name: shlData.candidateName,
         email: shlData.email,
