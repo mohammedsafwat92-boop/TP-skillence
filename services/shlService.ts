@@ -1,40 +1,28 @@
+
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
 import type { SHLReport } from '../types';
 
 // Use gemini-3-pro-preview for high-complexity reasoning and large report analysis
 const MODEL_NAME = 'gemini-3-pro-preview';
-const LARGE_FILE_THRESHOLD = 15 * 1024 * 1024; // 15MB
 
 export const shlService = {
   /**
    * Main entry point for processing SHL reports.
-   * Defensively guards against undefined files and routes based on size.
+   * Uses inline base64 data for all files to ensure compatibility with the current environment.
    */
   processAndRegister: async (file: File | undefined, coachEmail?: string) => {
-    // Safety Guard: Immediate check for valid file object to prevent "reading 'size' of undefined"
+    // Safety Guard: Immediate check for valid file object
     if (!file || !(file instanceof File)) {
       console.error("[shlService] Invalid file object received:", file);
       throw new Error("Registry Error: The processing hub received an invalid or missing file reference.");
     }
 
-    if (typeof file.size !== 'number') {
-      throw new Error("Registry Error: File metadata is inaccessible.");
-    }
-
     const fileName = file.name || 'Candidate_Report.pdf';
-    const fileSize = file.size;
-    console.log(`[shlService] Routing ${fileName} (${(fileSize / 1024 / 1024).toFixed(2)}MB)`);
+    console.log(`[shlService] Processing ${fileName} via Inline Extraction`);
 
     try {
-      let shlData: SHLReport;
-
-      // Branching logic for the dual-pipeline
-      if (fileSize < LARGE_FILE_THRESHOLD) {
-        shlData = await shlService.processInline(file);
-      } else {
-        shlData = await shlService.processViaFileApi(file);
-      }
+      const shlData = await shlService.processInline(file);
 
       // Step 3: Register results in the global registry
       const registration = await googleSheetService.createUser({
@@ -54,10 +42,10 @@ export const shlService = {
   },
 
   /**
-   * Pipeline for small files using inline Base64 data.
+   * Pipeline for processing files using inline Base64 data.
+   * This avoids the "Action not implemented" error associated with the Files API.
    */
   processInline: async (file: File): Promise<SHLReport> => {
-    console.log("[shlService] Mode: In-Memory Extraction (Base64)");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const base64Data = await new Promise<string>((resolve, reject) => {
@@ -73,67 +61,12 @@ export const shlService = {
 
     const response = await ai.models.generateContent({
       model: MODEL_NAME,
-      contents: [
-        { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
-        { text: shlService.getAnalysisPrompt() }
-      ],
-      config: { 
-        responseMimeType: "application/json"
-      }
-    });
-
-    return shlService.parseAndClean(response.text);
-  },
-
-  /**
-   * Pipeline for large files using the Gemini File API.
-   * Includes Cloud Ingestion and Polling for 'ACTIVE' state.
-   */
-  processViaFileApi: async (file: File): Promise<SHLReport> => {
-    console.log("[shlService] Mode: Cloud-Based File Ingestion (API)");
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
-    // 1. Upload to Gemini Cloud Registry
-    const uploadResponse = await ai.files.upload(file, {
-      mimeType: 'application/pdf',
-      displayName: file.name,
-    });
-
-    if (!uploadResponse?.file?.uri) {
-      throw new Error("Cloud Sync Failed: No URI returned from File API.");
-    }
-
-    const fileUri = uploadResponse.file.uri;
-    const cloudName = uploadResponse.file.name;
-    console.log(`[shlService] Syncing to Cloud: ${fileUri}. Beginning activation poll...`);
-
-    // 2. Polling loop for 'ACTIVE' state
-    let state = uploadResponse.file.state;
-    let attempts = 0;
-    while (state === 'PROCESSING' && attempts < 40) {
-      await new Promise(resolve => setTimeout(resolve, 3000)); // Poll every 3 seconds
-      const getResponse = await ai.files.get({ name: cloudName });
-      state = getResponse.file.state;
-      attempts++;
-      console.log(`[shlService] Activation Poll (Attempt ${attempts}): ${state}`);
-    }
-
-    if (state !== 'ACTIVE') {
-      throw new Error(`Cloud Analysis Timeout: File state remains ${state} after 120s.`);
-    }
-
-    // 3. Inference using the cloud file reference
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: [
-        { 
-          fileData: { 
-            fileUri: fileUri, 
-            mimeType: 'application/pdf' 
-          } 
-        },
-        { text: shlService.getAnalysisPrompt() }
-      ],
+      contents: {
+        parts: [
+          { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
+          { text: shlService.getAnalysisPrompt() }
+        ]
+      },
       config: { 
         responseMimeType: "application/json"
       }

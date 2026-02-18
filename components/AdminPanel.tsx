@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { shlService } from '../services/shlService';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
+import UserUploader from './admin/UserUploader';
 import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
@@ -269,27 +269,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       )}
 
       {activeTab === 'onboarding' && (
-        <div className="space-y-8 animate-fadeIn max-w-2xl mx-auto py-10">
-          <div className="border-4 border-dashed border-tp-purple/5 rounded-[40px] p-16 text-center hover:border-tp-purple/20 transition-all bg-gray-50/50 shadow-inner">
-            <ClipboardListIcon className="w-20 h-20 text-tp-purple mx-auto mb-8 opacity-40" />
-            <h3 className="text-2xl font-black text-tp-purple mb-4 uppercase tracking-tight">Automated Onboarding Pipeline</h3>
-            <p className="text-sm text-gray-500 mb-10 font-medium">Gemini 3 Pro handles deep extraction of SHL PDF metrics.</p>
-            <label className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest cursor-pointer shadow-2xl hover:bg-tp-navy transition-all">
-              {isProcessing ? 'Synchronizing Node...' : 'Upload Evaluation Report'}
-              <input type="file" className="hidden" accept=".pdf" onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setIsProcessing(true);
-                try {
-                  await shlService.processAndRegister(file);
-                  alert("Success: Candidate intelligence integrated into registry.");
-                  fetchUsers();
-                } catch (err) { alert("Registration Failed: Sync Timeout"); }
-                finally { setIsProcessing(false); }
-              }} disabled={isProcessing} />
-            </label>
-          </div>
-        </div>
+        <UserUploader currentUser={currentUser} onUserCreated={fetchUsers} />
       )}
 
       {activeTab === 'content' && <ResourceUploader onSuccess={onUpdateContent} />}

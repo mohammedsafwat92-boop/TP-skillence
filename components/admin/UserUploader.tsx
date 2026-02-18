@@ -6,98 +6,130 @@ import {
   CheckCircleIcon, 
   ExclamationCircleIcon, 
   BrainIcon,
-  DownloadIcon
+  XIcon,
+  PlusIcon,
+  LightningIcon
 } from '../Icons';
 
 interface FileStatus {
-  name: string;
-  status: 'pending' | 'uploading' | 'syncing' | 'analyzing' | 'success' | 'error';
+  file: File;
+  status: 'staged' | 'processing' | 'success' | 'error';
   message?: string;
-  sizeMB: string;
 }
 
 interface UserUploaderProps {
   currentUser: UserProfile;
-  onUserCreated: (user: UserProfile) => void;
+  onUserCreated: () => void;
 }
 
 const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated }) => {
-  const [fileStatuses, setFileStatuses] = useState<FileStatus[]>([]);
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [stagedFiles, setStagedFiles] = useState<FileStatus[]>([]);
+  const [isProcessingBatch, setIsProcessingBatch] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const updateStatus = (name: string, status: FileStatus['status'], message?: string) => {
-    setFileStatuses(prev => prev.map(f => 
-      f.name === name ? { ...f, status, message } : f
-    ));
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
   };
 
-  const processFiles = async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    
-    setIsProcessing(true);
-    
-    // Convert FileList to Array and filter for valid files
-    const fileArray = Array.from(files).filter(f => f && f instanceof File);
-    
-    // Initialize UI statuses for all files in the batch
-    const initialStatuses = fileArray.map(f => ({
-      name: f.name || 'Unknown_Candidate.pdf',
-      status: 'pending' as const,
-      sizeMB: (f.size / 1024 / 1024).toFixed(1)
-    }));
-    setFileStatuses(initialStatuses);
+  const handleDragLeave = () => {
+    setIsDragging(false);
+  };
 
-    // Sequential Processing: Prevent 400 Errors and Memory Leaks
-    for (const file of fileArray) {
-      // Safety Guard: Re-check within the loop
-      if (!file) continue;
-      
-      const isLarge = file.size > 15 * 1024 * 1024;
-      updateStatus(file.name, 'uploading', isLarge ? 'Ingesting to Cloud Node...' : 'Preparing In-Memory Extraction...');
+  const addFiles = (files: FileList | null) => {
+    if (!files) return;
+    const newFiles = Array.from(files)
+      .filter(f => f.type === 'application/pdf')
+      .map(f => ({ file: f, status: 'staged' as const }));
+    
+    setStagedFiles(prev => [...prev, ...newFiles]);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    addFiles(e.dataTransfer.files);
+  };
+
+  const removeFile = (index: number) => {
+    setStagedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const processBatch = async () => {
+    if (stagedFiles.length === 0 || isProcessingBatch) return;
+    
+    setIsProcessingBatch(true);
+
+    for (let i = 0; i < stagedFiles.length; i++) {
+      const current = stagedFiles[i];
+      if (current.status === 'success') continue;
+
+      // Set individual file to processing
+      setStagedFiles(prev => prev.map((f, idx) => 
+        idx === i ? { ...f, status: 'processing' } : f
+      ));
 
       try {
-        if (isLarge) {
-          updateStatus(file.name, 'syncing', 'Polling Cloud Activation...');
-        } else {
-          updateStatus(file.name, 'analyzing', 'Extracting Intelligence...');
-        }
-
         const result = await shlService.processAndRegister(
-          file, 
+          current.file, 
           currentUser.role === 'coach' ? currentUser.email : undefined
         );
         
-        updateStatus(file.name, 'success', `Onboarded: ${result.shlData.candidateName}`);
+        // Mark as success
+        setStagedFiles(prev => prev.map((f, idx) => 
+          idx === i ? { ...f, status: 'success', message: `Registered: ${result.shlData.candidateName}` } : f
+        ));
         
-        if (result.registration?.userProfile) {
-          onUserCreated(result.registration.userProfile);
-        }
+        onUserCreated(); // Refresh the parent list
       } catch (err) {
-        console.error(`[UserUploader] Failure for ${file.name}:`, err);
-        updateStatus(file.name, 'error', (err as Error).message);
+        // Mark as error
+        setStagedFiles(prev => prev.map((f, idx) => 
+          idx === i ? { ...f, status: 'error', message: (err as Error).message } : f
+        ));
       }
     }
     
-    setIsProcessing(false);
+    setIsProcessingBatch(false);
+  };
+
+  const clearCompleted = () => {
+    setStagedFiles(prev => prev.filter(f => f.status !== 'success'));
+  };
+
+  const summary = {
+    total: stagedFiles.length,
+    success: stagedFiles.filter(f => f.status === 'success').length,
+    error: stagedFiles.filter(f => f.status === 'error').length,
+    pending: stagedFiles.filter(f => f.status === 'staged').length
   };
 
   return (
-    <div className="space-y-8 animate-fadeIn max-w-3xl mx-auto">
+    <div className="space-y-8 animate-fadeIn max-w-4xl mx-auto pb-12">
+      {/* Drop Zone */}
       <div 
-        onClick={() => !isProcessing && fileInputRef.current?.click()}
-        className={`border-4 border-dashed border-tp-purple/5 rounded-[48px] p-20 text-center transition-all group bg-gray-50/50 cursor-pointer shadow-inner ${isProcessing ? 'opacity-50 pointer-events-none' : 'hover:border-tp-purple/20 hover:bg-white'}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => !isProcessingBatch && fileInputRef.current?.click()}
+        className={`border-4 border-dashed rounded-[48px] p-12 md:p-16 text-center transition-all group bg-gray-50/50 cursor-pointer shadow-inner relative overflow-hidden ${
+          isDragging ? 'border-tp-red bg-tp-red/5 scale-[0.99]' : 'border-tp-purple/5 hover:border-tp-purple/20 hover:bg-white'
+        } ${isProcessingBatch ? 'opacity-50 pointer-events-none' : ''}`}
       >
-        <div className="w-24 h-24 bg-tp-purple text-white rounded-[32px] flex items-center justify-center mx-auto mb-8 group-hover:scale-110 transition-transform shadow-2xl">
-          <BrainIcon className="w-12 h-12" />
+        <div className={`w-20 h-20 md:w-24 md:h-24 rounded-[32px] flex items-center justify-center mx-auto mb-8 transition-all shadow-2xl ${
+          isDragging ? 'bg-tp-red text-white' : 'bg-tp-purple text-white group-hover:scale-105'
+        }`}>
+          <BrainIcon className="w-10 h-10 md:w-12 md:h-12" />
         </div>
-        <h3 className="text-3xl font-black text-tp-purple mb-4 uppercase tracking-tighter">Candidate Batch Ingestion</h3>
-        <p className="text-sm text-gray-500 mb-10 max-w-sm mx-auto font-medium">
-          Drag & Drop SHL Reports. Gemini 3 Pro manages Cloud Sync for documents >15MB to bypass payload limits.
+        <h3 className="text-2xl md:text-3xl font-black text-tp-purple mb-4 uppercase tracking-tighter">
+          Candidate Intelligence Hub
+        </h3>
+        <p className="text-sm text-gray-500 mb-8 max-w-sm mx-auto font-medium leading-relaxed">
+          Drag & Drop SHL PDF reports here or click to browse. Support for batch recruitment intake.
         </p>
-        <div className="bg-tp-red text-white px-12 py-5 rounded-2xl font-black uppercase text-xs shadow-xl inline-flex items-center gap-3 group-hover:bg-tp-navy transition-colors">
-          <DownloadIcon className="w-4 h-4" />
-          {isProcessing ? 'Synchronizing Cluster...' : 'Upload Reports'}
+        <div className="bg-tp-navy text-white px-10 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl inline-flex items-center gap-3 group-hover:bg-tp-red transition-colors">
+          <PlusIcon className="w-4 h-4" />
+          Select Assessment Reports
         </div>
         <input 
           type="file" 
@@ -105,64 +137,97 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
           className="hidden" 
           accept=".pdf" 
           multiple
-          onChange={(e) => processFiles(e.target.files)} 
-          disabled={isProcessing} 
+          onChange={(e) => addFiles(e.target.files)} 
+          disabled={isProcessingBatch} 
         />
       </div>
 
-      {fileStatuses.length > 0 && (
-        <div className="bg-white rounded-[40px] p-8 border border-gray-100 shadow-2xl">
-          <div className="flex justify-between items-center mb-8 px-2">
-            <h4 className="text-[10px] font-black text-tp-purple uppercase tracking-[0.3em]">Batch Registry Status</h4>
-            <div className="flex items-center gap-4">
-              <span className="text-[10px] font-black text-tp-red uppercase">{fileStatuses.filter(s => s.status === 'success').length} / {fileStatuses.length} COMPLETED</span>
+      {/* Staging & Status Area */}
+      {stagedFiles.length > 0 && (
+        <div className="bg-white rounded-[40px] p-8 md:p-10 border border-gray-100 shadow-2xl animate-fadeIn">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 px-2">
+            <div>
+              <h4 className="text-[10px] font-black text-tp-purple uppercase tracking-[0.3em] mb-1">Batch Registry</h4>
+              <p className="text-xs text-gray-400 font-bold uppercase tracking-widest">
+                {summary.success} Processed • {summary.pending} Staged • {summary.error} Errors
+              </p>
+            </div>
+            <div className="flex gap-3 w-full md:w-auto">
+              {summary.success > 0 && !isProcessingBatch && (
+                <button 
+                  onClick={clearCompleted}
+                  className="px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest text-tp-red hover:bg-tp-red/5 transition-all"
+                >
+                  Clear Finished
+                </button>
+              )}
+              <button 
+                onClick={processBatch}
+                disabled={isProcessingBatch || summary.success === summary.total}
+                className="flex-1 md:flex-none bg-tp-red text-white px-10 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-tp-navy transition-all disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {isProcessingBatch ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Processing Ingestion...
+                  </>
+                ) : (
+                  <>
+                    <LightningIcon className="w-4 h-4" />
+                    Ingest All Staged Files
+                  </>
+                )}
+              </button>
             </div>
           </div>
           
           <div className="space-y-4 max-h-[400px] overflow-y-auto custom-scrollbar pr-2">
-            {fileStatuses.map((file, idx) => (
-              <div key={idx} className="bg-gray-50 border border-gray-100 rounded-3xl p-5 flex items-center justify-between group animate-fadeIn">
-                <div className="flex items-center gap-5">
-                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center transition-all ${
-                    file.status === 'success' ? 'bg-green-100 text-green-600' :
-                    file.status === 'error' ? 'bg-tp-red/10 text-tp-red' :
-                    'bg-tp-purple/5 text-tp-purple animate-pulse'
+            {stagedFiles.map((item, idx) => (
+              <div 
+                key={`${item.file.name}-${idx}`} 
+                className={`border rounded-[28px] p-5 flex items-center justify-between group transition-all ${
+                  item.status === 'success' ? 'border-green-100 bg-green-50/20' : 
+                  item.status === 'error' ? 'border-tp-red/10 bg-tp-red/5' : 
+                  'border-gray-50 bg-gray-50/50 hover:border-tp-purple/10 hover:bg-white'
+                }`}
+              >
+                <div className="flex items-center gap-5 min-w-0 flex-1">
+                  <div className={`w-12 h-12 rounded-xl flex items-center justify-center transition-all flex-shrink-0 ${
+                    item.status === 'success' ? 'bg-green-100 text-green-600' :
+                    item.status === 'error' ? 'bg-tp-red text-white' :
+                    item.status === 'processing' ? 'bg-tp-purple text-white animate-pulse' :
+                    'bg-white text-tp-purple/20 border border-gray-100'
                   }`}>
-                    {file.status === 'success' ? <CheckCircleIcon /> : 
-                     file.status === 'error' ? <ExclamationCircleIcon /> : 
-                     <ClipboardListIcon className="w-6 h-6" />}
+                    {item.status === 'success' ? <CheckCircleIcon filled className="w-5 h-5" /> : 
+                     item.status === 'error' ? <ExclamationCircleIcon className="w-5 h-5" /> : 
+                     item.status === 'processing' ? <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div> :
+                     <ClipboardListIcon className="w-5 h-5" />}
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold text-tp-purple text-sm truncate max-w-[200px]">{file.name}</p>
-                      <span className="text-[9px] font-bold text-gray-400">{file.sizeMB} MB</span>
-                    </div>
+                  <div className="min-w-0">
+                    <p className={`font-bold text-tp-purple text-sm truncate ${item.status === 'success' ? 'opacity-50' : ''}`}>
+                      {item.file.name}
+                    </p>
                     <p className={`text-[10px] font-black uppercase tracking-widest mt-1 ${
-                      file.status === 'error' ? 'text-tp-red' : 'text-tp-purple/40'
+                      item.status === 'error' ? 'text-tp-red' : 
+                      item.status === 'success' ? 'text-green-600' :
+                      'text-tp-purple/40'
                     }`}>
-                      {file.message || file.status}
+                      {item.message || (item.status === 'staged' ? 'Waiting for processing' : item.status)}
                     </p>
                   </div>
                 </div>
-                {(file.status !== 'success' && file.status !== 'error' && file.status !== 'pending') && (
-                  <div className="flex items-center gap-1.5 px-3">
-                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0s'}}></div>
-                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
-                    <div className="w-2 h-2 bg-tp-red rounded-full animate-bounce" style={{animationDelay: '0.4s'}}></div>
-                  </div>
+                
+                {!isProcessingBatch && item.status !== 'success' && (
+                  <button 
+                    onClick={() => removeFile(idx)}
+                    className="ml-4 p-2 text-gray-300 hover:text-tp-red transition-all"
+                  >
+                    <XIcon className="w-5 h-5" />
+                  </button>
                 )}
               </div>
             ))}
           </div>
-          
-          {!isProcessing && (
-            <button 
-              onClick={() => setFileStatuses([])}
-              className="mt-6 w-full py-3 text-[10px] font-black text-gray-400 uppercase tracking-widest hover:text-tp-red transition-colors"
-            >
-              Clear Processing History
-            </button>
-          )}
         </div>
       )}
     </div>

@@ -103,6 +103,13 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
 
   const GAP_THRESHOLD_NORMALIZED = 80;
 
+  // Mastery Calculation: (Number of Completed Courses / Total Assigned Courses) * 100
+  const progressPercent = useMemo(() => {
+    if (resources.length === 0) return 0;
+    const completedCount = resources.filter(r => r.progress?.status === 'completed').length;
+    return Math.round((completedCount / resources.length) * 100);
+  }, [resources]);
+
   const metrics = useMemo(() => {
     const s = user.shlData?.svar;
     const w = user.shlData?.writex;
@@ -120,32 +127,21 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     ];
   }, [user.shlData]);
 
-  // Step 3: Split Content into Active and Completed groups
+  // Tab Logic & Filtering (Case-insensitive matching)
   const { activeCourses, completedCourses } = useMemo(() => {
-    const active: Resource[] = [];
-    const completed: Resource[] = [];
-
-    resources.forEach(res => {
-      // Filter by skill first if one is active
-      const matchesSkill = activeSkill === 'All' || res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
-      if (!matchesSkill) return;
-
-      if (res.progress?.status === 'completed') {
-        completed.push(res);
-      } else {
-        active.push(res);
-      }
+    const filtered = resources.filter(res => {
+      if (activeSkill === 'All') return true;
+      return res.tags.some(t => t.toLowerCase() === activeSkill.toLowerCase());
     });
 
-    return { activeCourses: active, completedCourses: completed };
+    return {
+      activeCourses: filtered.filter(r => r.progress?.status !== 'completed'),
+      completedCourses: filtered.filter(r => r.progress?.status === 'completed')
+    };
   }, [resources, activeSkill]);
 
-  const progressPercent = resources.length > 0 
-    ? Math.round((resources.filter(r => r.progress?.status === 'completed').length / resources.length) * 100) 
-    : 0;
-
   return (
-    <div className="space-y-10 animate-fadeIn">
+    <div className="space-y-10 animate-fadeIn pb-20">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
         <div>
           <div className="flex items-center gap-3 mb-3">
@@ -163,6 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
 
         <div className="flex flex-col items-end gap-6 w-full md:w-auto">
+          {/* Mastery Calculation Display */}
           <div className="bg-white px-8 py-5 rounded-[32px] shadow-sm border border-gray-100 flex items-center gap-6 w-fit ml-auto shadow-tp-purple/5">
             <div className="text-center">
               <p className="text-3xl font-black text-tp-purple leading-none">{progressPercent}%</p>
@@ -189,42 +186,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
       </div>
 
-      {/* Step 3: Render Active Learning Path */}
-      {activeCourses.length > 0 && (
-        <div className="bg-tp-purple rounded-[48px] p-10 text-white relative shadow-2xl overflow-hidden shadow-tp-purple/30">
-          <div className="absolute top-0 right-0 p-10 opacity-[0.03] pointer-events-none">
-            <TargetIcon className="w-80 h-80 text-white" />
-          </div>
-          <div className="relative z-10">
-            <h2 className="text-2xl font-black flex items-center tracking-tight uppercase mb-8">
-              <TargetIcon className="mr-3 text-tp-red" /> Active Learning Path
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {activeCourses.map((res) => (
-                <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white/10 backdrop-blur-xl border border-white/10 p-6 rounded-[32px] hover:bg-white/20 transition-all cursor-pointer flex flex-col justify-between h-[180px] group border-white/5">
-                  <div>
-                    <div className="flex justify-between items-start mb-2">
-                      <p className="text-[10px] font-black text-tp-red uppercase tracking-[0.2em]">{res.tags[0]}</p>
-                      <span className={`text-[8px] font-black bg-white/20 px-2 py-0.5 rounded-lg uppercase tracking-widest ${res.progress?.status === 'assigned' ? 'text-tp-red bg-white text-[9px] px-3' : 'text-white/60'}`}>
-                        {res.progress?.status === 'assigned' ? 'MANUAL' : 'AUTO'}
-                      </span>
-                    </div>
-                    <h3 className="font-bold text-lg leading-tight line-clamp-2 group-hover:text-white transition-colors">{res.title}</h3>
-                  </div>
-                  <div className="flex items-center justify-between mt-4">
-                    <span className="text-[9px] font-black text-white/40 uppercase tracking-widest">{res.type}</span>
-                    <span className="text-xs font-black uppercase tracking-widest group-hover:text-tp-red transition-all">Launch Module →</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        <div className="lg:col-span-4">
-          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl h-full flex flex-col shadow-tp-purple/5">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Sidebar: Metrics */}
+        <div className="lg:col-span-4 lg:sticky lg:top-8">
+          <div className="bg-white border border-gray-100 rounded-[48px] p-8 shadow-xl flex flex-col shadow-tp-purple/5">
             <div className="flex items-center gap-3 mb-8">
               <div className="w-1.5 h-6 bg-tp-red rounded-full"></div>
               <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Competency Metrics</h3>
@@ -232,7 +197,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
             
             <RadarChart data={metrics.map(m => ({ label: m.label, value: m.val }))} />
             
-            <div className="w-full space-y-4 mt-auto">
+            <div className="w-full space-y-4 mt-8">
               {metrics.map(({ label, val, raw }) => (
                 <div key={label}>
                   <div className="flex justify-between text-[10px] font-black uppercase mb-1">
@@ -250,35 +215,89 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
           </div>
         </div>
 
-        {/* Step 3: Render Completed Mastery Log */}
-        <div className="lg:col-span-8">
-          <div className="flex items-center justify-between mb-8 px-4">
-             <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase">Mastery Log</h2>
-             <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{completedCourses.length} Completed</p>
+        {/* Main Content: Course Grid */}
+        <div className="lg:col-span-8 space-y-12">
+          {/* Section: Active Assignments */}
+          <div>
+            <div className="flex items-center justify-between mb-8 px-4">
+              <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase flex items-center gap-3">
+                <TargetIcon className="w-6 h-6 text-tp-red" />
+                Active Assignments
+              </h2>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{activeCourses.length} Modules</span>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {activeCourses.map((res) => (
+                <div 
+                  key={res.id} 
+                  onClick={() => onOpenResource(res)} 
+                  className="bg-white p-8 rounded-[40px] border border-gray-100 shadow-lg hover:shadow-2xl transition-all cursor-pointer group flex flex-col justify-between min-h-[200px]"
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <span className="text-[10px] font-black text-tp-red uppercase tracking-[0.2em]">{res.tags[0]}</span>
+                      <span className={`text-[8px] font-black px-2 py-0.5 rounded-lg uppercase tracking-widest ${res.progress?.status === 'assigned' ? 'bg-tp-purple text-white' : 'bg-gray-100 text-gray-500'}`}>
+                        {res.progress?.status === 'assigned' ? 'MANUAL' : 'AUTO'}
+                      </span>
+                    </div>
+                    <h3 className="font-black text-xl text-tp-purple group-hover:text-tp-red transition-colors leading-tight">{res.title}</h3>
+                  </div>
+                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-50">
+                    <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">{res.type}</span>
+                    <span className="text-xs font-black uppercase tracking-widest text-tp-purple group-hover:translate-x-1 transition-transform">Launch Module →</span>
+                  </div>
+                </div>
+              ))}
+              {activeCourses.length === 0 && (
+                <div className="col-span-full py-16 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px] bg-gray-50/30">
+                  No active assignments in this category.
+                </div>
+              )}
+            </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pb-20">
-            {completedCourses.map((res) => (
-              <div key={res.id} onClick={() => onOpenResource(res)} className="bg-white p-6 rounded-[32px] border border-gray-100 shadow-sm transition-all hover:shadow-lg cursor-pointer grayscale opacity-50 hover:grayscale-0 hover:opacity-100 group shadow-tp-purple/5">
-                 <div className="flex justify-between items-start mb-4">
-                    <div className="p-2.5 rounded-xl bg-green-100 text-green-600 group-hover:bg-tp-red group-hover:text-white transition-colors">
-                      <CheckCircleIcon className="w-5 h-5" filled />
+
+          {/* Section: Completed History */}
+          <div>
+            <div className="flex items-center justify-between mb-8 px-4">
+              <h2 className="text-2xl font-black text-tp-purple tracking-tight uppercase flex items-center gap-3">
+                <CheckCircleIcon className="w-6 h-6 text-green-500" filled />
+                Completed History
+              </h2>
+              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{completedCourses.length} Mastered</span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {completedCourses.map((res) => (
+                <div 
+                  key={res.id} 
+                  onClick={() => onOpenResource(res)} 
+                  className="bg-white p-8 rounded-[40px] border-2 border-green-500/30 shadow-md hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between group grayscale hover:grayscale-0"
+                >
+                  <div>
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="bg-green-100 text-green-600 px-3 py-1 rounded-xl flex items-center gap-2">
+                        <CheckCircleIcon className="w-4 h-4" filled />
+                        <span className="text-[9px] font-black uppercase">Completed</span>
+                      </div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{res.level}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-[8px] font-black bg-tp-purple/5 text-tp-purple px-2 py-0.5 rounded uppercase">{res.tags[0]}</span>
-                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{res.level}</span>
-                    </div>
-                 </div>
-                 <h3 className="font-black text-tp-purple text-base leading-tight">{res.title}</h3>
-                 {res.progress?.score && (
-                   <p className="mt-2 text-[10px] font-black text-tp-red uppercase tracking-widest">Mastery Score: {res.progress.score}%</p>
-                 )}
-              </div>
-            ))}
-            {completedCourses.length === 0 && (
-              <div className="col-span-full py-20 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px] bg-gray-50/50">
-                No completed records in the registry.
-              </div>
-            )}
+                    <h3 className="font-black text-lg text-tp-purple leading-tight">{res.title}</h3>
+                  </div>
+                  <div className="mt-6 pt-4 border-t border-gray-50 flex justify-between items-center">
+                    <span className="text-[9px] font-black text-gray-300 uppercase tracking-widest">{res.tags[0]}</span>
+                    {res.progress?.score && (
+                      <span className="text-[10px] font-black text-green-600 uppercase">Score: {res.progress.score}%</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {completedCourses.length === 0 && (
+                <div className="col-span-full py-16 text-center text-gray-300 font-black uppercase text-xs tracking-widest border-2 border-dashed border-gray-100 rounded-[40px] bg-gray-50/30">
+                  Registry history is currently empty.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
