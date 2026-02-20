@@ -2,7 +2,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { QuizQuestion, SHLReport } from '../types';
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || "";
+const ai = new GoogleGenAI({ apiKey: API_KEY });
 
 /**
  * Helper to handle rate limits (429 errors) with exponential backoff.
@@ -28,6 +29,50 @@ const withRetry = async <T>(fn: () => Promise<T>, maxRetries = 3, initialDelay =
 };
 
 export const geminiService = {
+  enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string }> => {
+    try {
+      if (!API_KEY) throw new Error("API Key missing");
+
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
+      
+      const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
+      Title: ${title}
+      URL: ${url}
+
+      Extract and return STRICTLY a JSON object with these fields:
+      - "tags": 3-5 specific sub-skills (e.g., Pronunciation, Fluency, Grammar, Active Listening) combined into a single comma-separated string.
+      - "level": A CEFR level (A1, A2, B1, B2, C1, C2) or "ALL".
+      - "objective": A 1-sentence learning objective based on the title.
+
+      Return ONLY the JSON object. No markdown, no backticks, no preamble.`;
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+
+      const data = await response.json();
+      let text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      
+      // Regex logic to clean the AI's text response
+      const cleanedJson = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
+      
+      return JSON.parse(cleanedJson);
+    } catch (error) {
+      console.error("Gemma 3 Enrichment Error:", error);
+      return { 
+        tags: "General", 
+        level: "ALL", 
+        objective: "General Training" 
+      };
+    }
+  },
+
   analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
     return withRetry(async () => {
       const promptPart = {

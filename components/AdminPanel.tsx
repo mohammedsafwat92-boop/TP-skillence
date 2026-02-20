@@ -272,7 +272,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         <UserUploader currentUser={currentUser} onUserCreated={fetchUsers} />
       )}
 
-      {activeTab === 'content' && <ResourceUploader onSuccess={onUpdateContent} />}
+      {activeTab === 'content' && <ResourceUploader onUploadComplete={onUpdateContent} />}
     </div>
   );
 };
