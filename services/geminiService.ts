@@ -33,7 +33,7 @@ export const geminiService = {
     try {
       if (!API_KEY) throw new Error("API Key missing");
 
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
       
       const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
       Title: ${title}
@@ -64,7 +64,7 @@ export const geminiService = {
       
       return JSON.parse(cleanedJson);
     } catch (error) {
-      console.error("Gemma 3 Enrichment Error:", error);
+      console.error("Gemini Enrichment Error:", error);
       return { 
         tags: "General", 
         level: "ALL", 
