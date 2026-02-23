@@ -42,10 +42,11 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-tp-purple relative overflow-hidden p-6">
+    <div className="min-h-screen flex items-center justify-center bg-tp-purple relative overflow-hidden p-6 bg-gradient-to-br from-tp-purple via-tp-navy to-tp-purple">
       <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-tp-red/10 rounded-full blur-[140px] -mr-80 -mt-80 animate-pulse"></div>
+      <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-tp-red/5 rounded-full blur-[100px] -ml-40 -mb-40"></div>
       
-      <div className="w-full max-w-lg relative z-10 animate-fadeIn">
+      <div className="w-full max-w-md relative z-10 animate-fadeIn">
         <div className="text-center mb-10">
           <div className="inline-flex w-20 h-20 bg-white rounded-[24px] items-center justify-center shadow-2xl mb-6">
             <span className="text-tp-purple font-black text-3xl">TP</span>
@@ -57,12 +58,12 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
               systemStatus === 'offline' ? 'bg-tp-red shadow-[0_0_8px_#E2001A]' : 'bg-gray-400'
             }`}></div>
             <p className="text-white/60 font-black text-[9px] uppercase tracking-widest">
-              {systemStatus === 'online' ? 'Lufthansa Node Online' : systemStatus === 'offline' ? 'Registry Offline' : 'Syncing...'}
+              {systemStatus === 'online' ? 'Global Node Online' : systemStatus === 'offline' ? 'Registry Offline' : 'Syncing...'}
             </p>
           </div>
         </div>
 
-        <div className="bg-white/95 backdrop-blur-xl rounded-[40px] p-10 md:p-12 shadow-2xl">
+        <div className="bg-white/95 backdrop-blur-xl rounded-[40px] p-10 md:p-12 shadow-2xl border border-white/20">
           <form onSubmit={handleSubmit} className="space-y-6">
             {error && (
               <div className="bg-tp-red/10 border border-tp-red/20 p-4 rounded-2xl flex items-center gap-3 text-tp-red">
@@ -118,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
 
         <div className="text-center mt-8">
           <p className="text-white/20 text-[8px] font-black uppercase tracking-[0.3em]">
-            © 2025 Teleperformance Egypt • Lufthansa Specialized Track
+            © 2025 Teleperformance Egypt • Client Specialized Track
           </p>
         </div>
       </div>

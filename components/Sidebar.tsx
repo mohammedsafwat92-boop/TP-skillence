@@ -31,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
   const isCoach = currentUser?.role === 'coach';
   
   return (
-    <div className={`fixed inset-y-0 left-0 w-72 bg-tp-purple text-white flex flex-col h-full shadow-2xl z-50 transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:z-20 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+    <div className={`fixed inset-y-0 left-0 w-72 bg-tp-purple text-white flex flex-col h-full shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
       <div className="lg:hidden absolute top-4 right-4"><button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><XIcon /></button></div>
 
       <div className="flex flex-col items-center justify-center pt-10 pb-6 border-b border-white/10" onClick={() => onNavigate({ type: 'dashboard' })}>
@@ -41,7 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
       </div>
       
       <nav className="flex-1 py-8 overflow-y-auto custom-scrollbar">
-        <ul>
+        <ul className="space-y-1">
           <NavItem view={{ type: 'dashboard' }} currentView={currentView} onNavigate={onNavigate}>
             <DashboardIcon />
             <span className="ml-3">Academy Hub</span>
@@ -68,8 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
           )}
         </ul>
 
-        <div className="mt-8 mb-4 px-6"><h2 className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Core Skills</h2></div>
-        <ul>
+        <div className="mt-10 mb-4 px-6"><h2 className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Core Skills</h2></div>
+        <ul className="space-y-1">
             <NavItem view={{ type: 'dashboard', skill: 'Listening' }} currentView={currentView} onNavigate={onNavigate}>
                 <ListeningIcon className="w-5 h-5 opacity-80" />
                 <span className="ml-3">Listening</span>
@@ -88,10 +88,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
             </NavItem>
         </ul>
         
-        <div className="mt-auto px-3 pb-4 pt-8">
+        <div className="mt-auto px-3 pb-4 pt-12">
           <button 
             onClick={onLogout}
-            className="flex items-center w-full py-3 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
+            className="flex items-center w-full py-4 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
           >
             <ExitIcon className="w-5 h-5" />
             <span className="ml-3 text-[11px] font-black uppercase tracking-widest">Logout Session</span>
@@ -101,7 +101,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
 
       <div className="p-6 border-t border-white/5">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest leading-tight">Lufthansa Specialized Track</p>
+              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest leading-tight">Client Specialized Track</p>
               <p className="text-[9px] text-white/30 font-medium mt-1 uppercase tracking-widest">Skillence © 2025</p>
           </div>
       </div>
