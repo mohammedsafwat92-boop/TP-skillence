@@ -201,7 +201,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex min-h-screen overflow-hidden bg-[#FBFBFF]">
+    <div className={`flex min-h-screen overflow-hidden ${currentUser ? 'bg-[#FBFBFF]' : 'bg-tp-purple'}`}>
       {currentUser && (
         <Sidebar 
           modules={allTrainingModules} 
@@ -216,7 +216,7 @@ const App: React.FC = () => {
         />
       )}
 
-      <main className={`flex-1 overflow-y-auto ${currentUser ? 'relative lg:ml-72 transition-all' : ''}`}>
+      <main className={`flex-1 overflow-y-auto ${currentUser ? 'relative lg:ml-72 transition-all' : 'w-full'}`}>
         {originalUser && (
           <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-4 shadow-xl flex items-center justify-between animate-fadeIn border-b border-amber-600/20">
             <div className="flex items-center gap-3">
@@ -242,7 +242,7 @@ const App: React.FC = () => {
               <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
             </div>
           )}
-          <div className="max-w-7xl mx-auto">{renderContent()}</div>
+          <div className={currentUser ? "max-w-7xl mx-auto" : "w-full"}>{renderContent()}</div>
         </div>
       </main>
     </div>
