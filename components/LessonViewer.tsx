@@ -17,8 +17,10 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<number[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
   const [score, setScore] = useState(0);
   const [backendStatus, setBackendStatus] = useState<Resource['progress']['status']>(resource.progress?.status || 'assigned');
+  const [quizError, setQuizError] = useState<string | null>(null);
 
   /**
    * Automatically converts YouTube URLs to embed format.
@@ -39,19 +41,27 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   };
 
   const startQuiz = async () => {
-    setIsGenerating(true);
+    setIsGeneratingQuiz(true);
+    setQuizError(null);
     try {
-      const questions = await geminiService.generateQuizForResource(
+      const questions = await geminiService.generateQuiz(
         resource.title, 
-        resource.objective || 'Complete visual study to unlock assessment.'
+        resource.url,
+        resource.type
       );
+      
+      if (questions.length === 0) {
+        setQuizError("Could not generate quiz from this content.");
+        return;
+      }
+
       setQuizQuestions(questions);
       setAnswers(new Array(questions.length).fill(-1));
       setView('quiz');
     } catch (err) {
-      alert("Assessment engine failed. Check connection.");
+      setQuizError("Assessment engine failed. Check connection.");
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingQuiz(false);
     }
   };
 
@@ -106,13 +116,20 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
                 <p className="text-sm font-bold text-gray-700 leading-relaxed italic">
                   "{resource.objective || 'Complete visual study to unlock assessment.'}"
                 </p>
+                {quizError && (
+                  <div className="mt-2 flex items-center gap-2 text-tp-red">
+                    <ExclamationCircleIcon className="w-4 h-4" />
+                    <p className="text-[10px] font-black uppercase tracking-widest">{quizError}</p>
+                  </div>
+                )}
               </div>
               <button 
                 onClick={startQuiz}
-                disabled={isGenerating || backendStatus === 'completed'}
-                className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50"
+                disabled={isGeneratingQuiz || backendStatus === 'completed'}
+                className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50 flex items-center gap-3"
               >
-                {backendStatus === 'completed' ? 'Certified Complete' : isGenerating ? 'Preparing...' : 'Mastery Check'}
+                {isGeneratingQuiz && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                {backendStatus === 'completed' ? 'Certified Complete' : isGeneratingQuiz ? 'Generating Quiz...' : 'Mastery Check'}
               </button>
             </div>
           </div>

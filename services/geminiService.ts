@@ -9,7 +9,7 @@ const callGemini = async (prompt: string, inlineData?: { data: string; mimeType:
     return null;
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`;
+  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${API_KEY}`;
   
   const parts: any[] = [{ text: prompt }];
   if (inlineData) {
@@ -163,6 +163,40 @@ export const geminiService = {
 
       const result = await callGemini(prompt);
       return result || [];
+    } catch (error) {
+      console.error("Quiz Generation Error:", error);
+      return [];
+    }
+  },
+
+  generateQuiz: async (title: string, url: string, type: string): Promise<QuizQuestion[]> => {
+    try {
+      const prompt = `You are an expert instructional designer. Create a 3-question multiple-choice quiz to check mastery of this resource: Title: '${title}', URL: '${url}'. Return strictly a JSON array of objects with this shape: { question: string, options: string[], correctAnswer: string, explanation: string }.`;
+
+      const result = await callGemini(prompt);
+      if (!Array.isArray(result)) return [];
+      
+      // Ensure correctAnswer is a number index for compatibility with QuizQuestion type
+      return result.map((q: any) => {
+        let correctIdx = q.correctAnswer;
+        if (typeof q.correctAnswer === 'string') {
+          // Try to find the string in options
+          const foundIdx = q.options.indexOf(q.correctAnswer);
+          if (foundIdx !== -1) {
+            correctIdx = foundIdx;
+          } else {
+            // Try to parse as number
+            const parsed = parseInt(q.correctAnswer, 10);
+            correctIdx = isNaN(parsed) ? 0 : parsed;
+          }
+        }
+        return {
+          question: q.question,
+          options: q.options,
+          correctAnswer: correctIdx,
+          explanation: q.explanation
+        };
+      });
     } catch (error) {
       console.error("Quiz Generation Error:", error);
       return [];
