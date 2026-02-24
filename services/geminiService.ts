@@ -2,46 +2,38 @@
 import type { QuizQuestion, SHLReport } from '../types';
 
 const API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
+const MODEL_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
 
-const callGemini = async (prompt: string, inlineData?: { data: string; mimeType: string }) => {
+const callGemini = async (prompt: string) => {
   if (!API_KEY) {
     console.warn("Gemini API Key is missing. Returning fallback.");
     return null;
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${API_KEY}`;
-  
-  const parts: any[] = [{ text: prompt }];
-  if (inlineData) {
-    parts.push({
-      inline_data: {
-        mime_type: inlineData.mimeType,
-        data: inlineData.data
-      }
+  try {
+    const response = await fetch(MODEL_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      })
     });
+
+    if (!response.ok) {
+      throw new Error(`Gemini API Error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!textResponse) throw new Error("Empty response from Gemini");
+    
+    const cleanText = textResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+    return JSON.parse(cleanText);
+  } catch (error) {
+    console.error("Gemini Call Error:", error);
+    throw error;
   }
-
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseMimeType: "application/json"
-      }
-    })
-  });
-
-  if (!response.ok) {
-    throw new Error(`Gemini API Error: ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  
-  if (!text) throw new Error("Empty response from Gemini");
-  
-  return JSON.parse(text.replace(/```json/gi, '').replace(/```/gi, '').trim());
 };
 
 export const geminiService = {
@@ -68,7 +60,7 @@ export const geminiService = {
 
   analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
     try {
-      const prompt = `Analyze the attached SHL Assessment Report PDF. 
+      const prompt = `Analyze the attached SHL Assessment Report. 
       Extract the following data into a strict JSON structure.
       
       REQUIRED FIELDS:
@@ -107,7 +99,7 @@ export const geminiService = {
         }
       }`;
 
-      const result = await callGemini(prompt, pdfPart.inlineData);
+      const result = await callGemini(prompt);
       return result || { candidateName: "Unknown", email: "", cefrLevel: "N/A", svar: {}, writex: {} };
     } catch (error) {
       console.error("SHL Analysis Error:", error);
@@ -171,7 +163,7 @@ export const geminiService = {
 
   generateQuiz: async (title: string, url: string, type: string): Promise<QuizQuestion[]> => {
     try {
-      const prompt = `You are an expert instructional designer. Create a 3-question multiple-choice quiz to check mastery of this resource: Title: '${title}', URL: '${url}'. Return strictly a JSON array of objects with this shape: { question: string, options: string[], correctAnswer: string, explanation: string }.`;
+      const prompt = `You are an expert instructional designer. Create a 3-question multiple-choice quiz based on this resource: Title: '${title}', URL: '${url}'. Return ONLY a valid JSON array of objects. Do not write any other text. Structure: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
 
       const result = await callGemini(prompt);
       if (!Array.isArray(result)) return [];
