@@ -1,7 +1,12 @@
 
+/// <reference types="vite/client" />
+
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
 import type { SHLReport } from '../types';
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+if (!API_KEY) console.error("[shlService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
 // Use gemini-3-pro-preview for high-complexity reasoning and large report analysis
 const MODEL_NAME = 'gemini-3-pro-preview';
@@ -47,7 +52,7 @@ export const shlService = {
    * This avoids the "Action not implemented" error associated with the Files API.
    */
   processInline: async (file: File): Promise<SHLReport> => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const ai = new GoogleGenAI({ apiKey: API_KEY });
     
     const base64Data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
