@@ -2,54 +2,56 @@
 import type { QuizQuestion, SHLReport } from '../types';
 
 const API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
-const MODEL_URL = `https://generativelanguage.googleapis.com/v1alpha/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
-const BACKUP_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${API_KEY}`;
+const GEMMA_URL = `https://generativelanguage.googleapis.com/v1alpha/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
+const BACKUP_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
 const callGemini = async (prompt: string) => {
   if (!API_KEY) {
-    console.warn("Gemini API Key is missing. Returning fallback.");
+    console.error("Missing API Key");
     return null;
   }
 
-  const executeRequest = async (url: string) => {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }]
-      })
-    });
-
-    const data = await response.json();
-    return { ok: response.ok, status: response.status, data };
+  const payload = {
+    contents: [{ role: "user", parts: [{ text: prompt }] }]
   };
 
   try {
-    // Primary Attempt: Gemma 3 27B
-    let result = await executeRequest(MODEL_URL);
+    // Primary (Gemma 3)
+    let response = await fetch(GEMMA_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
 
-    // Fallback logic for 404 or 400 errors
-    if (!result.ok && (result.status === 404 || result.status === 400)) {
-      console.warn("Gemma 3 27B failed, switching to backup...");
-      result = await executeRequest(BACKUP_URL);
+    // Backup (Gemini 2.5 Flash)
+    if (!response.ok) {
+      console.warn("Gemma 3 rejected the request. Falling back to Gemini 2.5 Flash...");
+      response = await fetch(BACKUP_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
     }
 
-    if (!result.ok) {
-      throw new Error(JSON.stringify(result.data.error));
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Both AI models failed: ${JSON.stringify(errorData.error)}`);
     }
 
-    const textResponse = result.data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!textResponse) throw new Error("Empty response from Gemini");
+    const data = await response.json();
+    const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!textResponse) throw new Error("Empty response from AI");
     
     return textResponse;
   } catch (error) {
-    console.error("Gemini Call Error:", error);
+    console.error("AI Call Error:", error);
     throw error;
   }
 };
 
 export const geminiService = {
   enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string }> => {
+    if (!API_KEY) return { tags: "General", level: "ALL", objective: "General Training" };
     try {
       const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
       Title: ${title}
@@ -76,6 +78,7 @@ export const geminiService = {
   },
 
   analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
+    if (!API_KEY) return { candidateName: "Unknown", email: "", cefrLevel: "N/A", svar: {}, writex: {} } as any;
     try {
       const prompt = `Analyze the attached SHL Assessment Report. 
       Extract the following data into a strict JSON structure.
@@ -130,6 +133,7 @@ export const geminiService = {
   },
 
   analyzeResource: async (resource: { title: string; url: string; objective: string }) => {
+    if (!API_KEY) return { primarySkill: "General", subSkills: [], refinedObjective: resource.objective };
     try {
       const prompt = `Perform an expert content audit for this corporate training resource:
       Title: ${resource.title}
@@ -162,6 +166,7 @@ export const geminiService = {
   },
 
   analyzeResourceUrl: async (url: string) => {
+    if (!API_KEY) return { title: "Error", level: "ALL", tag: "General", objective: "" };
     try {
       const prompt = `Analyze this language learning URL: ${url}. 
       Determine: 1. Title, 2. CEFR Level, 3. Skill Tag (Grammar, Listening, Speaking, Vocabulary, Fluency), 4. Objective.
@@ -181,6 +186,7 @@ export const geminiService = {
   },
 
   generateQuizForResource: async (title: string, description: string): Promise<QuizQuestion[]> => {
+    if (!API_KEY) return [];
     try {
       const prompt = `Generate 5 multiple-choice questions for: ${title}. ${description}. Return as JSON array.
       Each question must have: question (string), options (string array), correctAnswer (number index), explanation (string).`;
@@ -199,6 +205,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string): Promise<QuizQuestion[]> => {
+    if (!API_KEY) return [];
     try {
       const prompt = `Create a 3-question multiple-choice quiz based on this resource: Title: '${title}', URL: '${url}'. You must return ONLY a JSON array. Do not write any other text. Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
 
@@ -239,6 +246,7 @@ export const geminiService = {
   },
 
   generateWorksheetQuestions: async (quizId: string, level?: string): Promise<QuizQuestion[]> => {
+    if (!API_KEY) return [];
     try {
       const prompt = `Generate 5 professional assessment questions for ${quizId} at ${level || 'Intermediate'} level. Return as JSON array.
       Each question must have: question, options, correctAnswer, type, context, speakingPrompt.`;
