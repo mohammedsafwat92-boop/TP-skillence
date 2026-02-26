@@ -74,9 +74,6 @@ export const shlService = {
             { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
             { text: shlService.getAnalysisPrompt() }
           ]
-        },
-        config: { 
-          responseMimeType: "application/json"
         }
       });
     };
@@ -123,7 +120,7 @@ export const shlService = {
         - behavioralTraits: Array of strings representing traits from "Behavioral Indicators".
         - strengths: Candidate strengths from "Detailed Skills" or technical breakdown.
 
-    CRITICAL: Output ONLY raw JSON. No markdown tags, no backticks, no preamble.`;
+    CRITICAL: You must return ONLY a raw JSON object. Do not include markdown formatting, backticks, or conversational text.`;
   },
 
   /**
@@ -132,8 +129,9 @@ export const shlService = {
   parseAndClean: (text: string | undefined): SHLReport => {
     if (!text) throw new Error("Intelligence Extraction Failed: Empty response from engine.");
     try {
-      const cleaned = text.replace(/```json/gi, '').replace(/```/gi, '').trim();
-      return JSON.parse(cleaned);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("No JSON object found in response");
+      return JSON.parse(jsonMatch[0]);
     } catch (e) {
       console.error("[shlService] Parsing Collision. Raw text:", text);
       throw new Error("Registry Error: The candidate intelligence could not be formatted correctly.");
