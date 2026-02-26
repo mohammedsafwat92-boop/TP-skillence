@@ -1,5 +1,8 @@
 
-const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
+/// <reference types="vite/client" />
+
+const WEB_APP_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
+if (!import.meta.env.VITE_GOOGLE_SHEET_URL) console.warn("[googleSheetService] VITE_GOOGLE_SHEET_URL is missing from the environment. Using hardcoded fallback.");
 
 async function callApi(action: string, payload: any = {}) {
   const requestBody = JSON.stringify({ 

@@ -8,8 +8,9 @@ import type { SHLReport } from '../types';
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[shlService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
-// Use gemini-3-pro-preview for high-complexity reasoning and large report analysis
-const MODEL_NAME = 'gemini-3-pro-preview';
+// Use gemma-3-27b-it as primary for high-quota, fallback to gemini-2.5-flash for PDF native support
+const MODEL_NAME = 'gemma-3-27b-it';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 export const shlService = {
   /**
@@ -65,20 +66,35 @@ export const shlService = {
       reader.readAsDataURL(file);
     });
 
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: {
-        parts: [
-          { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
-          { text: shlService.getAnalysisPrompt() }
-        ]
-      },
-      config: { 
-        responseMimeType: "application/json"
-      }
-    });
+    const executeAnalysis = async (model: string) => {
+      return await ai.models.generateContent({
+        model: model,
+        contents: {
+          parts: [
+            { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
+            { text: shlService.getAnalysisPrompt() }
+          ]
+        },
+        config: { 
+          responseMimeType: "application/json"
+        }
+      });
+    };
 
-    return shlService.parseAndClean(response.text);
+    try {
+      console.log(`[shlService] Attempting analysis with primary model: ${MODEL_NAME}`);
+      const response = await executeAnalysis(MODEL_NAME);
+      return shlService.parseAndClean(response.text);
+    } catch (primaryError) {
+      console.warn(`[shlService] Primary model ${MODEL_NAME} failed or rejected PDF. Falling back to ${FALLBACK_MODEL}.`, primaryError);
+      try {
+        const fallbackResponse = await executeAnalysis(FALLBACK_MODEL);
+        return shlService.parseAndClean(fallbackResponse.text);
+      } catch (fallbackError) {
+        console.error("[shlService] Both models failed to process the PDF.", fallbackError);
+        throw new Error("Registry Error: The intelligence engine failed to process the assessment report.");
+      }
+    }
   },
 
   /**

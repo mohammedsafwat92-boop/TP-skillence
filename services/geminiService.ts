@@ -4,6 +4,8 @@
 import type { QuizQuestion, SHLReport } from '../types';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
+
 const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
 const BACKUP_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 

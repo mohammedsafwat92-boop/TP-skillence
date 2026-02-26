@@ -1,4 +1,6 @@
 
+/// <reference types="vite/client" />
+
 import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
@@ -107,7 +109,10 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     if (activeMode !== 'ai') return;
     try {
       setError(null);
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
+      
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
