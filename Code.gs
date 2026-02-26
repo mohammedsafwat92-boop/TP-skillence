@@ -140,6 +140,7 @@ function getUserPlan(ss, uid, role) {
   const tagsIdx = resHeaders.indexOf('tags');
   const levelIdx = resHeaders.indexOf('level');
   const objectiveIdx = resHeaders.indexOf('objective');
+  const scrapedIdx = resHeaders.indexOf('scrapedtext');
 
   const isAdminOrCoach = (role === 'admin' || role === 'coach');
 
@@ -173,6 +174,7 @@ function getUserPlan(ss, uid, role) {
       tags: String(resRow[tagsIdx] || "").split(',').filter(Boolean),
       level: String(resRow[levelIdx] || 'All'),
       objective: String(resRow[objectiveIdx] || ''),
+      scrapedText: scrapedIdx > -1 ? String(resRow[scrapedIdx] || '') : '',
       progress: progress
     });
   }
@@ -184,17 +186,18 @@ function getAllResources(ss) {
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
   if (data.length < 2) return [];
-  const headers = data[0].map(h => h.toLowerCase());
+  const h = data[0].map(h => h.toLowerCase());
   
-  return data.slice(1).map(row => {
+  return data.slice(1).map(r => {
     return {
-      id: String(row[headers.indexOf('id')]),
-      title: String(row[headers.indexOf('title')]),
-      url: String(row[headers.indexOf('url')]),
-      type: String(row[headers.indexOf('type')]),
-      tags: String(row[headers.indexOf('tags')] || "").split(',').filter(Boolean),
-      level: String(row[headers.indexOf('level')] || 'All'),
-      objective: String(row[headers.indexOf('objective')] || '')
+      id: String(r[h.indexOf('id')]),
+      title: String(r[h.indexOf('title')]),
+      url: String(r[h.indexOf('url')]),
+      type: String(r[h.indexOf('type')]),
+      tags: String(r[h.indexOf('tags')] || "").split(',').filter(Boolean),
+      level: String(r[h.indexOf('level')] || 'All'),
+      objective: String(r[h.indexOf('objective')] || ''),
+      scrapedText: h.indexOf('scrapedtext') > -1 ? String(r[h.indexOf('scrapedtext')] || '') : ''
     };
   });
 }
@@ -252,7 +255,7 @@ function fetchAllUsers(ss) {
 function handleBulkImport(ss, resources) {
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective']);
+    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective', 'scrapedText']);
   }
   
   const data = sheet.getDataRange().getValues();
@@ -271,11 +274,12 @@ function handleBulkImport(ss, resources) {
       String(res.type || 'Article'),
       Array.isArray(res.tags) ? res.tags.join(',') : String(res.tags || 'General'),
       String(res.level || 'All'),
-      String(res.objective || 'N/A')
+      String(res.objective || 'N/A'),
+      res.scrapedText || ""
     ];
 
     if (rowIdx !== -1) {
-      sheet.getRange(rowIdx + 2, 1, 1, 7).setValues([rowData]);
+      sheet.getRange(rowIdx + 2, 1, 1, 8).setValues([rowData]);
     } else {
       sheet.appendRow(rowData);
       existingIds.push(resId);

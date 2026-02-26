@@ -27,6 +27,7 @@ export interface Resource {
   tags: string[];
   level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'All';
   objective?: string;
+  scrapedText?: string;
   progress: ResourceProgress;
 }
 

@@ -53,18 +53,52 @@ const callGemini = async (prompt: string) => {
   }
 };
 
+async function scrapeUrl(url: string) {
+  try {
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const YT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+      const payload = { 
+        contents: [{ 
+          role: "user", 
+          parts: [ 
+            { fileData: { fileUri: url, mimeType: "video/x-youtube" } }, 
+            { text: "Extract the full transcript and summarize the core educational concepts. Return plain text only." } 
+          ] 
+        }] 
+      };
+      const response = await fetch(YT_URL, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify(payload) 
+      });
+      if (!response.ok) return null;
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    }
+    const response = await fetch(`https://r.jina.ai/${url}`, { headers: { "Accept": "text/plain" } });
+    return response.ok ? await response.text() : null;
+  } catch (e) { 
+    console.error("Scraping failed", e); 
+    return null; 
+  }
+}
+
 export const geminiService = {
-  enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string }> => {
+  scrapeUrl,
+  enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string, scrapedText?: string }> => {
     if (!API_KEY) return { tags: "General", level: "ALL", objective: "General Training" };
     try {
+      const scrapedText = await scrapeUrl(url);
       const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
       Title: ${title}
       URL: ${url}
+      ${scrapedText ? `Content: ${scrapedText.substring(0, 5000)}` : ''}
 
       Extract and return STRICTLY a JSON object with these fields:
       - "tags": 3-5 specific sub-skills (e.g., Pronunciation, Fluency, Grammar, Active Listening) combined into a single comma-separated string.
       - "level": A CEFR level (A1, A2, B1, B2, C1, C2) or "ALL".
-      - "objective": A 1-sentence learning objective based on the title.
+      - "objective": A 1-sentence learning objective based on the title and content.
 
       Return ONLY the JSON object. No markdown, no backticks, no preamble.`;
 
@@ -74,7 +108,8 @@ export const geminiService = {
       const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
       if (!jsonMatch) throw new Error("No JSON object found");
       
-      return JSON.parse(jsonMatch[0]);
+      const result = JSON.parse(jsonMatch[0]);
+      return { ...result, scrapedText: scrapedText || "" };
     } catch (error) {
       console.error("Gemini Enrichment Error:", error);
       return { tags: "General", level: "ALL", objective: "General Training" };
@@ -136,13 +171,15 @@ export const geminiService = {
     }
   },
 
-  analyzeResource: async (resource: { title: string; url: string; objective: string }) => {
+  analyzeResource: async (resource: { title: string; url: string; objective: string; scrapedText?: string }) => {
     if (!API_KEY) return { primarySkill: "General", subSkills: [], refinedObjective: resource.objective };
     try {
+      const content = resource.scrapedText || await scrapeUrl(resource.url);
       const prompt = `Perform an expert content audit for this corporate training resource:
       Title: ${resource.title}
       Objective: ${resource.objective}
       URL: ${resource.url}
+      ${content ? `Content: ${content.substring(0, 5000)}` : ''}
 
       Task:
       1. Map to exactly ONE primary skill category from: [Listening, Speaking, Reading, Writing].
@@ -208,10 +245,17 @@ export const geminiService = {
     }
   },
 
-  generateQuiz: async (title: string, url: string, type: string): Promise<QuizQuestion[]> => {
+  generateQuiz: async (title: string, url: string, type: string, scrapedText?: string): Promise<QuizQuestion[]> => {
     if (!API_KEY) return [];
     try {
-      const prompt = `Create a 3-question multiple-choice quiz based on this resource: Title: '${title}', URL: '${url}'. You must return ONLY a JSON array. Do not write any other text. Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
+      const content = scrapedText || await scrapeUrl(url);
+      const prompt = `Create a 3-question multiple-choice quiz based on this resource: 
+      Title: '${title}'
+      URL: '${url}'
+      ${content ? `Content: ${content.substring(0, 5000)}` : ''}
+      
+      You must return ONLY a JSON array. Do not write any other text. 
+      Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
 
       const textResponse = await callGemini(prompt);
       if (!textResponse) throw new Error("No response");

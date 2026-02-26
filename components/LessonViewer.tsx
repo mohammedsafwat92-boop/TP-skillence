@@ -47,7 +47,8 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
       const questions = await geminiService.generateQuiz(
         resource.title, 
         resource.url,
-        resource.type
+        resource.type,
+        resource.scrapedText
       );
       
       if (questions.length === 0) {

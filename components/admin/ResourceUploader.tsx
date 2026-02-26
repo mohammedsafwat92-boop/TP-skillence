@@ -34,7 +34,8 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
         type: isVideo ? 'video' : 'article',
         tags: aiData.tags.split(',').map(t => t.trim()),
         level: aiData.level,
-        objective: aiData.objective
+        objective: aiData.objective,
+        scrapedText: aiData.scrapedText
       };
 
       await googleSheetService.bulkImportResources([newResource]);
@@ -100,7 +101,8 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
           type: isVideo ? 'video' : 'article',
           tags: aiData.tags.split(',').map(t => t.trim()),
           level: aiData.level,
-          objective: aiData.objective
+          objective: aiData.objective,
+          scrapedText: aiData.scrapedText
         });
 
         // Respect rate limits: 4 second delay between calls
