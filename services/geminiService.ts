@@ -84,16 +84,58 @@ async function scrapeUrl(url: string) {
   }
 }
 
+function chunkText(text: string, maxLength = 30000) {
+  const chunks = [];
+  for (let i = 0; i < text.length; i += maxLength) {
+    chunks.push(text.substring(i, i + maxLength));
+  }
+  return chunks;
+}
+
+async function condenseLargeContent(rawText: string) {
+  if (!rawText) return "";
+  const chunks = chunkText(rawText);
+  if (chunks.length === 1) return rawText; // Already small enough
+
+  let masterSummary = "";
+  const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+  const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
+
+  for (const chunk of chunks) {
+    const payload = {
+      contents: [{
+        role: "user",
+        parts: [{ text: "Extract and summarize all core educational concepts, facts, and key takeaways from this section of the document. Return plain text only. Do not use markdown.\n\n" + chunk }]
+      }]
+    };
+    try {
+      const response = await fetch(GEMMA_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (response.ok) {
+        const data = await response.json();
+        masterSummary += (data.candidates?.[0]?.content?.parts?.[0]?.text || "") + "\n\n";
+      }
+    } catch (e) {
+      console.error("Chunk processing failed", e);
+    }
+  }
+  return masterSummary;
+}
+
 export const geminiService = {
   scrapeUrl,
   enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string, scrapedText?: string }> => {
     if (!API_KEY) return { tags: "General", level: "ALL", objective: "General Training" };
     try {
       const scrapedText = await scrapeUrl(url);
+      const condensedText = await condenseLargeContent(scrapedText || "");
       const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
       Title: ${title}
       URL: ${url}
-      ${scrapedText ? `Content: ${scrapedText.substring(0, 5000)}` : ''}
+      ${condensedText ? `Content: ${condensedText.substring(0, 10000)}` : ''}
 
       Extract and return STRICTLY a JSON object with these fields:
       - "tags": 3-5 specific sub-skills (e.g., Pronunciation, Fluency, Grammar, Active Listening) combined into a single comma-separated string.
@@ -174,12 +216,13 @@ export const geminiService = {
   analyzeResource: async (resource: { title: string; url: string; objective: string; scrapedText?: string }) => {
     if (!API_KEY) return { primarySkill: "General", subSkills: [], refinedObjective: resource.objective };
     try {
-      const content = resource.scrapedText || await scrapeUrl(resource.url);
+      const rawContent = resource.scrapedText || await scrapeUrl(resource.url);
+      const content = await condenseLargeContent(rawContent || "");
       const prompt = `Perform an expert content audit for this corporate training resource:
       Title: ${resource.title}
       Objective: ${resource.objective}
       URL: ${resource.url}
-      ${content ? `Content: ${content.substring(0, 5000)}` : ''}
+      ${content ? `Content: ${content.substring(0, 10000)}` : ''}
 
       Task:
       1. Map to exactly ONE primary skill category from: [Listening, Speaking, Reading, Writing].
@@ -248,11 +291,12 @@ export const geminiService = {
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string): Promise<QuizQuestion[]> => {
     if (!API_KEY) return [];
     try {
-      const content = scrapedText || await scrapeUrl(url);
+      const rawContent = scrapedText || await scrapeUrl(url);
+      const content = await condenseLargeContent(rawContent || "");
       const prompt = `Create a 3-question multiple-choice quiz based on this resource: 
       Title: '${title}'
       URL: '${url}'
-      ${content ? `Content: ${content.substring(0, 5000)}` : ''}
+      ${content ? `Content: ${content.substring(0, 10000)}` : ''}
       
       You must return ONLY a JSON array. Do not write any other text. 
       Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
