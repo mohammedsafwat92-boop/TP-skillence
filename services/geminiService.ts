@@ -62,11 +62,35 @@ async function scrapeUrl(url: string) {
   try {
     const videoId = getYoutubeId(url);
     if (videoId) {
-      const response = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
-      if (!response.ok) return null;
-      const data = await response.json();
-      
-      const subtitle = data.subtitles?.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english')) || data.subtitles?.[0];
+      const PIPED_INSTANCES = [
+        "https://pipedapi.tokhmi.xyz",
+        "https://pipedapi.smnz.de",
+        "https://pipedapi.adminforge.de",
+        "https://pipedapi.kavin.rocks"
+      ];
+
+      let data = null;
+
+      // Try each instance until one succeeds
+      for (const baseApi of PIPED_INSTANCES) {
+        try {
+          const res = await fetch(`${baseApi}/streams/${videoId}`);
+          if (res.ok) {
+            data = await res.json();
+            break; // Success! Exit the loop.
+          }
+        } catch (err) {
+          console.warn(`Piped API (${baseApi}) failed or blocked by CORS. Trying next instance...`);
+        }
+      }
+
+      if (!data) {
+        console.error("All Piped API proxy instances failed to respond.");
+        return null;
+      }
+
+      const subtitles = data.subtitles || [];
+      const subtitle = subtitles.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english')) || subtitles[0];
       
       if (subtitle && subtitle.url) {
         const subResponse = await fetch(subtitle.url);
