@@ -3,6 +3,11 @@
 
 import type { QuizQuestion, SHLReport } from '../types';
 
+function getYoutubeId(url: string) {
+  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
+  return match ? match[1] : null;
+}
+
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
@@ -55,26 +60,27 @@ const callGemini = async (prompt: string) => {
 
 async function scrapeUrl(url: string) {
   try {
-    if (url.includes("youtube.com") || url.includes("youtu.be")) {
-      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-      const YT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
-      const payload = { 
-        contents: [{ 
-          role: "user", 
-          parts: [ 
-            { fileData: { fileUri: url, mimeType: "video/x-youtube" } }, 
-            { text: "Extract the full transcript and summarize the core educational concepts. Return plain text only." } 
-          ] 
-        }] 
-      };
-      const response = await fetch(YT_URL, { 
-        method: "POST", 
-        headers: { "Content-Type": "application/json" }, 
-        body: JSON.stringify(payload) 
-      });
+    const videoId = getYoutubeId(url);
+    if (videoId) {
+      const response = await fetch(`https://pipedapi.kavin.rocks/streams/${videoId}`);
       if (!response.ok) return null;
       const data = await response.json();
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+      
+      const subtitle = data.subtitles?.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english')) || data.subtitles?.[0];
+      
+      if (subtitle && subtitle.url) {
+        const subResponse = await fetch(subtitle.url);
+        if (subResponse.ok) {
+          const vttText = await subResponse.text();
+          return vttText
+            .replace(/WEBVTT/g, '')
+            .replace(/\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}/g, '')
+            .replace(/<[^>]*>/g, '')
+            .replace(/\n+/g, ' ')
+            .trim();
+        }
+      }
+      return null;
     }
     const response = await fetch(`https://r.jina.ai/${url}`, { headers: { "Accept": "text/plain" } });
     return response.ok ? await response.text() : null;
