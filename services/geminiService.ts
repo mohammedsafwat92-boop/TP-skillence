@@ -6,8 +6,7 @@ import type { QuizQuestion, SHLReport } from '../types';
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
-const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
-const BACKUP_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+const FLASH_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
 
 const callGemini = async (prompt: string) => {
   if (!API_KEY) {
@@ -18,6 +17,8 @@ const callGemini = async (prompt: string) => {
   const payload = {
     contents: [{ role: "user", parts: [{ text: prompt }] }]
   };
+
+  const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
 
   try {
     // Primary (Gemma 3)
@@ -30,7 +31,7 @@ const callGemini = async (prompt: string) => {
     // Backup (Gemini 2.5 Flash)
     if (!response.ok) {
       console.warn("Gemma 3 rejected the request. Falling back to Gemini 2.5 Flash...");
-      response = await fetch(BACKUP_URL, {
+      response = await fetch(FLASH_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -111,7 +112,6 @@ async function condenseLargeContent(rawText: string) {
 
   let masterSummary = "";
   const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-  const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
 
   for (const chunk of chunks) {
     const payload = {
@@ -121,7 +121,7 @@ async function condenseLargeContent(rawText: string) {
       }]
     };
     try {
-      const response = await fetch(GEMMA_URL, {
+      const response = await fetch(FLASH_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
@@ -162,7 +162,23 @@ export const geminiService = {
 
       Return ONLY the JSON object. No markdown, no backticks, no preamble.`;
 
-      const textResponse = await callGemini(prompt);
+      const FLASH_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + API_KEY;
+      const payload = {
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
+      };
+
+      const response = await fetch(FLASH_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini 2.5 Flash Enrichment Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
       if (!textResponse) throw new Error("No response");
       
       const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
