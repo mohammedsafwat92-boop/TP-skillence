@@ -156,6 +156,9 @@ export const geminiService = {
       - "tags": Analyze the core educational content and return an array of 'tags'. To ensure the content matches the learner auto-assignment matrix, you MUST prioritize using these exact tags if the content relates to them: 'speaking', 'pronunciation', 'fluency', 'listening', 'active listening', 'grammar', 'writing', 'vocabulary'. (Return as a single comma-separated string).
       - "level": A CEFR level (A1, A2, B1, B2, C1, C2) or "ALL".
       - "objective": A 1-sentence learning objective based on the title and content.
+      - "duration": Estimate the time in minutes it will take a learner to consume and understand this content (return a number only). Base this on the text length or standard video length.
+
+      CRITICAL SKILL CATEGORIZATION: You MUST determine the primary learning skill of this content and include at least one of these exact words in the 'tags' array: 'listening', 'reading', 'writing', or 'speaking'. Do not use variations of these words.
 
       Return ONLY the JSON object. No markdown, no backticks, no preamble.`;
 

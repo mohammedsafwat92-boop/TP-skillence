@@ -244,7 +244,10 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                     <h3 className="font-black text-2xl text-tp-purple group-hover:text-tp-red transition-colors leading-tight">{res.title}</h3>
                   </div>
                   <div className="flex items-center justify-between mt-8 pt-8 border-t border-gray-50">
-                    <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{res.type}</span>
+                    <div className="flex items-center gap-3">
+                      <span className="text-[9px] font-black text-gray-400 uppercase tracking-widest">{res.type}</span>
+                      <span className="text-[9px] font-black text-tp-purple/60 uppercase tracking-widest bg-tp-purple/5 px-2 py-0.5 rounded-md">{res.duration || '10'} mins</span>
+                    </div>
                     <span className="text-xs font-black uppercase tracking-widest text-tp-purple group-hover:translate-x-2 transition-transform">Launch Module →</span>
                   </div>
                 </div>

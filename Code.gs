@@ -175,6 +175,7 @@ function getUserPlan(ss, uid, role) {
       level: String(resRow[levelIdx] || 'All'),
       objective: String(resRow[objectiveIdx] || ''),
       scrapedText: scrapedIdx > -1 ? String(resRow[scrapedIdx] || '') : '',
+      duration: resHeaders.indexOf('duration') > -1 ? String(resRow[resHeaders.indexOf('duration')] || '10') : '10',
       progress: progress
     });
   }
@@ -197,7 +198,8 @@ function getAllResources(ss) {
       tags: String(r[h.indexOf('tags')] || "").split(',').filter(Boolean),
       level: String(r[h.indexOf('level')] || 'All'),
       objective: String(r[h.indexOf('objective')] || ''),
-      scrapedText: h.indexOf('scrapedtext') > -1 ? String(r[h.indexOf('scrapedtext')] || '') : ''
+      scrapedText: h.indexOf('scrapedtext') > -1 ? String(r[h.indexOf('scrapedtext')] || '') : '',
+      duration: h.indexOf('duration') > -1 ? String(r[h.indexOf('duration')] || '10') : '10'
     };
   });
 }
@@ -255,7 +257,7 @@ function fetchAllUsers(ss) {
 function handleBulkImport(ss, resources) {
   let sheet = ss.getSheetByName('Resources') || ss.insertSheet('Resources');
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective', 'scrapedText']);
+    sheet.appendRow(['id', 'title', 'url', 'type', 'tags', 'level', 'objective', 'scrapedText', 'duration']);
   }
   
   const data = sheet.getDataRange().getValues();
@@ -275,11 +277,12 @@ function handleBulkImport(ss, resources) {
       Array.isArray(res.tags) ? res.tags.join(',') : String(res.tags || 'General'),
       String(res.level || 'All'),
       String(res.objective || 'N/A'),
-      res.scrapedText || ""
+      res.scrapedText || "",
+      res.duration || "10"
     ];
 
     if (rowIdx !== -1) {
-      sheet.getRange(rowIdx + 2, 1, 1, 8).setValues([rowData]);
+      sheet.getRange(rowIdx + 2, 1, 1, 9).setValues([rowData]);
     } else {
       sheet.appendRow(rowData);
       existingIds.push(resId);

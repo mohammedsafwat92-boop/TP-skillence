@@ -96,7 +96,10 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
             <BrainIcon className="w-10 h-10 text-tp-red mr-4" />
             <div>
                 <h2 className="text-white font-black text-2xl tracking-tight uppercase leading-none">{resource.title}</h2>
-                <span className="text-[10px] text-white/50 font-black uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded mt-1.5 inline-block">Dual-Scale Training Node</span>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-[10px] text-white/50 font-black uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded inline-block">Dual-Scale Training Node</span>
+                  <span className="text-[10px] text-tp-red font-black uppercase tracking-widest bg-tp-red/10 px-2 py-0.5 rounded inline-block border border-tp-red/20">{resource.duration || '10'} mins</span>
+                </div>
             </div>
         </div>
         <button onClick={onClose} className="p-4 text-white/40 hover:text-white bg-white/5 rounded-full transition-all"><ExitIcon className="w-7 h-7" /></button>
