@@ -1,7 +1,7 @@
 
 /// <reference types="vite/client" />
 
-import type { QuizQuestion, SHLReport } from '../types';
+import type { Resource, QuizQuestion, SHLReport } from '../types';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
@@ -139,56 +139,70 @@ async function condenseLargeContent(rawText: string) {
 
 export const geminiService = {
   scrapeUrl,
-  enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string, scrapedText?: string }> => {
-    if (!API_KEY) return { tags: "General", level: "ALL", objective: "General Training" };
+  enrichResourceMetadata: async (
+    title: string,
+    url: string,
+    content?: string,
+    type?: string
+  ): Promise<Partial<Resource>> => {
     try {
-      let scrapedText = await scrapeUrl(url);
-      if (scrapedText) {
-        scrapedText = scrapedText.substring(0, 40000);
-      }
-      const condensedText = await condenseLargeContent(scrapedText || "");
-      const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
-      Title: ${title}
-      URL: ${url}
-      ${condensedText ? `Content: ${condensedText.substring(0, 40000)}` : ''}
+      if (!API_KEY) throw new Error("API Key must be set in .env");
 
-      Extract and return STRICTLY a JSON object with these fields:
-      - "tags": Analyze the core educational content and return an array of 'tags'. To ensure the content matches the learner auto-assignment matrix, you MUST prioritize using these exact tags if the content relates to them: 'speaking', 'pronunciation', 'fluency', 'listening', 'active listening', 'grammar', 'writing', 'vocabulary'. (Return as a single comma-separated string).
-      - "level": A CEFR level (A1, A2, B1, B2, C1, C2) or "ALL".
-      - "objective": A 1-sentence learning objective based on the title and content.
-      - "duration": Estimate the time in minutes it will take a learner to consume and understand this content (return a number only). Base this on the text length or standard video length.
+      // Use content if provided (for backward compatibility or specific overrides), otherwise use url
+      let scrapedText = await scrapeUrl(content || url);
+      if (scrapedText) scrapedText = scrapedText.substring(0, 40000); // 10k token safety limit
 
-      CRITICAL SKILL CATEGORIZATION: You MUST determine the primary learning skill of this content and include at least one of these exact words in the 'tags' array: 'listening', 'reading', 'writing', or 'speaking'. Do not use variations of these words.
-
-      Return ONLY the JSON object. No markdown, no backticks, no preamble.`;
-
-      const FLASH_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=" + API_KEY;
       const payload = {
-        contents: [{ role: "user", parts: [{ text: prompt }] }]
+        contents: [{
+          role: "user",
+          parts: [{ 
+            text: `You are an expert language curriculum designer. Analyze the following content and generate strictly formatted JSON metadata.
+            
+  CRITICAL SKILL CATEGORIZATION: You MUST determine the primary learning skill of this content and include at least one of these exact words in the 'tags' array: "listening", "reading", "writing", or "speaking". 
+
+  DURATION: Estimate the time in minutes it will take a learner to consume this content (return a number).
+
+  Content Title: ${title}
+  Content URL: ${url}
+  Content Summary: ${scrapedText || "No content extracted. Rely on title and URL."}
+
+  Return strictly valid JSON with no markdown blocks:
+  {
+    "title": "Optimized Title",
+    "level": "B1", // Choose A1, A2, B1, B2, C1, C2, or ALL
+    "tags": ["listening", "grammar", "business"],
+    "objective": "One sentence summary of what the user will learn.",
+    "duration": 15
+  }` 
+          }]
+        }]
       };
 
       const response = await fetch(FLASH_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
 
-      if (!response.ok) {
-        throw new Error(`Gemini 2.5 Flash Enrichment Error: ${response.status}`);
-      }
+      if (!response.ok) throw new Error("Flash Enrichment failed");
 
       const data = await response.json();
-      const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!textResponse) throw new Error("No response");
+      let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+      resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
       
-      const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON object found");
-      
-      const result = JSON.parse(jsonMatch[0]);
-      return { ...result, scrapedText: scrapedText || "" };
+      const parsedData = JSON.parse(resultText);
+
+      return {
+        title: parsedData.title || title,
+        level: parsedData.level || "ALL",
+        tags: Array.isArray(parsedData.tags) ? parsedData.tags : (parsedData.tags ? String(parsedData.tags).split(',') : ["general"]),
+        objective: parsedData.objective || "Learn new concepts.",
+        duration: parsedData.duration || "10",
+        scrapedText: scrapedText || ""
+      };
     } catch (error) {
       console.error("Gemini Enrichment Error:", error);
-      return { tags: "General", level: "ALL", objective: "General Training" };
+      return { title, level: "ALL", tags: ["general"], objective: "Could not generate metadata.", duration: "10" };
     }
   },
 

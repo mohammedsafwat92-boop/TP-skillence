@@ -24,18 +24,19 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
 
     try {
       const aiData = await geminiService.enrichResourceMetadata(title, url);
-      setStatus({ message: `✅ AI Extracted Skills: ${aiData.tags}`, type: 'loading' });
+      setStatus({ message: `✅ AI Extracted Skills: ${Array.isArray(aiData.tags) ? aiData.tags.join(', ') : aiData.tags}`, type: 'loading' });
 
       const isVideo = url.includes('youtube.com') || url.includes('youtu.be');
       const newResource = {
         id: `r-${Date.now()}`,
-        title,
+        title: aiData.title || title,
         url,
         type: isVideo ? 'video' : 'article',
-        tags: aiData.tags.split(',').map(t => t.trim()),
-        level: aiData.level,
-        objective: aiData.objective,
-        scrapedText: aiData.scrapedText
+        tags: Array.isArray(aiData.tags) ? aiData.tags : (aiData.tags ? String(aiData.tags).split(',').map(t => t.trim()) : ["general"]),
+        level: aiData.level || "ALL",
+        objective: aiData.objective || "Learn new concepts.",
+        scrapedText: aiData.scrapedText || "",
+        duration: aiData.duration || "10"
       };
 
       await googleSheetService.bulkImportResources([newResource]);
@@ -96,13 +97,14 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
         const isVideo = rowUrl.includes('youtube.com') || rowUrl.includes('youtu.be');
         newResources.push({
           id: `r-${Date.now()}-${i}`,
-          title: rowTitle,
+          title: aiData.title || rowTitle,
           url: rowUrl,
           type: isVideo ? 'video' : 'article',
-          tags: aiData.tags.split(',').map(t => t.trim()),
-          level: aiData.level,
-          objective: aiData.objective,
-          scrapedText: aiData.scrapedText
+          tags: Array.isArray(aiData.tags) ? aiData.tags : (aiData.tags ? String(aiData.tags).split(',').map(t => t.trim()) : ["general"]),
+          level: aiData.level || "ALL",
+          objective: aiData.objective || "Learn new concepts.",
+          scrapedText: aiData.scrapedText || "",
+          duration: aiData.duration || "10"
         });
 
         // Respect rate limits: 4 second delay between calls
