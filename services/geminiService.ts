@@ -65,7 +65,7 @@ async function scrapeUrl(url: string) {
           role: "user",
           parts: [
             { fileData: { fileUri: url, mimeType: "video/x-youtube" } },
-            { text: "Analyze this video. Extract the core educational concepts, facts, and key takeaways into a highly dense master summary. Keep the summary under 10,000 characters so it fits in smaller context windows later. Return pure text only, no markdown." }
+            { text: "Analyze this video in deep detail. Extract all core educational concepts, facts, methodologies, and key takeaways into a highly dense master summary. CRITICAL: You must compress and limit your entire response to a maximum of 40,000 characters (approx 10,000 tokens) to ensure it fits into smaller AI context windows later. Return plain text only, no markdown." }
           ]
         }]
       };
@@ -89,7 +89,7 @@ async function scrapeUrl(url: string) {
     const response = await fetch(`https://r.jina.ai/${url}`, { headers: { "Accept": "text/plain" } });
     if (!response.ok) return null;
     const text = await response.text();
-    return text.substring(0, 10000); // Safely truncate for Gemma 3's context window
+    return text.substring(0, 40000); // Strictly limits standard web pages to ~10k tokens
   } catch (e) {
     console.error("Scraping failed:", e);
     return null;
@@ -142,12 +142,15 @@ export const geminiService = {
   enrichResourceMetadata: async (title: string, url: string): Promise<{ tags: string, level: string, objective: string, scrapedText?: string }> => {
     if (!API_KEY) return { tags: "General", level: "ALL", objective: "General Training" };
     try {
-      const scrapedText = await scrapeUrl(url);
+      let scrapedText = await scrapeUrl(url);
+      if (scrapedText) {
+        scrapedText = scrapedText.substring(0, 40000);
+      }
       const condensedText = await condenseLargeContent(scrapedText || "");
       const prompt = `Act as an L&D Data Extractor. Analyze this training resource:
       Title: ${title}
       URL: ${url}
-      ${condensedText ? `Content: ${condensedText.substring(0, 10000)}` : ''}
+      ${condensedText ? `Content: ${condensedText.substring(0, 40000)}` : ''}
 
       Extract and return STRICTLY a JSON object with these fields:
       - "tags": Analyze the core educational content and return an array of 'tags'. To ensure the content matches the learner auto-assignment matrix, you MUST prioritize using these exact tags if the content relates to them: 'speaking', 'pronunciation', 'fluency', 'listening', 'active listening', 'grammar', 'writing', 'vocabulary'. (Return as a single comma-separated string).
@@ -234,7 +237,7 @@ export const geminiService = {
       Title: ${resource.title}
       Objective: ${resource.objective}
       URL: ${resource.url}
-      ${content ? `Content: ${content.substring(0, 10000)}` : ''}
+      ${content ? `Content: ${content.substring(0, 40000)}` : ''}
 
       Task:
       1. Map to exactly ONE primary skill category from: [Listening, Speaking, Reading, Writing].
@@ -308,7 +311,7 @@ export const geminiService = {
       const prompt = `Create a rigorous 5-question multiple-choice quiz based strictly on the following content summary. Ensure the questions test deep comprehension, not just surface facts. Return exactly 5 questions.
       Title: '${title}'
       URL: '${url}'
-      ${content ? `Content: ${content.substring(0, 10000)}` : ''}
+      ${content ? `Content: ${content.substring(0, 40000)}` : ''}
       
       You must return ONLY a JSON array. Do not write any other text. 
       Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
