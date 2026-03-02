@@ -3,11 +3,6 @@
 
 import type { QuizQuestion, SHLReport } from '../types';
 
-function getYoutubeId(url: string) {
-  const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/);
-  return match ? match[1] : null;
-}
-
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
@@ -60,57 +55,44 @@ const callGemini = async (prompt: string) => {
 
 async function scrapeUrl(url: string) {
   try {
-    const videoId = getYoutubeId(url);
-    if (videoId) {
-      const PIPED_INSTANCES = [
-        "https://pipedapi.tokhmi.xyz",
-        "https://pipedapi.smnz.de",
-        "https://pipedapi.adminforge.de",
-        "https://pipedapi.kavin.rocks"
-      ];
+    // 1. YouTube Native Extraction via Gemini 2.5 Flash
+    if (url.includes("youtube.com") || url.includes("youtu.be")) {
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const YT_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+      
+      const payload = {
+        contents: [{
+          role: "user",
+          parts: [
+            { fileData: { fileUri: url, mimeType: "video/x-youtube" } },
+            { text: "Analyze this video. Extract the core educational concepts, facts, and key takeaways into a highly dense master summary. Keep the summary under 10,000 characters so it fits in smaller context windows later. Return pure text only, no markdown." }
+          ]
+        }]
+      };
 
-      let data = null;
-
-      // Try each instance until one succeeds
-      for (const baseApi of PIPED_INSTANCES) {
-        try {
-          const res = await fetch(`${baseApi}/streams/${videoId}`);
-          if (res.ok) {
-            data = await res.json();
-            break; // Success! Exit the loop.
-          }
-        } catch (err) {
-          console.warn(`Piped API (${baseApi}) failed or blocked by CORS. Trying next instance...`);
-        }
-      }
-
-      if (!data) {
-        console.error("All Piped API proxy instances failed to respond.");
+      const response = await fetch(YT_URL, { 
+        method: "POST", 
+        headers: { "Content-Type": "application/json" }, 
+        body: JSON.stringify(payload) 
+      });
+      
+      if (!response.ok) {
+        console.error("Gemini 2.5 Flash failed to scrape YouTube video.");
         return null;
       }
-
-      const subtitles = data.subtitles || [];
-      const subtitle = subtitles.find((s: any) => s.code === 'en' || s.name.toLowerCase().includes('english')) || subtitles[0];
       
-      if (subtitle && subtitle.url) {
-        const subResponse = await fetch(subtitle.url);
-        if (subResponse.ok) {
-          const vttText = await subResponse.text();
-          return vttText
-            .replace(/WEBVTT/g, '')
-            .replace(/\d{2}:\d{2}:\d{2}\.\d{3} --> \d{2}:\d{2}:\d{2}\.\d{3}/g, '')
-            .replace(/<[^>]*>/g, '')
-            .replace(/\n+/g, ' ')
-            .trim();
-        }
-      }
-      return null;
+      const data = await response.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     }
+
+    // 2. Standard Webpage Extraction via Jina AI
     const response = await fetch(`https://r.jina.ai/${url}`, { headers: { "Accept": "text/plain" } });
-    return response.ok ? await response.text() : null;
-  } catch (e) { 
-    console.error("Scraping failed", e); 
-    return null; 
+    if (!response.ok) return null;
+    const text = await response.text();
+    return text.substring(0, 10000); // Safely truncate for Gemma 3's context window
+  } catch (e) {
+    console.error("Scraping failed:", e);
+    return null;
   }
 }
 
