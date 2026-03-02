@@ -75,8 +75,8 @@ export const googleSheetService = {
   fetchAllUsers: () => 
     callApi('admin_get_users'),
     
-  submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number) =>
-    callApi('submit_progress', { uid, resourceId, passed, score }),
+  submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
+    callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
 
   importResource: (resourceData: any) => 
     callApi('admin_import_resource', resourceData),

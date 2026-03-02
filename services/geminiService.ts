@@ -150,7 +150,7 @@ export const geminiService = {
       ${condensedText ? `Content: ${condensedText.substring(0, 10000)}` : ''}
 
       Extract and return STRICTLY a JSON object with these fields:
-      - "tags": 3-5 specific sub-skills (e.g., Pronunciation, Fluency, Grammar, Active Listening) combined into a single comma-separated string.
+      - "tags": Analyze the core educational content and return an array of 'tags'. To ensure the content matches the learner auto-assignment matrix, you MUST prioritize using these exact tags if the content relates to them: 'speaking', 'pronunciation', 'fluency', 'listening', 'active listening', 'grammar', 'writing', 'vocabulary'. (Return as a single comma-separated string).
       - "level": A CEFR level (A1, A2, B1, B2, C1, C2) or "ALL".
       - "objective": A 1-sentence learning objective based on the title and content.
 
@@ -305,7 +305,7 @@ export const geminiService = {
     try {
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
-      const prompt = `Create a 3-question multiple-choice quiz based on this resource: 
+      const prompt = `Create a rigorous 5-question multiple-choice quiz based strictly on the following content summary. Ensure the questions test deep comprehension, not just surface facts. Return exactly 5 questions.
       Title: '${title}'
       URL: '${url}'
       ${content ? `Content: ${content.substring(0, 10000)}` : ''}

@@ -34,7 +34,7 @@ function doPost(e) {
       res.data = fetchAllUsers(ss);
       res.success = true;
     } else if (action === 'submit_progress') {
-      res.data = updateProgress(ss, json.uid, json.resourceId, json.passed, json.score);
+      res.data = updateProgress(ss, json.uid, json.resourceId, json.passed, json.score, json.timeTaken);
       res.success = true;
     } else if (action === 'bulk_import_resources') {
       const result = handleBulkImport(ss, json.resources);
@@ -81,12 +81,13 @@ function manualAssign(ss, uid, resourceId, adminId) {
   return { status: 'assigned' };
 }
 
-function updateProgress(ss, uid, resourceId, passed, score) {
+function updateProgress(ss, uid, resourceId, passed, score, timeTaken) {
   const sheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
   if (sheet.getLastRow() === 0) {
-    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt', 'AssignedBy']);
+    sheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt', 'TimeTaken']);
   }
   const data = sheet.getDataRange().getValues();
+  const timeString = timeTaken ? (timeTaken + "s") : "N/A";
   let foundRow = -1;
 
   for (let i = 1; i < data.length; i++) {
@@ -99,10 +100,9 @@ function updateProgress(ss, uid, resourceId, passed, score) {
   const newStatus = passed ? 'completed' : 'assigned';
   if (foundRow !== -1) {
     const currentAttempts = data[foundRow-1][3] || 0;
-    sheet.getRange(foundRow, 3, 1, 3).setValues([[newStatus, currentAttempts + 1, score]]);
-    sheet.getRange(foundRow, 6).setValue(new Date());
+    sheet.getRange(foundRow, 3, 1, 5).setValues([[newStatus, currentAttempts + 1, score, new Date(), timeString]]);
   } else {
-    sheet.appendRow([uid, resourceId, newStatus, 1, score, new Date(), 'System']);
+    sheet.appendRow([uid, resourceId, newStatus, 1, score, new Date(), timeString]);
   }
   
   return { status: newStatus };

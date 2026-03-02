@@ -21,6 +21,7 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
   const [score, setScore] = useState(0);
   const [backendStatus, setBackendStatus] = useState<Resource['progress']['status']>(resource.progress?.status || 'assigned');
   const [quizError, setQuizError] = useState<string | null>(null);
+  const [quizStartTime, setQuizStartTime] = useState<number | null>(null);
 
   /**
    * Automatically converts YouTube URLs to embed format.
@@ -58,6 +59,7 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
 
       setQuizQuestions(questions);
       setAnswers(new Array(questions.length).fill(-1));
+      setQuizStartTime(Date.now());
       setView('quiz');
     } catch (err) {
       setQuizError("Assessment engine failed. Check connection.");
@@ -70,11 +72,12 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
     const correctCount = quizQuestions.reduce((acc, q, i) => acc + (answers[i] === q.correctAnswer ? 1 : 0), 0);
     const finalScore = Math.round((correctCount / quizQuestions.length) * 100);
     const passed = finalScore >= 60;
+    const timeTakenSecs = quizStartTime ? Math.round((Date.now() - quizStartTime) / 1000) : 0;
     
     setScore(finalScore);
     setIsGenerating(true);
     try {
-      const response = await googleSheetService.submitQuizResult(uid, resource.id, passed, finalScore);
+      const response = await googleSheetService.submitQuizResult(uid, resource.id, passed, finalScore, timeTakenSecs);
       setBackendStatus(response.status); 
       if (passed) onMasteryAchieved();
       setView('result');
