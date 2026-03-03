@@ -90,5 +90,8 @@ export const googleSheetService = {
 
   assignManualResource: (targetUid: string, resourceId: string, adminId: string) =>
     // Explicitly send targetUid, resourceId, and adminId as requested
-    callApi('assign_manual_resource', { targetUid, resourceId, adminId })
+    callApi('assign_manual_resource', { targetUid, resourceId, adminId }),
+
+  assignAllResources: (targetUid: string, adminId: string) =>
+    callApi('assign_all_resources', { targetUid, adminId })
 };

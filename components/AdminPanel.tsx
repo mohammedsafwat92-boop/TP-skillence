@@ -24,6 +24,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
+  const [assigningAllId, setAssigningAllId] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     if (currentUser.role !== 'admin') return;
@@ -56,6 +57,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       fetchResources();
     }
   }, [activeTab]);
+
+  const handleAssignAllResources = async (targetUid: string) => {
+    setAssigningAllId(targetUid);
+    try {
+      const result = await googleSheetService.assignAllResources(targetUid, currentUser.id);
+      
+      const studentName = userList.find(u => u.id === targetUid)?.name || 'Student';
+      setAssignmentSuccess(`Success: All missing modules assigned to ${studentName}`);
+      
+      setTimeout(() => setAssignmentSuccess(null), 5000);
+      onUpdateContent();
+    } catch (error) {
+      console.error('Error assigning all resources:', error);
+      alert('An error occurred while assigning resources.');
+    } finally {
+      setAssigningAllId(null);
+    }
+  };
 
   const handleManualAssign = async (resourceId: string) => {
     // Step 2: Crucial validation check for selected user
@@ -179,6 +198,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                           className="bg-tp-navy text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-md"
                         >
                           Manual Assign
+                        </button>
+                        <button
+                          onClick={() => handleAssignAllResources(user.id)}
+                          disabled={assigningAllId === user.id}
+                          className="bg-tp-red text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-navy transition-all shadow-md disabled:opacity-50"
+                        >
+                          {assigningAllId === user.id ? 'Assigning...' : 'Assign All'}
                         </button>
                         <button 
                           onClick={() => onImpersonate(user)} 
