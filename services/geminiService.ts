@@ -342,6 +342,9 @@ export const geminiService = {
     try {
       if (!API_KEY) throw new Error("API Key missing");
 
+      // Generate a unique seed for every request to force the AI to pick new questions
+      const randomSeed = `${Date.now()}-${Math.random()}`;
+
       // Ensure we have some content to work with
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
@@ -356,6 +359,8 @@ CRITICAL RULES:
 1. Every single question MUST have exactly 4 options.
 2. The 'correctOptionId' MUST exactly match the 'id' of one of the 4 options.
 3. Escape all internal quotation marks. Do not use unescaped double quotes inside the 'text' fields.
+4. UNIQUE ATTEMPT DIRECTIVE: Generate completely new, unique questions. Do not ask the most obvious questions. Dig into different details, secondary themes, methodologies, or specific examples mentioned in the text.
+5. Randomization Seed (Forces new output): ${randomSeed}
 
 Content Title: ${title}
 Content Summary: ${content || "No content extracted. Rely on title."}
