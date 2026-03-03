@@ -4,7 +4,7 @@ import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon, CheckCircleIcon } from './Icons';
+import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon, CheckCircleIcon, TrendingUpIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
 interface AdminPanelProps {
@@ -24,7 +24,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
-  const [assigningAllId, setAssigningAllId] = useState<string | null>(null);
+  const [adminStats, setAdminStats] = useState<any>(null);
+  const [isBulkAssigning, setIsBulkAssigning] = useState(false);
 
   const fetchUsers = async () => {
     if (currentUser.role !== 'admin') return;
@@ -49,32 +50,43 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
   };
 
+  const loadAdminStats = async () => {
+    try {
+      const data = await googleSheetService.getAdminStats();
+      setAdminStats(data);
+    } catch (err) {
+      console.error('Error fetching admin stats:', err);
+    }
+  };
+
+  const handleBulkAssignRoster = async () => {
+    if (!currentUser) return;
+    if (!window.confirm("This will assign ALL eligible courses to EVERY trainee in the system. The system will then automatically drip them 3 hours a week based on their cohort start date. Proceed?")) return;
+
+    setIsBulkAssigning(true);
+    try {
+      const response = await googleSheetService.bulkAssignRoster(currentUser.id);
+      // Note: callApi returns json.data, so we might need to adjust if the backend returns success/message differently
+      // But based on callApi implementation, it throws if !success.
+      alert(`Success! Roster bulk assignment initiated.`);
+      loadAdminStats();
+    } catch (error) {
+      console.error('Error in bulk assign:', error);
+      alert('An error occurred during bulk assignment: ' + (error as Error).message);
+    } finally {
+      setIsBulkAssigning(false);
+    }
+  };
+
   useEffect(() => {
     if (activeTab === 'users' || activeTab === 'library') {
       fetchUsers();
+      loadAdminStats();
     }
     if (activeTab === 'library') {
       fetchResources();
     }
   }, [activeTab]);
-
-  const handleAssignAllResources = async (targetUid: string) => {
-    setAssigningAllId(targetUid);
-    try {
-      const result = await googleSheetService.assignAllResources(targetUid, currentUser.id);
-      
-      const studentName = userList.find(u => u.id === targetUid)?.name || 'Student';
-      setAssignmentSuccess(`Success: All missing modules assigned to ${studentName}`);
-      
-      setTimeout(() => setAssignmentSuccess(null), 5000);
-      onUpdateContent();
-    } catch (error) {
-      console.error('Error assigning all resources:', error);
-      alert('An error occurred while assigning resources.');
-    } finally {
-      setAssigningAllId(null);
-    }
-  };
 
   const handleManualAssign = async (resourceId: string) => {
     // Step 2: Crucial validation check for selected user
@@ -166,58 +178,104 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
       {activeTab === 'users' && (
         <div className="space-y-10 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 px-4">
+            <h2 className="text-xl font-bold text-tp-purple uppercase tracking-tight">User Management</h2>
+
+            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+              {adminStats && (
+                <div className="bg-indigo-50 px-6 py-3 rounded-2xl border border-indigo-100 shadow-sm flex items-center w-full sm:w-auto justify-between gap-3">
+                  <span className="text-[10px] text-indigo-800 font-black uppercase tracking-widest">Roster Average:</span>
+                  <span className="text-2xl font-black text-indigo-600">{adminStats.rosterAverage}%</span>
+                </div>
+              )}
+              <button
+                onClick={handleBulkAssignRoster}
+                disabled={isBulkAssigning}
+                className="w-full sm:w-auto bg-indigo-600 text-white px-8 py-4 rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-xl font-black uppercase text-[10px] tracking-widest flex-shrink-0"
+              >
+                {isBulkAssigning ? 'Assigning Roster...' : 'Bulk Assign All to Roster'}
+              </button>
+            </div>
+          </div>
+
           <div className="flex justify-between items-center px-4">
-             <h3 className="font-black text-tp-purple uppercase text-sm tracking-widest">Active Roster</h3>
+             <h3 className="font-black text-tp-purple uppercase text-[10px] tracking-widest opacity-50">Active Roster</h3>
              <button onClick={exportToCsv} disabled={userList.length === 0} className="flex items-center gap-3 bg-tp-navy text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50">
                 <DownloadIcon className="w-4 h-4" /> Export Registry
              </button>
           </div>
-          <div className="overflow-x-auto border border-gray-100 rounded-[40px] shadow-inner bg-gray-50/30">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
-                  <th className="px-10 py-6">Name</th>
-                  <th className="px-6 py-6 text-center">Level</th>
-                  <th className="px-6 py-6 text-center">SVAR</th>
-                  <th className="px-10 py-6 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 bg-white">
-                {userList.map((user) => (
-                  <tr key={user.id} className="hover:bg-tp-purple/[0.02] transition-colors group">
-                    <td className="px-10 py-6">
-                      <p className="font-bold text-tp-purple text-lg leading-none">{user.name}</p>
-                      <p className="text-[10px] text-gray-500 font-medium mt-2">{user.email}</p>
-                    </td>
-                    <td className="px-6 py-6 text-center font-black text-tp-red text-base">{user.languageLevel}</td>
-                    <td className="px-6 py-6 text-center font-black text-tp-purple text-base">{user.shlData?.svar?.overall ?? '--'}</td>
-                    <td className="px-10 py-6 text-right">
-                      <div className="flex items-center justify-end gap-3 opacity-80 group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
-                          className="bg-tp-navy text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-md"
-                        >
-                          Manual Assign
-                        </button>
-                        <button
-                          onClick={() => handleAssignAllResources(user.id)}
-                          disabled={assigningAllId === user.id}
-                          className="bg-tp-red text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-navy transition-all shadow-md disabled:opacity-50"
-                        >
-                          {assigningAllId === user.id ? 'Assigning...' : 'Assign All'}
-                        </button>
-                        <button 
-                          onClick={() => onImpersonate(user)} 
-                          className="bg-tp-purple text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-red transition-all shadow-md"
-                        >
-                          View Hub
-                        </button>
+
+          <div className="grid grid-cols-1 gap-6">
+            {userList.map((user) => (
+              <div key={user.id} className="bg-white border border-gray-100 rounded-[40px] p-8 hover:shadow-2xl transition-all group shadow-md">
+                <div className="flex flex-col lg:flex-row justify-between gap-8">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between mb-4">
+                      <div>
+                        <p className="font-black text-tp-purple text-2xl leading-none">{user.name}</p>
+                        <p className="text-[10px] text-gray-400 font-medium mt-2 uppercase tracking-widest">{user.email}</p>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                      <div className="text-right">
+                        <span className="text-tp-red font-black text-lg uppercase tracking-tighter">{user.languageLevel}</span>
+                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mt-1">CEFR Level</p>
+                      </div>
+                    </div>
+
+                    {adminStats && adminStats.userStats && adminStats.userStats.find((s: any) => s.userId === user.id) && (
+                      <div className="mt-6 mb-6 space-y-6 p-6 bg-gray-50/50 rounded-[32px] border border-gray-100 shadow-inner">
+                        <div>
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
+                            <span className="text-gray-500 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Weekly Target (180 mins)
+                            </span>
+                            <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+                              {adminStats.userStats.find((s: any) => s.userId === user.id).weeklyProgress}% ({adminStats.userStats.find((s: any) => s.userId === user.id).weeklyMinutes} mins)
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200/50 rounded-full h-2.5 overflow-hidden">
+                            <div 
+                              className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(99,102,241,0.3)]" 
+                              style={{ width: `${adminStats.userStats.find((s: any) => s.userId === user.id).weeklyProgress}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                        <div>
+                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
+                            <span className="text-gray-500 flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Overall Completion
+                            </span>
+                            <span className="text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
+                              {adminStats.userStats.find((s: any) => s.userId === user.id).overallProgress}% ({adminStats.userStats.find((s: any) => s.userId === user.id).totalCompleted}/{adminStats.userStats.find((s: any) => s.userId === user.id).totalAssigned})
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200/50 rounded-full h-2.5 overflow-hidden">
+                            <div 
+                              className="bg-emerald-500 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]" 
+                              style={{ width: `${adminStats.userStats.find((s: any) => s.userId === user.id).overallProgress}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col justify-center gap-3 lg:border-l lg:border-gray-50 lg:pl-8 min-w-[180px]">
+                    <button 
+                      onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
+                      className="w-full bg-tp-navy text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-lg"
+                    >
+                      Assign Module
+                    </button>
+                    <button 
+                      onClick={() => onImpersonate(user)} 
+                      className="w-full bg-tp-purple/5 text-tp-purple px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple hover:text-white transition-all border border-tp-purple/10"
+                    >
+                      View Hub
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

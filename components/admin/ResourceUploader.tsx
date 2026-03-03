@@ -36,7 +36,7 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
         level: aiData.level || "ALL",
         objective: aiData.objective || "Learn new concepts.",
         scrapedText: aiData.scrapedText || "",
-        duration: aiData.duration || "10"
+        duration: Number(aiData.duration) || 10
       };
 
       await googleSheetService.bulkImportResources([newResource]);
@@ -104,7 +104,7 @@ export default function ResourceUploader({ onUploadComplete }: { onUploadComplet
           level: aiData.level || "ALL",
           objective: aiData.objective || "Learn new concepts.",
           scrapedText: aiData.scrapedText || "",
-          duration: aiData.duration || "10"
+          duration: Number(aiData.duration) || 10
         });
 
         // Respect rate limits: 4 second delay between calls

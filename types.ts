@@ -28,7 +28,7 @@ export interface Resource {
   level: 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2' | 'All';
   objective?: string;
   scrapedText?: string;
-  duration?: number | string;
+  duration: number;
   progress: ResourceProgress;
 }
 
@@ -79,6 +79,8 @@ export interface UserProfile {
   assignedModules?: string[];
   assignedCoach?: string; 
   generatedCredentials?: UserCredentials;
+  overallProgress?: number;
+  weeklyProgress?: number;
 }
 
 export interface Roster {

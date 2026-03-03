@@ -197,12 +197,12 @@ export const geminiService = {
         level: parsedData.level === "ALL" ? "All" : (parsedData.level || "All"),
         tags: Array.isArray(parsedData.tags) ? parsedData.tags : (parsedData.tags ? String(parsedData.tags).split(',') : ["general"]),
         objective: parsedData.objective || "Learn new concepts.",
-        duration: parsedData.duration || "10",
+        duration: Number(parsedData.duration) || 10,
         scrapedText: scrapedText || ""
       };
     } catch (error) {
       console.error("Gemini Enrichment Error:", error);
-      return { title, level: "All", tags: ["general"], objective: "Could not generate metadata.", duration: "10" };
+      return { title, level: "All", tags: ["general"], objective: "Could not generate metadata.", duration: 10 };
     }
   },
 
