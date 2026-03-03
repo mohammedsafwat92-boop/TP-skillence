@@ -194,7 +194,7 @@ export const geminiService = {
 
       return {
         title: parsedData.title || title,
-        level: parsedData.level || "ALL",
+        level: parsedData.level === "ALL" ? "All" : (parsedData.level || "All"),
         tags: Array.isArray(parsedData.tags) ? parsedData.tags : (parsedData.tags ? String(parsedData.tags).split(',') : ["general"]),
         objective: parsedData.objective || "Learn new concepts.",
         duration: parsedData.duration || "10",
@@ -202,7 +202,7 @@ export const geminiService = {
       };
     } catch (error) {
       console.error("Gemini Enrichment Error:", error);
-      return { title, level: "ALL", tags: ["general"], objective: "Could not generate metadata.", duration: "10" };
+      return { title, level: "All", tags: ["general"], objective: "Could not generate metadata.", duration: "10" };
     }
   },
 
@@ -337,51 +337,102 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string): Promise<QuizQuestion[]> => {
-    if (!API_KEY) return [];
+    const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+    
     try {
+      if (!API_KEY) throw new Error("API Key missing");
+
+      // Ensure we have some content to work with
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
-      const prompt = `Create a rigorous 5-question multiple-choice quiz based strictly on the following content summary. Ensure the questions test deep comprehension, not just surface facts. Return exactly 5 questions.
-      Title: '${title}'
-      URL: '${url}'
-      ${content ? `Content: ${content.substring(0, 40000)}` : ''}
-      
-      You must return ONLY a JSON array. Do not write any other text. 
-      Format: [{ "question": "...", "options": ["A", "B", "C", "D"], "correctAnswer": "...", "explanation": "..." }]`;
 
-      const textResponse = await callGemini(prompt);
-      if (!textResponse) throw new Error("No response");
-      
-      const arrayMatch = textResponse.match(/\[[\s\S]*\]/);
-      if (!arrayMatch) throw new Error("No JSON array found");
-      
-      const result = JSON.parse(arrayMatch[0]);
-      if (!Array.isArray(result)) return [];
-      
-      // Ensure correctAnswer is a number index for compatibility with QuizQuestion type
-      return result.map((q: any) => {
-        let correctIdx = q.correctAnswer;
-        if (typeof q.correctAnswer === 'string') {
-          // Try to find the string in options
-          const foundIdx = q.options.indexOf(q.correctAnswer);
-          if (foundIdx !== -1) {
-            correctIdx = foundIdx;
-          } else {
-            // Try to parse as number
-            const parsed = parseInt(q.correctAnswer, 10);
-            correctIdx = isNaN(parsed) ? 0 : parsed;
-          }
+      const payload = {
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `You are an expert curriculum designer. Based ONLY on the following content summary, generate a rigorous 5-question multiple-choice quiz. 
+
+CRITICAL RULES:
+1. Every single question MUST have exactly 4 options.
+2. The 'correctOptionId' MUST exactly match the 'id' of one of the 4 options.
+3. Escape all internal quotation marks. Do not use unescaped double quotes inside the 'text' fields.
+
+Content Title: ${title}
+Content Summary: ${content || "No content extracted. Rely on title."}
+
+Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in markdown blocks like \`\`\`json. The JSON must perfectly match this structure:
+[
+  {
+    "id": "q1",
+    "text": "What is the primary theme discussed?",
+    "options": [
+      { "id": "o1", "text": "Option A" },
+      { "id": "o2", "text": "Option B" },
+      { "id": "o3", "text": "Option C" },
+      { "id": "o4", "text": "Option D" }
+    ],
+    "correctOptionId": "o2"
+  }
+]`
+          }]
+        }]
+      };
+
+      const GEMMA_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemma-3-27b-it:generateContent?key=${API_KEY}`;
+      const FLASH_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${API_KEY}`;
+
+      // Helper to attempt fetch and strict JSON parsing
+      const attemptGeneration = async (apiUrl: string) => {
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error(`API failed with status: ${response.status}`);
+
+        const data = await response.json();
+        let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
+        
+        // Aggressive cleaning to prevent JSON SyntaxErrors
+        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        
+        const parsedQuiz = JSON.parse(resultText);
+        
+        if (!Array.isArray(parsedQuiz) || parsedQuiz.length === 0) {
+          throw new Error("Parsed quiz is not a valid array.");
         }
-        return {
-          question: q.question,
-          options: q.options,
-          correctAnswer: correctIdx,
-          explanation: q.explanation
-        };
-      });
+        
+        // Map to existing QuizQuestion structure to avoid breaking UI
+        return parsedQuiz.map((q: any) => ({
+          question: q.text || q.question,
+          options: q.options.map((o: any) => typeof o === 'string' ? o : o.text),
+          correctAnswer: q.options.findIndex((o: any) => o.id === q.correctOptionId || o === q.correctAnswer),
+          explanation: q.explanation || ""
+        }));
+      };
+
+      // Primary Attempt: Gemma 3
+      try {
+        return await attemptGeneration(GEMMA_URL);
+      } catch (gemmaError) {
+        console.warn("Gemma 3 failed (API or Parsing). Falling back to Gemini 2.5 Flash...", gemmaError);
+        
+        // Fallback Attempt: Gemini 2.5 Flash
+        return await attemptGeneration(FLASH_URL);
+      }
+
     } catch (error) {
-      console.error("Quiz Gen Error:", error);
-      return [];
+      console.error("Quiz Gen Error (Both models failed):", error);
+      // Safe fallback if EVERYTHING fails
+      return [
+        {
+          question: "The AI encountered an error generating this quiz. Please try again later.",
+          options: ["Acknowledge", "Retry", "Skip", "Exit"],
+          correctAnswer: 0,
+          explanation: ""
+        }
+      ];
     }
   },
 
