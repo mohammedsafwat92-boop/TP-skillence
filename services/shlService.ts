@@ -3,7 +3,6 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
-import type { SHLReport } from '../types';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[shlService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
@@ -20,30 +19,29 @@ export const shlService = {
   registerUserFromPDF: async (file: File | undefined, coachEmail?: string) => {
     // Safety Guard: Immediate check for valid file object
     if (!file || !(file instanceof File)) {
-      console.error("[shlService] Invalid file object received:", file);
+      console.error("[performanceService] Invalid file object received:", file);
       throw new Error("Registry Error: The processing hub received an invalid or missing file reference.");
     }
 
     const fileName = file.name || 'Candidate_Report.pdf';
-    console.log(`[shlService] Processing ${fileName} via Intelligence Extraction`);
+    console.log(`[performanceService] Processing ${fileName} via Intelligence Extraction`);
 
     try {
-      const shlData = await shlService.processInline(file);
+      const data = await shlService.processInline(file);
 
       // Step 3: Register results in the global registry
-      // Explicitly matching the contract: action 'register_shl_user' is handled by googleSheetService.createUser
       const registration = await googleSheetService.createUser({
-        name: shlData.candidateName,
-        email: shlData.email,
-        cefrLevel: shlData.cefrLevel,
-        shlData: shlData,
+        name: data.candidateName,
+        email: data.email,
+        cefrLevel: data.cefrLevel,
+        metrics: data.metrics,
         assignedCoach: coachEmail || 'Unassigned',
         password: 'TpSkill2026!'
       });
 
-      return { shlData, registration };
+      return { metrics: data.metrics, registration };
     } catch (error) {
-      console.error("[shlService] Processing Hub Error:", (error as Error).message);
+      console.error("[performanceService] Processing Hub Error:", (error as Error).message);
       throw error;
     }
   },
@@ -52,7 +50,7 @@ export const shlService = {
    * Pipeline for processing files using inline Base64 data.
    * This avoids the "Action not implemented" error associated with the Files API.
    */
-  processInline: async (file: File): Promise<SHLReport> => {
+  processInline: async (file: File): Promise<any> => {
     const ai = new GoogleGenAI({ apiKey: API_KEY });
     
     const base64Data = await new Promise<string>((resolve, reject) => {
@@ -98,27 +96,18 @@ export const shlService = {
    * System Instruction for the Intelligence Extraction
    */
   getAnalysisPrompt: () => {
-    return `Perform an expert deep-parsing of this SHL Candidate Assessment Report. 
+    return `Perform an expert deep-parsing of this Candidate Assessment Report. 
     Map the data into a strict JSON structure following this schema:
     
     - candidateName: Full name of the candidate.
     - email: Candidate's contact email found in the report.
     - cefrLevel: The detected overall CEFR level (A1, A2, B1, B2, C1, or C2).
-    - svar: Detailed speaking sub-scores (0-100):
-        - overall: Overall spoken proficiency.
-        - pronunciation: Phonic clarity.
-        - fluency: Articulation flow.
-        - activeListening: Contextual understanding.
-        - vocabulary: Lexical range.
-        - grammar: Structural accuracy.
-    - writex: Detailed writing sub-scores (0-100):
-        - content: Information depth.
-        - grammar: Syntactic precision.
-        - vocabulary: Academic/Professional range.
-        - coherence: Logic and flow.
-    - competencies: 
-        - behavioralTraits: Array of strings representing traits from "Behavioral Indicators".
-        - strengths: Candidate strengths from "Detailed Skills" or technical breakdown.
+    - metrics:
+        - fluency: score (0-100)
+        - vocabulary: score (0-100)
+        - grammar: score (0-100)
+        - pronunciation: score (0-100)
+        - coherence: score (0-100)
 
     CRITICAL: You must return ONLY a raw JSON object. Do not include markdown formatting, backticks, or conversational text.`;
   },
@@ -126,7 +115,7 @@ export const shlService = {
   /**
    * Sanitizer for AI output to ensure valid JSON registry entry.
    */
-  parseAndClean: (text: string | undefined): SHLReport => {
+  parseAndClean: (text: string | undefined): any => {
     if (!text) throw new Error("Intelligence Extraction Failed: Empty response from engine.");
     try {
       const jsonMatch = text.match(/\{[\s\S]*\}/);

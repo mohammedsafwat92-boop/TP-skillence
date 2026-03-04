@@ -1,5 +1,5 @@
 
-import type { UserProfile, Lesson, UserPerformanceData, Roster } from '../types';
+import type { UserProfile, Lesson, Roster } from '../types';
 
 const USERS_KEY = 'tp_skillence_users';
 const ROSTERS_KEY = 'tp_skillence_rosters';

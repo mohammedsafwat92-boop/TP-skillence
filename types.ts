@@ -33,36 +33,6 @@ export interface Resource {
   progress: ResourceProgress;
 }
 
-export interface SHLReport {
-  svar?: {
-    overall: number;
-    pronunciation: number;
-    fluency: number;
-    activeListening: number;
-    vocabulary: number;
-    grammar: number;
-  };
-  writex?: {
-    grammar: number;
-    vocabulary: number;
-    coherence: number;
-  };
-  candidateName?: string;
-  email?: string;
-  testDate?: string;
-  cefrLevel?: string;
-}
-
-export interface UserPerformanceData {
-  grammar: number;
-  vocabulary: number;
-  fluency: number;
-  pronunciation: number;
-  activeListening: number;
-  overallSpoken: number;
-  testDate: string;
-}
-
 export interface UserCredentials {
   tempId: string;
   accessCode: string;
@@ -75,8 +45,7 @@ export interface UserProfile {
   role: 'admin' | 'coach' | 'agent';
   languageLevel: string;
   rosterId: string;
-  shlData?: SHLReport;
-  performanceData?: UserPerformanceData;
+  metrics?: any; // Uses 'any' to safely parse nested svar/writex objects from the database
   assignedModules?: string[];
   assignedCoach?: string; 
   generatedCredentials?: UserCredentials;

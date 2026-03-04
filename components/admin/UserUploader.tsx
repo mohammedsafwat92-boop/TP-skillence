@@ -79,7 +79,7 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
         
         // Mark as success
         setStagedFiles(prev => prev.map((f, idx) => 
-          idx === i ? { ...f, status: 'success', message: `Registered: ${result.shlData.candidateName}` } : f
+          idx === i ? { ...f, status: 'success', message: `Registered: ${result.registration.userProfile.name}` } : f
         ));
         
         onUserCreated(); // Refresh the parent list
@@ -126,7 +126,7 @@ const UserUploader: React.FC<UserUploaderProps> = ({ currentUser, onUserCreated 
           Candidate Intelligence Hub
         </h3>
         <p className="text-sm text-gray-500 mb-8 max-w-sm mx-auto font-medium leading-relaxed">
-          Drag & Drop SHL PDF reports here or click to browse. Support for batch recruitment intake.
+          Drag & Drop assessment reports here or click to browse. Support for batch recruitment intake.
         </p>
         <div className="bg-tp-navy text-white px-10 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl inline-flex items-center gap-3 group-hover:bg-tp-red transition-colors">
           <PlusIcon className="w-4 h-4" />

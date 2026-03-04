@@ -20,80 +20,6 @@ interface DashboardProps {
   initialSkill?: SkillCategory;
 }
 
-const normalizeScore = (val: number): number => {
-  if (val <= 10 && val > 0) return val * 10;
-  return val;
-};
-
-const RadarChart: React.FC<{ data: { label: string; value: number }[] }> = ({ data }) => {
-  const size = 300;
-  const center = size / 2;
-  const radius = size * 0.4;
-  const angleStep = (Math.PI * 2) / data.length;
-
-  const points = data.map((d, i) => {
-    const angle = i * angleStep - Math.PI / 2;
-    const r = (Math.min(d.value, 100) / 100) * radius;
-    const x = center + r * Math.cos(angle);
-    const y = center + r * Math.sin(angle);
-    return `${x},${y}`;
-  }).join(' ');
-
-  const axisLines = data.map((d, i) => {
-    const angle = i * angleStep - Math.PI / 2;
-    const x = center + radius * Math.cos(angle);
-    const y = center + radius * Math.sin(angle);
-    const labelX = center + (radius + 25) * Math.cos(angle);
-    const labelY = center + (radius + 15) * Math.sin(angle);
-    return { x, y, labelX, labelY, label: d.label };
-  });
-
-  return (
-    <div className="flex justify-center items-center w-full my-4">
-      <svg width={size} height={size + 40} viewBox={`0 0 ${size} ${size + 40}`} className="overflow-visible">
-        {[0.2, 0.4, 0.6, 0.8, 1].map((lvl) => (
-          <polygon
-            key={lvl}
-            points={data.map((_, i) => {
-              const angle = i * angleStep - Math.PI / 2;
-              const r = radius * lvl;
-              const x = center + r * Math.cos(angle);
-              const y = center + r * Math.sin(angle);
-              return `${x},${y}`;
-            }).join(' ')}
-            className="fill-none stroke-gray-100 stroke-1"
-          />
-        ))}
-
-        {axisLines.map((line, i) => (
-          <g key={i}>
-            <line x1={center} y1={center} x2={line.x} y2={line.y} className="stroke-gray-100 stroke-1" />
-            <text x={line.labelX} y={line.labelY} textAnchor="middle" className="text-[9px] font-black fill-tp-purple uppercase tracking-tighter">{line.label}</text>
-          </g>
-        ))}
-
-        <polygon points={points} className="fill-tp-red/20 stroke-tp-red stroke-2 transition-all duration-500" />
-        
-        {data.map((d, i) => {
-          const angle = i * angleStep - Math.PI / 2;
-          const r = (Math.min(d.value, 100) / 100) * radius;
-          const x = center + r * Math.cos(angle);
-          const y = center + r * Math.sin(angle);
-          return (
-            <circle 
-              key={i} 
-              cx={x} 
-              cy={y} 
-              r="4" 
-              className="fill-tp-purple stroke-white stroke-2 shadow-sm"
-            />
-          );
-        })}
-      </svg>
-    </div>
-  );
-};
-
 const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOpenResource, initialSkill }) => {
   const [activeSkill, setActiveSkill] = useState<SkillCategory>(initialSkill || 'All');
 
@@ -110,22 +36,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     return Math.round((completedCount / resources.length) * 100);
   }, [resources]);
 
-  const metrics = useMemo(() => {
-    const s = user.shlData?.svar;
-    const w = user.shlData?.writex;
-
-    const normalizeSVAR = (v: any) => normalizeScore(Number(v) || 0);
-    const normalizeWriteX = (v: any) => Number(v) || 0;
+  const competencyMetrics = useMemo(() => {
+    const m = user?.metrics || {};
+    const svar = m.svar || {};
+    const writex = m.writex || {};
 
     return [
-      { label: 'Fluency', val: normalizeSVAR(s?.fluency), raw: s?.fluency || 0, tag: 'Speaking' },
-      { label: 'Pronunciation', val: normalizeSVAR(s?.pronunciation), raw: s?.pronunciation || 0, tag: 'Speaking' },
-      { label: 'Listening', val: normalizeSVAR(s?.activeListening), raw: s?.activeListening || 0, tag: 'Listening' },
-      { label: 'Vocabulary', val: normalizeSVAR(s?.vocabulary), raw: s?.vocabulary || 0, tag: 'Reading' },
-      { label: 'Grammar', val: normalizeWriteX(w?.grammar), raw: w?.grammar || 0, tag: 'Writing' },
-      { label: 'Coherence', val: normalizeWriteX(w?.coherence), raw: w?.coherence || 0, tag: 'Writing' }
+      { label: 'Fluency', score: Number(svar.fluency) || 0 },
+      { label: 'Vocabulary', score: Number(svar.vocabulary) || 0 },
+      { label: 'Grammar', score: Number(writex.grammar || svar.grammar) || 0 },
+      { label: 'Pronunciation', score: Number(svar.pronunciation) || 0 },
+      { label: 'Coherence', score: Number(writex.coherence || svar.coherence) || 0 }
     ];
-  }, [user.shlData]);
+  }, [user]);
 
   // Tab Logic & Filtering (Case-insensitive matching)
   const { activeCourses, completedCourses } = useMemo(() => {
@@ -264,30 +187,34 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-start">
         {/* Sidebar: Metrics */}
         <div className="lg:col-span-4 lg:sticky lg:top-8">
-          <div className="bg-white border border-gray-100 rounded-[48px] p-10 shadow-xl flex flex-col shadow-tp-purple/5">
-            <div className="flex items-center gap-3 mb-10">
-              <div className="w-1.5 h-6 bg-tp-red rounded-full"></div>
-              <h3 className="font-black text-tp-purple uppercase text-xs tracking-[0.2em]">Competency Metrics</h3>
+      {/* Competency Metrics Card */}
+      <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 mb-8">
+        <h3 className="text-lg font-bold text-gray-800 mb-6 flex items-center gap-2">
+          <svg className="w-5 h-5 text-indigo-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+          Competency Metrics
+        </h3>
+        
+        <div className="space-y-5">
+          {competencyMetrics.map((metric, idx) => (
+            <div key={idx}>
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-sm font-medium text-gray-700">{metric.label}</span>
+                <span className="text-sm font-bold text-gray-900">{metric.score}%</span>
+              </div>
+              <div className="w-full bg-gray-100 rounded-full h-2">
+                <div 
+                  className={`h-2 rounded-full transition-all duration-1000 ease-out ${
+                    metric.score >= 80 ? 'bg-emerald-500' : 
+                    metric.score >= 60 ? 'bg-amber-400' : 
+                    metric.score > 0 ? 'bg-rose-500' : 'bg-gray-300'
+                  }`}
+                  style={{ width: `${metric.score}%` }}
+                ></div>
+              </div>
             </div>
-            
-            <RadarChart data={metrics.map(m => ({ label: m.label, value: m.val }))} />
-            
-            <div className="w-full space-y-5 mt-10">
-              {metrics.map(({ label, val, raw }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-[10px] font-black uppercase mb-2">
-                    <span className="text-tp-purple">{label}</span>
-                    <span className={val < GAP_THRESHOLD_NORMALIZED ? 'text-tp-red' : 'text-green-600'}>
-                      {typeof raw === 'number' ? raw.toFixed(1) : raw}
-                    </span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                    <div className={`h-full transition-all duration-1000 ${val < GAP_THRESHOLD_NORMALIZED ? 'bg-tp-red' : 'bg-tp-purple'}`} style={{ width: `${Math.min(val, 100)}%` }}></div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          ))}
+        </div>
+      </div>
         </div>
 
         {/* Main Content: Course Grid */}

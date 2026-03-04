@@ -125,11 +125,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const exportToCsv = () => {
     if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'SVAR', 'WriteX', 'Assigned Coach'].join(',');
+    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Fluency', 'Vocabulary', 'Grammar', 'Pronunciation', 'Coherence', 'Assigned Coach'].join(',');
     const rows = userList.map(u => {
-      const svar = u.shlData?.svar?.overall ?? 'N/A';
-      const writex = u.shlData?.writex?.grammar ?? 'N/A';
-      return [u.id, `"${u.name}"`, u.email || 'N/A', u.role, u.languageLevel || 'N/A', svar, writex, u.assignedCoach || 'Unassigned'].join(',');
+      const m = u.metrics || {};
+      return [
+        u.id, 
+        `"${u.name}"`, 
+        u.email || 'N/A', 
+        u.role, 
+        u.languageLevel || 'N/A', 
+        m.fluency || 0, 
+        m.vocabulary || 0, 
+        m.grammar || 0, 
+        m.pronunciation || 0, 
+        m.coherence || 0, 
+        u.assignedCoach || 'Unassigned'
+      ].join(',');
     }).join('\n');
 
     const csvContent = `${headers}\n${rows}`;

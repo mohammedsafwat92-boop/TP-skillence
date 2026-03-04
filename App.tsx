@@ -30,30 +30,19 @@ const App: React.FC = () => {
   const normalizeUser = (userData: any): UserProfile => {
     if (!userData) return userData;
     
-    let parsedShl = userData.shlData;
-    if (typeof parsedShl === 'string' && parsedShl.trim() !== '') {
+    let parsedMetrics = userData.metrics;
+    if (typeof parsedMetrics === 'string' && parsedMetrics.trim() !== '') {
       try {
-        parsedShl = JSON.parse(parsedShl);
+        parsedMetrics = JSON.parse(parsedMetrics);
       } catch (e) {
-        console.error("SHL Data Parsing Error:", e);
-        parsedShl = {};
-      }
-    }
-
-    let parsedPerf = userData.performanceData;
-    if (typeof parsedPerf === 'string' && parsedPerf.trim() !== '') {
-      try {
-        parsedPerf = JSON.parse(parsedPerf);
-      } catch (e) {
-        console.error("Performance Data Parsing Error:", e);
-        parsedPerf = {};
+        console.error("Metrics Parsing Error:", e);
+        parsedMetrics = {};
       }
     }
 
     return {
       ...userData,
-      shlData: parsedShl || {},
-      performanceData: parsedPerf || {}
+      metrics: parsedMetrics || {}
     };
   };
 

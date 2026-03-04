@@ -150,7 +150,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Agent Name</th>
                   <th className="px-4 py-5 text-center">CEFR</th>
-                  <th className="px-4 py-5 text-center">SVAR</th>
+                  <th className="px-4 py-5 text-center">Fluency</th>
                   <th className="px-8 py-5 text-right">Action</th>
                 </tr>
               </thead>
@@ -162,7 +162,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                       <p className="text-[10px] text-gray-400 font-medium mt-1">{user.email}</p>
                     </td>
                     <td className="px-4 py-5 text-center font-black text-tp-red">{user.languageLevel}</td>
-                    <td className="px-4 py-5 text-center font-black text-tp-purple">{user.shlData?.svar?.overall ?? '--'}</td>
+                    <td className="px-4 py-5 text-center font-black text-tp-purple">{user.metrics?.fluency ?? '--'}</td>
                     <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 

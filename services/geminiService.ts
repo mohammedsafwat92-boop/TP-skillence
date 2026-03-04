@@ -1,7 +1,7 @@
 
 /// <reference types="vite/client" />
 
-import type { Resource, QuizQuestion, SHLReport } from '../types';
+import type { Resource, QuizQuestion } from '../types';
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[geminiService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
@@ -203,61 +203,6 @@ export const geminiService = {
     } catch (error) {
       console.error("Gemini Enrichment Error:", error);
       return { title, level: "All", tags: ["general"], objective: "Could not generate metadata.", duration: 10 };
-    }
-  },
-
-  analyzeSHLData: async (pdfPart: { inlineData: { data: string; mimeType: string } }): Promise<SHLReport> => {
-    if (!API_KEY) return { candidateName: "Unknown", email: "", cefrLevel: "N/A", svar: {}, writex: {} } as any;
-    try {
-      const prompt = `Analyze the attached SHL Assessment Report. 
-      Extract the following data into a strict JSON structure.
-      
-      REQUIRED FIELDS:
-      - candidateName: Full name of the candidate.
-      - email: Candidate's email address.
-      - cefrLevel: The overall or SVAR CEFR result (e.g., A2, B1, B2).
-      - svar: Nested object containing sub-scores (0-100) for:
-          - overall
-          - pronunciation
-          - fluency
-          - activeListening
-          - vocabulary
-          - grammar
-      - writex: Nested object containing sub-scores (0-100) for:
-          - content
-          - grammar
-
-      IMPORTANT: Return ONLY raw JSON.
-      
-      JSON schema: 
-      { 
-        "candidateName": "string", 
-        "email": "string", 
-        "cefrLevel": "string", 
-        "svar": {
-          "overall": number,
-          "pronunciation": number,
-          "fluency": number,
-          "activeListening": number,
-          "vocabulary": number,
-          "grammar": number
-        },
-        "writex": {
-          "content": number,
-          "grammar": number
-        }
-      }`;
-
-      const textResponse = await callGemini(prompt);
-      if (!textResponse) throw new Error("No response");
-      
-      const jsonMatch = textResponse.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) throw new Error("No JSON object found");
-      
-      return JSON.parse(jsonMatch[0]);
-    } catch (error) {
-      console.error("SHL Analysis Error:", error);
-      return { candidateName: "Error", email: "", cefrLevel: "N/A", svar: {}, writex: {} } as any;
     }
   },
 
