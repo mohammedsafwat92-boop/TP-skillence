@@ -12,11 +12,12 @@ export enum ResourceType {
 export type SkillCategory = 'All' | 'Listening' | 'Speaking' | 'Reading' | 'Writing';
 
 export interface ResourceProgress {
-  status: 'locked' | 'assigned' | 'open' | 'completed';
-  attempts: number;
-  score: number;
+  status: 'locked' | 'assigned' | 'open' | 'completed' | 'not_started' | 'in_progress';
+  score?: number;
+  attempts?: number;
   lastAttempt?: string;
   assignedBy?: string;
+  completedAt?: string;
 }
 
 export interface Resource {

@@ -140,6 +140,38 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     };
   }, [resources, activeSkill]);
 
+  // Calculate Progress Stats
+  const WEEKLY_TARGET = 180;
+
+  const stats = useMemo(() => {
+    const now = new Date();
+    // Calculate start of current week (Sunday)
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+    startOfWeek.setHours(0,0,0,0);
+
+    const nonGeneralResources = resources.filter(r => !(r.tags || []).includes('general'));
+    const totalAssigned = nonGeneralResources.length;
+    const completedCount = nonGeneralResources.filter(r => r.progress?.status === 'completed').length;
+
+    const weeklyMinutes = nonGeneralResources.reduce((acc, res) => {
+      if (res.progress?.status === 'completed' && res.progress.completedAt) {
+        const completedDate = new Date(res.progress.completedAt);
+        if (completedDate >= startOfWeek) {
+          return acc + (parseInt(String(res.duration)) || 15);
+        }
+      }
+      return acc;
+    }, 0);
+
+    return {
+      weeklyProgress: Math.min(Math.round((weeklyMinutes / WEEKLY_TARGET) * 100), 100),
+      weeklyMinutes,
+      overallProgress: totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0,
+      completedCount,
+      totalAssigned
+    };
+  }, [resources]);
+
   return (
     <div className="space-y-12 animate-fadeIn pb-20 p-6 md:p-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-8">
@@ -182,6 +214,49 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
                 {skill}
               </button>
             ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex justify-between items-end mb-3">
+            <div>
+              <p className="text-sm text-gray-500 font-medium mb-1">Weekly Target</p>
+              <h3 className="text-2xl font-bold text-indigo-600">
+                {stats.weeklyMinutes} <span className="text-sm text-gray-400 font-normal">/ 180 mins</span>
+              </h3>
+            </div>
+            <span className="text-sm font-bold text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg">
+              {stats.weeklyProgress}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+            <div 
+              className="bg-indigo-600 h-2.5 rounded-full transition-all duration-1000 ease-out" 
+              style={{ width: `${stats.weeklyProgress}%` }}
+            ></div>
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+          <div className="flex justify-between items-end mb-3">
+            <div>
+              <p className="text-sm text-gray-500 font-medium mb-1">Overall Progress</p>
+              <h3 className="text-2xl font-bold text-emerald-600">
+                {stats.completedCount} <span className="text-sm text-gray-400 font-normal">/ {stats.totalAssigned} Courses</span>
+              </h3>
+            </div>
+            <span className="text-sm font-bold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-lg">
+              {stats.overallProgress}%
+            </span>
+          </div>
+          <div className="w-full bg-gray-100 rounded-full h-2.5 overflow-hidden">
+            <div 
+              className="bg-emerald-500 h-2.5 rounded-full transition-all duration-1000 ease-out" 
+              style={{ width: `${stats.overallProgress}%` }}
+            ></div>
           </div>
         </div>
       </div>
