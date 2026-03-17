@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import type { Resource, QuizQuestion } from '../types';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
-import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon, BrainIcon } from './Icons';
+import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon, BrainIcon, LinkIcon } from './Icons';
 
 interface LessonViewerProps {
   resource: Resource;
@@ -130,14 +130,25 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
                   </div>
                 )}
               </div>
-              <button 
-                onClick={startQuiz}
-                disabled={isGeneratingQuiz || backendStatus === 'completed'}
-                className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50 flex items-center gap-3"
-              >
-                {isGeneratingQuiz && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                {backendStatus === 'completed' ? 'Certified Complete' : isGeneratingQuiz ? 'Generating Quiz...' : 'Mastery Check'}
-              </button>
+              <div className="flex items-center gap-4">
+                <a 
+                  href={resource.url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="bg-white text-tp-purple border-2 border-tp-purple/20 font-black py-5 px-8 rounded-2xl hover:bg-tp-purple/5 transition-all shadow-lg uppercase tracking-widest text-[11px] flex items-center gap-3"
+                >
+                  <LinkIcon className="w-5 h-5" />
+                  Open in New Tab
+                </a>
+                <button 
+                  onClick={startQuiz}
+                  disabled={isGeneratingQuiz || backendStatus === 'completed'}
+                  className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50 flex items-center gap-3"
+                >
+                  {isGeneratingQuiz && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                  {backendStatus === 'completed' ? 'Certified Complete' : isGeneratingQuiz ? 'Generating Quiz...' : 'Mastery Check'}
+                </button>
+              </div>
             </div>
           </div>
         )}
