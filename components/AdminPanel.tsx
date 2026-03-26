@@ -4,7 +4,22 @@ import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
-import { ClipboardListIcon, UserIcon, DownloadIcon, BrainIcon, PlusIcon, SearchIcon, CheckCircleIcon, TrendingUpIcon } from './Icons';
+import { 
+  Users, 
+  TrendingUp, 
+  AlertTriangle, 
+  Search, 
+  Filter, 
+  Download, 
+  ExternalLink,
+  ChevronRight,
+  MoreHorizontal,
+  Brain,
+  Plus,
+  CheckCircle,
+  ClipboardList
+} from 'lucide-react';
+import { ExitIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
 
 interface AdminPanelProps {
@@ -23,9 +38,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [showStagnant, setShowStagnant] = useState(false);
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<any>(null);
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+
+  const combinedStats = useMemo(() => {
+    if (!userList || !adminStats?.userStats) return [];
+    
+    return userList
+      .filter(u => u.role === 'agent')
+      .map(user => {
+        const stats = adminStats.userStats.find((s: any) => s.userId === user.id) || {
+          weeklyMinutes: 0,
+          overallProgress: 0,
+          totalCompleted: 0,
+          totalAssigned: 0
+        };
+        return {
+          ...user,
+          ...stats
+        };
+      });
+  }, [userList, adminStats]);
+
+  const filteredStats = useMemo(() => {
+    return combinedStats.filter(user => {
+      const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                           (user.email && user.email.toLowerCase().includes(searchTerm.toLowerCase()));
+      const matchesStagnant = !showStagnant || user.weeklyMinutes === 0;
+      return matchesSearch && matchesStagnant;
+    });
+  }, [combinedStats, searchTerm, showStagnant]);
+
+  const metrics = useMemo(() => {
+    const totalAgents = combinedStats.length;
+    const avgProgress = adminStats?.rosterAverage || 0;
+    const atRisk = combinedStats.filter(u => u.overallProgress < 30).length;
+    return { totalAgents, avgProgress, atRisk };
+  }, [combinedStats, adminStats]);
 
   const fetchUsers = async () => {
     if (currentUser.role !== 'admin') return;
@@ -156,7 +207,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-8">
         <div>
           <h1 className="text-4xl font-black text-tp-purple flex items-center tracking-tight uppercase">
-            <BrainIcon className="mr-5 text-tp-red w-8 h-8" /> Registry Master
+            <Brain className="mr-5 text-tp-red w-8 h-8" /> Registry Master
           </h1>
           <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2 ml-1">Enterprise Console</p>
         </div>
@@ -181,112 +232,180 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       {assignmentSuccess && (
         <div className="mb-10 bg-green-50 border border-green-200 text-green-700 p-6 rounded-[32px] flex items-center gap-5 animate-fadeIn shadow-xl shadow-green-100/50">
           <div className="bg-green-100 p-2.5 rounded-xl">
-            <CheckCircleIcon className="w-6 h-6" filled />
+            <CheckCircle className="w-6 h-6 text-green-600" />
           </div>
           <span className="text-xs font-black uppercase tracking-widest">{assignmentSuccess}</span>
         </div>
       )}
 
       {activeTab === 'users' && (
-        <div className="space-y-10 animate-fadeIn">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6 px-4">
-            <h2 className="text-xl font-bold text-tp-purple uppercase tracking-tight">User Management</h2>
-
-            <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-              {adminStats && (
-                <div className="bg-indigo-50 px-6 py-3 rounded-2xl border border-indigo-100 shadow-sm flex items-center w-full sm:w-auto justify-between gap-3">
-                  <span className="text-[10px] text-indigo-800 font-black uppercase tracking-widest">Roster Average:</span>
-                  <span className="text-2xl font-black text-indigo-600">{adminStats.rosterAverage}%</span>
+        <div className="space-y-8 animate-fadeIn">
+          {/* Stat Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
+                  <Users className="w-6 h-6" />
                 </div>
-              )}
-              <button
-                onClick={handleBulkAssignRoster}
-                disabled={isBulkAssigning}
-                className="w-full sm:w-auto bg-indigo-600 text-white px-8 py-4 rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-xl font-black uppercase text-[10px] tracking-widest flex-shrink-0"
-              >
-                {isBulkAssigning ? 'Assigning Roster...' : 'Bulk Assign All to Roster'}
-              </button>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Total Agents</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-black text-gray-900">{metrics.totalAgents}</h3>
+                <span className="text-xs font-medium text-gray-500">Active</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
+                  <TrendingUp className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Roster Avg Progress</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-black text-gray-900">{metrics.avgProgress}%</h3>
+                <span className="text-xs font-medium text-emerald-600">Overall</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Agents at Risk</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-black text-gray-900">{metrics.atRisk}</h3>
+                <span className="text-xs font-medium text-rose-600">Under 30%</span>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-between items-center px-4">
-             <h3 className="font-black text-tp-purple uppercase text-[10px] tracking-widest opacity-50">Active Roster</h3>
-             <button onClick={exportToCsv} disabled={userList.length === 0} className="flex items-center gap-3 bg-tp-navy text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase hover:bg-tp-purple transition-all shadow-xl disabled:opacity-50">
-                <DownloadIcon className="w-4 h-4" /> Export Registry
-             </button>
+          {/* Quick Filters */}
+          <div className="bg-gray-50 p-6 rounded-3xl border border-gray-100 flex flex-col md:flex-row gap-6 items-center">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input 
+                type="text" 
+                placeholder="Search by agent name or email..."
+                className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-tp-purple/20 focus:border-tp-purple transition-all text-sm"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+              <button 
+                onClick={() => setShowStagnant(false)}
+                className={`px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!showStagnant ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                Show All
+              </button>
+              <button 
+                onClick={() => setShowStagnant(true)}
+                className={`px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${showStagnant ? 'bg-tp-red text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                Show Stagnant
+              </button>
+            </div>
+            <button 
+              onClick={exportToCsv}
+              className="flex items-center gap-2 bg-tp-navy text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-lg"
+            >
+              <Download className="w-4 h-4" /> Export
+            </button>
           </div>
 
-          <div className="grid grid-cols-1 gap-6">
-            {userList.map((user) => (
-              <div key={user.id} className="bg-white border border-gray-100 rounded-[40px] p-8 hover:shadow-2xl transition-all group shadow-md">
-                <div className="flex flex-col lg:flex-row justify-between gap-8">
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-4">
-                      <div>
-                        <p className="font-black text-tp-purple text-2xl leading-none">{user.name}</p>
-                        <p className="text-[10px] text-gray-400 font-medium mt-2 uppercase tracking-widest">{user.email}</p>
-                      </div>
-                      <div className="text-right">
-                        <span className="text-tp-red font-black text-lg uppercase tracking-tighter">{user.languageLevel}</span>
-                        <p className="text-[8px] font-black text-gray-400 uppercase tracking-widest mt-1">CEFR Level</p>
-                      </div>
-                    </div>
-
-                    {adminStats && adminStats.userStats && adminStats.userStats.find((s: any) => s.userId === user.id) && (
-                      <div className="mt-6 mb-6 space-y-6 p-6 bg-gray-50/50 rounded-[32px] border border-gray-100 shadow-inner">
-                        <div>
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
-                            <span className="text-gray-500 flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-indigo-500"></span> Weekly Target (180 mins)
-                            </span>
-                            <span className="text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
-                              {adminStats.userStats.find((s: any) => s.userId === user.id).weeklyProgress}% ({adminStats.userStats.find((s: any) => s.userId === user.id).weeklyMinutes} mins)
-                            </span>
+          {/* Data Table */}
+          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/50 border-b border-gray-100">
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent ID</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Weekly Mins</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Overall Progress</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Completed</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredStats.map((user) => (
+                    <tr key={user.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <td className="px-8 py-6">
+                        <div className="flex items-center gap-4">
+                          <div className="w-10 h-10 bg-tp-purple/10 rounded-xl flex items-center justify-center text-tp-purple font-black text-xs">
+                            {user.name.charAt(0)}
                           </div>
-                          <div className="w-full bg-gray-200/50 rounded-full h-2.5 overflow-hidden">
-                            <div 
-                              className="bg-indigo-500 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(99,102,241,0.3)]" 
-                              style={{ width: `${adminStats.userStats.find((s: any) => s.userId === user.id).weeklyProgress}%` }}
-                            ></div>
+                          <div>
+                            <p className="font-bold text-gray-900 group-hover:text-tp-purple transition-colors">{user.name}</p>
+                            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest">{user.email}</p>
                           </div>
                         </div>
-                        <div>
-                          <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
-                            <span className="text-gray-500 flex items-center gap-2">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500"></span> Overall Completion
-                            </span>
-                            <span className="text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full">
-                              {adminStats.userStats.find((s: any) => s.userId === user.id).overallProgress}% ({adminStats.userStats.find((s: any) => s.userId === user.id).totalCompleted}/{adminStats.userStats.find((s: any) => s.userId === user.id).totalAssigned})
-                            </span>
-                          </div>
-                          <div className="w-full bg-gray-200/50 rounded-full h-2.5 overflow-hidden">
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold ${user.weeklyMinutes === 0 ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                          {user.weeklyMinutes}m
+                        </span>
+                      </td>
+                      <td className="px-8 py-6 min-w-[200px]">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div 
-                              className="bg-emerald-500 h-full rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(16,185,129,0.3)]" 
-                              style={{ width: `${adminStats.userStats.find((s: any) => s.userId === user.id).overallProgress}%` }}
+                              className={`h-full rounded-full transition-all duration-1000 ${user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500'}`}
+                              style={{ width: `${user.overallProgress}%` }}
                             ></div>
                           </div>
+                          <span className="text-xs font-black text-gray-700 w-10">{user.overallProgress}%</span>
                         </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col justify-center gap-3 lg:border-l lg:border-gray-50 lg:pl-8 min-w-[180px]">
-                    <button 
-                      onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
-                      className="w-full bg-tp-navy text-white px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-lg"
-                    >
-                      Assign Module
-                    </button>
-                    <button 
-                      onClick={() => onImpersonate(user)} 
-                      className="w-full bg-tp-purple/5 text-tp-purple px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple hover:text-white transition-all border border-tp-purple/10"
-                    >
-                      View Hub
-                    </button>
-                  </div>
-                </div>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <p className="text-sm font-bold text-gray-900">{user.totalCompleted}</p>
+                        <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">/ {user.totalAssigned}</p>
+                      </td>
+                      <td className="px-8 py-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <button 
+                            onClick={() => onImpersonate(user)}
+                            className="p-2 text-gray-400 hover:text-tp-purple hover:bg-tp-purple/5 rounded-lg transition-all"
+                            title="View Hub"
+                          >
+                            <ExternalLink className="w-5 h-5" />
+                          </button>
+                          <button 
+                            onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }}
+                            className="p-2 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Assign Module"
+                          >
+                            <Plus className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {filteredStats.length === 0 && (
+              <div className="py-20 text-center">
+                <p className="text-gray-400 font-black uppercase text-xs tracking-widest">No agents found matching your criteria.</p>
               </div>
-            ))}
+            )}
+          </div>
+
+          <div className="flex justify-center pt-8">
+            <button
+              onClick={handleBulkAssignRoster}
+              disabled={isBulkAssigning}
+              className="bg-indigo-600 text-white px-10 py-5 rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-xl font-black uppercase text-xs tracking-widest flex items-center gap-3"
+            >
+              {isBulkAssigning ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              ) : (
+                <ClipboardList className="w-5 h-5" />
+              )}
+              {isBulkAssigning ? 'Processing Roster...' : 'Bulk Assign All to Roster'}
+            </button>
           </div>
         </div>
       )}
@@ -297,7 +416,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             <div className="flex flex-col lg:flex-row items-center justify-between gap-6">
               <div className="flex items-center gap-5">
                 <div className="p-3 bg-white/10 rounded-xl text-white">
-                  <UserIcon className="w-6 h-6" />
+                  <Users className="w-6 h-6" />
                 </div>
                 <div>
                   <p className="text-white text-[11px] font-black uppercase tracking-[0.2em] mb-1.5">Target Student Selector</p>
@@ -318,7 +437,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
             <div className="relative">
                <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-white/40">
-                 <SearchIcon className="w-6 h-6" />
+                 <Search className="w-6 h-6" />
                </div>
                <input 
                  type="text"
@@ -349,7 +468,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                     className={`flex items-center gap-2 bg-tp-navy text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30 active:scale-95`}
                     title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
                   >
-                    <PlusIcon className="w-4 h-4" /> Assign
+                    <Plus className="w-4 h-4" /> Assign
                   </button>
                 </div>
               </div>
