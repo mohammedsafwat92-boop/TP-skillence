@@ -43,6 +43,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [adminStats, setAdminStats] = useState<any>(null);
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string>('overall');
+  const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string[]>>({});
+  const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
+  const [targetWeek, setTargetWeek] = useState<number>(1);
 
   const availableWeeks = useMemo(() => {
     if (!adminStats?.userStats) return [];
@@ -135,6 +138,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
   };
 
+  const fetchWeeklyAssignments = async () => {
+    try {
+      const data = await googleSheetService.getWeeklyAssignments();
+      setWeeklyAssignments(data);
+    } catch (err) {
+      console.error('Error fetching weekly assignments:', err);
+    }
+  };
+
   const handleBulkAssignRoster = async () => {
     if (!currentUser) return;
     if (!window.confirm("This will assign ALL eligible courses to EVERY trainee in the system. The system will then automatically drip them 3 hours a week based on their cohort start date. Proceed?")) return;
@@ -161,6 +173,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
     if (activeTab === 'library') {
       fetchResources();
+      fetchWeeklyAssignments();
     }
   }, [activeTab]);
 
@@ -187,6 +200,30 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  const handleAssignToWeek = async () => {
+    if (selectedResourceIds.length === 0) return;
+    setIsProcessing(true);
+    try {
+      const updated = await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, currentUser.id);
+      setWeeklyAssignments(updated);
+      setSelectedResourceIds([]);
+      setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} resources to Week ${targetWeek}`);
+      setTimeout(() => setAssignmentSuccess(null), 4000);
+    } catch (err) {
+      alert('Failed to assign resources to week: ' + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const getAssignedWeek = (resourceId: string): string | null => {
+    if (!weeklyAssignments) return null;
+    for (const [weekNum, ids] of Object.entries(weeklyAssignments)) {
+      if ((ids as string[]).includes(resourceId)) return weekNum;
+    }
+    return null;
   };
 
   const filteredResources = useMemo(() => {
@@ -497,6 +534,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               </select>
             </div>
 
+            {selectedResourceIds.length > 0 && (
+              <div className="bg-white/20 p-6 rounded-2xl border border-white/30 flex flex-col md:flex-row items-center justify-between gap-6 animate-fadeIn">
+                <div className="flex items-center gap-4">
+                  <span className="text-white text-xs font-black uppercase tracking-widest">
+                    {selectedResourceIds.length} Resources Selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                  <div className="flex items-center gap-2">
+                    <label className="text-white text-[10px] font-black uppercase tracking-widest">Target Week:</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      value={targetWeek}
+                      onChange={(e) => setTargetWeek(parseInt(e.target.value) || 1)}
+                      className="w-20 bg-white text-tp-purple font-black px-4 py-2 rounded-xl outline-none"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleAssignToWeek}
+                    disabled={isProcessing}
+                    className="bg-tp-red text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-navy transition-all shadow-lg flex-1 md:flex-none"
+                  >
+                    {isProcessing ? 'Assigning...' : `Assign to Week ${targetWeek}`}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="relative">
                <div className="absolute inset-y-0 left-5 flex items-center pointer-events-none text-white/40">
                  <Search className="w-6 h-6" />
@@ -511,33 +577,78 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pb-16">
-            {filteredResources.map(res => (
-              <div key={res.id} className="p-8 bg-white border border-gray-100 rounded-[40px] hover:shadow-2xl transition-all flex flex-col justify-between group h-[260px] hover:-translate-y-2 shadow-md">
-                <div>
-                  <div className="flex items-center justify-between mb-6">
-                    <span className="text-[10px] font-black bg-tp-purple/5 text-tp-purple px-3 py-1.5 rounded-xl uppercase tracking-widest">{res.tags[0]}</span>
-                    <span className="text-[11px] font-black text-tp-red uppercase tracking-widest">{res.level}</span>
-                  </div>
-                  <h4 className="font-black text-tp-purple text-xl leading-tight group-hover:text-tp-red transition-colors">{res.title}</h4>
-                  <p className="text-[11px] text-gray-500 mt-3 line-clamp-2 italic font-medium">"{res.objective}"</p>
-                </div>
-                <div className="mt-6 pt-6 border-t border-gray-50 flex justify-between items-center">
-                   <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{res.type}</span>
-                   <button 
-                    onClick={() => handleManualAssign(res.id)}
-                    disabled={isProcessing || !selectedTargetUserId}
-                    className={`flex items-center gap-2 bg-tp-navy text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30 active:scale-95`}
-                    title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
-                  >
-                    <Plus className="w-4 h-4" /> Assign
-                  </button>
-                </div>
-              </div>
-            ))}
+          <div className="bg-white rounded-[32px] border border-gray-100 shadow-sm overflow-hidden mb-16">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-50/50 border-b border-gray-100">
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Select</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Module Title</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">CEFR</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Curriculum Week</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Type</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {filteredResources.map((res) => {
+                    const assignedWeek = getAssignedWeek(res.id);
+                    return (
+                      <tr key={res.id} className="hover:bg-gray-50/50 transition-colors group">
+                        <td className="px-8 py-6">
+                          <input 
+                            type="checkbox"
+                            checked={selectedResourceIds.includes(res.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSelectedResourceIds(prev => [...prev, res.id]);
+                              } else {
+                                setSelectedResourceIds(prev => prev.filter(id => id !== res.id));
+                              }
+                            }}
+                            className="w-5 h-5 rounded border-gray-300 text-tp-purple focus:ring-tp-purple cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-8 py-6">
+                          <div>
+                            <p className="font-bold text-gray-900 group-hover:text-tp-purple transition-colors">{res.title}</p>
+                            <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest line-clamp-1">{res.objective}</p>
+                          </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className="text-[11px] font-black text-tp-red uppercase tracking-widest">{res.level}</span>
+                        </td>
+                        <td className="px-8 py-6">
+                          {assignedWeek ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                              Assigned: Week {assignedWeek}
+                            </span>
+                          ) : (
+                            <span className="text-gray-500 text-xs font-medium">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="px-8 py-6">
+                          <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{res.type}</span>
+                        </td>
+                        <td className="px-8 py-6 text-right">
+                          <button 
+                            onClick={() => handleManualAssign(res.id)}
+                            disabled={isProcessing || !selectedTargetUserId}
+                            className={`flex items-center gap-2 bg-tp-navy text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all shadow-lg hover:bg-tp-red disabled:opacity-30 active:scale-95 ml-auto`}
+                            title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
+                          >
+                            <Plus className="w-4 h-4" /> Assign
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
             {filteredResources.length === 0 && (
-              <div className="col-span-full py-24 text-center text-gray-400 font-black uppercase text-sm tracking-[0.3em]">
-                No matching resources found in the library.
+              <div className="py-24 text-center">
+                <p className="text-gray-400 font-black uppercase text-xs tracking-widest">No matching resources found in the library.</p>
               </div>
             )}
           </div>
