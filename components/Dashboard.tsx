@@ -86,9 +86,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
       return acc;
     }, 0);
 
+    // Calculate days remaining in the current week (until next Sunday)
+    const nextSunday = new Date(startOfWeek);
+    nextSunday.setDate(startOfWeek.getDate() + 7);
+    const diffTime = nextSunday.getTime() - now.getTime();
+    const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+
     return {
       weeklyProgress: Math.min(Math.round((weeklyMinutes / WEEKLY_TARGET) * 100), 100),
       weeklyMinutes,
+      daysRemaining,
       overallProgress: totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0,
       completedCount,
       totalAssigned
@@ -114,14 +121,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         </div>
 
         <div className="flex flex-col items-end gap-6 w-full md:w-auto">
-          {/* Mastery Calculation Display */}
-          <div className="bg-white px-8 py-6 rounded-[32px] shadow-md border border-gray-100 flex items-center gap-6 w-fit ml-auto shadow-tp-purple/5">
-            <div className="text-center">
-              <p className="text-4xl font-black text-tp-purple leading-none">{progressPercent}%</p>
-              <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest mt-3">Overall Mastery</p>
+          {/* Weekly Status Section */}
+          <div className="bg-white px-8 py-6 rounded-[32px] shadow-md border border-gray-100 w-full md:w-[400px] shadow-tp-purple/5">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.2em]">Weekly Status</h3>
+              <span className="text-[10px] font-black text-tp-red uppercase tracking-widest bg-tp-red/5 px-2 py-1 rounded-lg">
+                {stats.daysRemaining} Days Left
+              </span>
             </div>
-            <div className="w-14 h-14 bg-tp-red/10 rounded-full flex items-center justify-center text-tp-red">
-              <TrendingUpIcon className="w-7 h-7" />
+            <div className="flex justify-between items-end mb-3">
+              <p className="text-2xl font-black text-tp-purple">
+                {stats.weeklyMinutes} <span className="text-xs text-gray-400 font-bold">/ 180 MINS</span>
+              </p>
+              <span className="text-xs font-black text-tp-purple">{stats.weeklyProgress}%</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+              <div 
+                className="bg-tp-purple h-full rounded-full transition-all duration-1000 ease-out" 
+                style={{ width: `${stats.weeklyProgress}%` }}
+              ></div>
             </div>
           </div>
 

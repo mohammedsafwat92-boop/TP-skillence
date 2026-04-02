@@ -42,6 +42,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<any>(null);
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [statsView, setStatsView] = useState<'overall' | 'weekly'>('overall');
 
   const combinedStats = useMemo(() => {
     if (!userList || !adminStats?.userStats) return [];
@@ -74,8 +75,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const metrics = useMemo(() => {
     const totalAgents = combinedStats.length;
     const avgProgress = adminStats?.rosterAverage || 0;
+    const totalWeeklyProgress = combinedStats.reduce((acc, u) => acc + (u.weeklyProgress || 0), 0);
+    const avgWeeklyProgress = totalAgents > 0 ? Math.round(totalWeeklyProgress / totalAgents) : 0;
     const atRisk = combinedStats.filter(u => u.overallProgress < 30).length;
-    return { totalAgents, avgProgress, atRisk };
+    return { totalAgents, avgProgress, avgWeeklyProgress, atRisk };
   }, [combinedStats, adminStats]);
 
   const fetchUsers = async () => {
@@ -241,7 +244,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       {activeTab === 'users' && (
         <div className="space-y-8 animate-fadeIn">
           {/* Stat Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
@@ -260,11 +263,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                   <TrendingUp className="w-6 h-6" />
                 </div>
-                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Roster Avg Progress</span>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Avg Progress</span>
               </div>
               <div className="flex items-baseline gap-2">
                 <h3 className="text-3xl font-black text-gray-900">{metrics.avgProgress}%</h3>
                 <span className="text-xs font-medium text-emerald-600">Overall</span>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 bg-tp-purple/10 rounded-lg text-tp-purple">
+                  <ClipboardList className="w-6 h-6" />
+                </div>
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Weekly Overview</span>
+              </div>
+              <div className="flex items-baseline gap-2">
+                <h3 className="text-3xl font-black text-gray-900">{metrics.avgWeeklyProgress}%</h3>
+                <span className="text-xs font-medium text-tp-purple">Weekly Avg</span>
               </div>
             </div>
 
@@ -294,6 +310,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+            
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+              <button 
+                onClick={() => setStatsView('overall')}
+                className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${statsView === 'overall' ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                Overall
+              </button>
+              <button 
+                onClick={() => setStatsView('weekly')}
+                className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${statsView === 'weekly' ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+              >
+                Weekly
+              </button>
+            </div>
+
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
               <button 
                 onClick={() => setShowStagnant(false)}
@@ -324,7 +356,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                   <tr className="bg-gray-50/50 border-b border-gray-100">
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent ID</th>
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Weekly Mins</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Overall Progress</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      {statsView === 'overall' ? 'Overall Progress' : 'Weekly Progress (%)'}
+                    </th>
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Completed</th>
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
                   </tr>
@@ -352,11 +386,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                         <div className="flex items-center gap-3">
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div 
-                              className={`h-full rounded-full transition-all duration-1000 ${user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500'}`}
-                              style={{ width: `${user.overallProgress}%` }}
+                              className={`h-full rounded-full transition-all duration-1000 ${
+                                statsView === 'overall' 
+                                  ? (user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500')
+                                  : (user.weeklyProgress >= 80 ? 'bg-tp-purple' : user.weeklyProgress >= 40 ? 'bg-indigo-400' : 'bg-rose-400')
+                              }`}
+                              style={{ width: `${statsView === 'overall' ? user.overallProgress : user.weeklyProgress}%` }}
                             ></div>
                           </div>
-                          <span className="text-xs font-black text-gray-700 w-10">{user.overallProgress}%</span>
+                          <span className="text-xs font-black text-gray-700 w-10">
+                            {statsView === 'overall' ? user.overallProgress : user.weeklyProgress}%
+                          </span>
                         </div>
                       </td>
                       <td className="px-8 py-6 text-center">

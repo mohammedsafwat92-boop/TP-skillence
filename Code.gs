@@ -27,6 +27,9 @@ function doPost(e) {
       // Fix: Strictly require role for determining visibility logic
       res.data = getUserPlan(ss, json.uid, json.role);
       res.success = true;
+    } else if (action === 'get_admin_stats') {
+      res.data = getAdminStats(ss);
+      res.success = true;
     } else if (action === 'get_all_resources') {
       res.data = getAllResources(ss);
       res.success = true;
@@ -113,7 +116,7 @@ function getUserPlan(ss, uid, role) {
   const resSheet = ss.getSheetByName('Resources');
   const progSheet = ss.getSheetByName('Progress');
   
-  if (!userSheet || !resSheet) return [];
+  if (!userSheet || !resSheet) return { resources: [], weeklyMinutes: 0, weeklyProgress: 0 };
 
   const userData = userSheet.getDataRange().getValues();
   const userHeaders = userData[0];
@@ -141,33 +144,47 @@ function getUserPlan(ss, uid, role) {
   const levelIdx = resHeaders.indexOf('level');
   const objectiveIdx = resHeaders.indexOf('objective');
   const scrapedIdx = resHeaders.indexOf('scrapedtext');
+  const durIdx = resHeaders.indexOf('duration');
 
   const isAdminOrCoach = (role === 'admin' || role === 'coach');
+  const WEEKLY_GOAL = 180;
+  const startOfWeek = getStartOfWeek();
+  let weeklyMinutes = 0;
 
   for (let i = 1; i < resData.length; i++) {
     const resRow = resData[i];
     const resourceLevel = resRow[levelIdx];
+    const resourceId = String(resRow[idIdx]);
+    const duration = parseInt(String(resRow[durIdx] || '15')) || 15;
     
-    // Fuzzy matching logic included in isLevelMatch
-    // If admin/coach, skip level filtering to see the full library
     if (!isAdminOrCoach && !isLevelMatch(resourceLevel, userLevel)) continue;
 
-    let progress = { status: 'open', attempts: 0, score: 0 };
+    let progress = { status: 'open', attempts: 0, score: 0, completedAt: null };
     if (progData.length > 1) {
       for (let j = 1; j < progData.length; j++) {
-        if (String(progData[j][0]) === String(uid) && String(progData[j][1]) === String(resRow[idIdx])) {
+        if (String(progData[j][0]) === String(uid) && String(progData[j][1]) === resourceId) {
+          const status = progData[j][2];
+          const completedAt = progData[j][5];
           progress = { 
-            status: progData[j][2], 
+            status: status, 
             attempts: progData[j][3], 
-            score: progData[j][4] 
+            score: progData[j][4],
+            completedAt: completedAt
           };
+
+          if (status === 'completed' && completedAt) {
+            const compDate = new Date(completedAt);
+            if (compDate >= startOfWeek) {
+              weeklyMinutes += duration;
+            }
+          }
           break;
         }
       }
     }
 
     userPlan.push({
-      id: String(resRow[idIdx]),
+      id: resourceId,
       title: String(resRow[titleIdx]),
       url: String(resRow[urlIdx]),
       type: String(resRow[typeIdx]),
@@ -175,11 +192,103 @@ function getUserPlan(ss, uid, role) {
       level: String(resRow[levelIdx] || 'All'),
       objective: String(resRow[objectiveIdx] || ''),
       scrapedText: scrapedIdx > -1 ? String(resRow[scrapedIdx] || '') : '',
-      duration: resHeaders.indexOf('duration') > -1 ? String(resRow[resHeaders.indexOf('duration')] || '10') : '10',
+      duration: duration,
       progress: progress
     });
   }
-  return userPlan;
+
+  return {
+    resources: userPlan,
+    weeklyMinutes: weeklyMinutes,
+    weeklyProgress: Math.min(Math.round((weeklyMinutes / WEEKLY_GOAL) * 100), 100)
+  };
+}
+
+function getAdminStats(ss) {
+  const userSheet = ss.getSheetByName('Users');
+  const resSheet = ss.getSheetByName('Resources');
+  const progSheet = ss.getSheetByName('Progress');
+  
+  if (!userSheet || !resSheet || !progSheet) return { rosterAverage: 0, userStats: [] };
+
+  const userData = userSheet.getDataRange().getValues();
+  const resData = resSheet.getDataRange().getValues();
+  const progData = progSheet.getDataRange().getValues();
+  
+  const resHeaders = resData[0].map(h => h.toLowerCase());
+  const durIdx = resHeaders.indexOf('duration');
+  const idIdx = resHeaders.indexOf('id');
+  
+  const resourceDurations = {};
+  for (let i = 1; i < resData.length; i++) {
+    resourceDurations[String(resData[i][idIdx])] = parseInt(String(resData[i][durIdx] || '15')) || 15;
+  }
+
+  const startOfWeek = getStartOfWeek();
+  const userStats = [];
+  let totalOverallProgress = 0;
+  let agentCount = 0;
+
+  const userHeaders = userData[0];
+  const uidIdx = userHeaders.indexOf('UID');
+  const roleIdx = userHeaders.indexOf('Role');
+
+  for (let i = 1; i < userData.length; i++) {
+    if (userData[i][roleIdx] !== 'agent') continue;
+    
+    const uid = String(userData[i][uidIdx]);
+    agentCount++;
+    
+    let totalCompleted = 0;
+    let totalAssigned = 0;
+    let weeklyMinutes = 0;
+
+    for (let j = 1; j < progData.length; j++) {
+      if (String(progData[j][0]) === uid) {
+        const resId = String(progData[j][1]);
+        const status = progData[j][2];
+        const completedAt = progData[j][5];
+        const duration = resourceDurations[resId] || 15;
+
+        if (status === 'completed' || status === 'assigned') {
+          totalAssigned++;
+        }
+        if (status === 'completed') {
+          totalCompleted++;
+          if (completedAt) {
+            const compDate = new Date(completedAt);
+            if (compDate >= startOfWeek) {
+              weeklyMinutes += duration;
+            }
+          }
+        }
+      }
+    }
+
+    const overallProgress = totalAssigned > 0 ? Math.round((totalCompleted / totalAssigned) * 100) : 0;
+    totalOverallProgress += overallProgress;
+
+    userStats.push({
+      userId: uid,
+      weeklyMinutes: weeklyMinutes,
+      weeklyProgress: Math.min(Math.round((weeklyMinutes / 180) * 100), 100),
+      overallProgress: overallProgress,
+      totalCompleted: totalCompleted,
+      totalAssigned: totalAssigned
+    });
+  }
+
+  return {
+    rosterAverage: agentCount > 0 ? Math.round(totalOverallProgress / agentCount) : 0,
+    userStats: userStats
+  };
+}
+
+function getStartOfWeek() {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - now.getDay());
+  start.setHours(0, 0, 0, 0);
+  return start;
 }
 
 function getAllResources(ss) {

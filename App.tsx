@@ -130,8 +130,13 @@ const App: React.FC = () => {
     const r = role || currentUser?.role;
     if (!id) return;
     try {
-      const plan = await googleSheetService.fetchUserPlan(id, r);
-      setUserPlan(Array.isArray(plan) ? plan : []);
+      const data = await googleSheetService.fetchUserPlan(id, r);
+      // Handle both old array format and new object format for backward compatibility
+      if (data && data.resources) {
+        setUserPlan(data.resources);
+      } else {
+        setUserPlan(Array.isArray(data) ? data : []);
+      }
     } catch (err) {
       console.error("Refresh Error:", err);
     }
