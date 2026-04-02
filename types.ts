@@ -115,3 +115,17 @@ export interface UserProgress {
   quizScores: Record<string, number>;
   activityHistory: ActivityLog[];
 }
+
+export interface UserStats {
+  userId: string;
+  weeklyMinutes: number;
+  overallProgress: number;
+  totalCompleted: number;
+  totalAssigned: number;
+  weeklyHistory?: { weekLabel: string, minutes: number, progress: number, completedCount: number }[];
+}
+
+export interface AdminStats {
+  rosterAverage: number;
+  userStats: UserStats[];
+}

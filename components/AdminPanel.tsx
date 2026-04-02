@@ -42,7 +42,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<any>(null);
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
-  const [statsView, setStatsView] = useState<'overall' | 'weekly'>('overall');
+  const [selectedWeek, setSelectedWeek] = useState<string>('overall');
+
+  const availableWeeks = useMemo(() => {
+    if (!adminStats?.userStats) return [];
+    const weeks = new Set<string>();
+    adminStats.userStats.forEach((s: any) => {
+      s.weeklyHistory?.forEach((w: any) => weeks.add(w.weekLabel));
+    });
+    return Array.from(weeks).sort();
+  }, [adminStats]);
 
   const combinedStats = useMemo(() => {
     if (!userList || !adminStats?.userStats) return [];
@@ -54,14 +63,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           weeklyMinutes: 0,
           overallProgress: 0,
           totalCompleted: 0,
-          totalAssigned: 0
+          totalAssigned: 0,
+          weeklyHistory: []
         };
+
+        if (selectedWeek !== 'overall' && stats.weeklyHistory) {
+          const weekData = stats.weeklyHistory.find((w: any) => w.weekLabel === selectedWeek);
+          return {
+            ...user,
+            ...stats,
+            weeklyMinutes: weekData ? weekData.minutes : 0,
+            overallProgress: weekData ? weekData.progress : 0,
+            totalCompleted: weekData ? weekData.completedCount : 0
+          };
+        }
+
         return {
           ...user,
           ...stats
         };
       });
-  }, [userList, adminStats]);
+  }, [userList, adminStats, selectedWeek]);
 
   const filteredStats = useMemo(() => {
     return combinedStats.filter(user => {
@@ -312,18 +334,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             </div>
             
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
-              <button 
-                onClick={() => setStatsView('overall')}
-                className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${statsView === 'overall' ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
+              <select 
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                className="px-4 py-2 bg-white text-tp-purple rounded-lg text-[9px] font-black uppercase tracking-widest outline-none border-none focus:ring-0 cursor-pointer"
               >
-                Overall
-              </button>
-              <button 
-                onClick={() => setStatsView('weekly')}
-                className={`px-4 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${statsView === 'weekly' ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
-              >
-                Weekly
-              </button>
+                <option value="overall">Overall View</option>
+                {availableWeeks.map(week => (
+                  <option key={week} value={week}>{week}</option>
+                ))}
+              </select>
             </div>
 
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
@@ -355,11 +375,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <thead>
                   <tr className="bg-gray-50/50 border-b border-gray-100">
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent ID</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Weekly Mins</th>
-                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      {statsView === 'overall' ? 'Overall Progress' : 'Weekly Progress (%)'}
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
+                      {selectedWeek === 'overall' ? 'Weekly Mins' : `${selectedWeek} Minutes`}
                     </th>
-                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Completed</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      {selectedWeek === 'overall' ? 'Overall Progress' : `${selectedWeek} Progress (%)`}
+                    </th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
+                      {selectedWeek === 'overall' ? 'Completed' : `${selectedWeek} Completed`}
+                    </th>
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Actions</th>
                   </tr>
                 </thead>
@@ -387,15 +411,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                           <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div 
                               className={`h-full rounded-full transition-all duration-1000 ${
-                                statsView === 'overall' 
-                                  ? (user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500')
-                                  : (user.weeklyProgress >= 80 ? 'bg-tp-purple' : user.weeklyProgress >= 40 ? 'bg-indigo-400' : 'bg-rose-400')
+                                user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500'
                               }`}
-                              style={{ width: `${statsView === 'overall' ? user.overallProgress : user.weeklyProgress}%` }}
+                              style={{ width: `${user.overallProgress}%` }}
                             ></div>
                           </div>
                           <span className="text-xs font-black text-gray-700 w-10">
-                            {statsView === 'overall' ? user.overallProgress : user.weeklyProgress}%
+                            {user.overallProgress}%
                           </span>
                         </div>
                       </td>

@@ -19,6 +19,56 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
   const [selectedTargetUserId, setSelectedTargetUserId] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState('');
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
+  const [adminStats, setAdminStats] = useState<any>(null);
+  const [selectedWeek, setSelectedWeek] = useState<string>('overall');
+
+  const loadAdminStats = async () => {
+    try {
+      const data = await googleSheetService.getAdminStats();
+      setAdminStats(data);
+    } catch (err) {
+      console.error('Error fetching admin stats:', err);
+    }
+  };
+
+  const availableWeeks = useMemo(() => {
+    if (!adminStats?.userStats) return [];
+    const weeks = new Set<string>();
+    adminStats.userStats.forEach((s: any) => {
+      s.weeklyHistory?.forEach((w: any) => weeks.add(w.weekLabel));
+    });
+    return Array.from(weeks).sort();
+  }, [adminStats]);
+
+  const combinedStats = useMemo(() => {
+    if (!userList || !adminStats?.userStats) return userList.map(u => ({ ...u, weeklyMinutes: 0, overallProgress: 0, totalCompleted: 0, totalAssigned: 0 }));
+    
+    return userList.map(user => {
+      const stats = adminStats.userStats.find((s: any) => s.userId === user.id) || {
+        weeklyMinutes: 0,
+        overallProgress: 0,
+        totalCompleted: 0,
+        totalAssigned: 0,
+        weeklyHistory: []
+      };
+
+      if (selectedWeek !== 'overall' && stats.weeklyHistory) {
+        const weekData = stats.weeklyHistory.find((w: any) => w.weekLabel === selectedWeek);
+        return {
+          ...user,
+          ...stats,
+          weeklyMinutes: weekData ? weekData.minutes : 0,
+          overallProgress: weekData ? weekData.progress : 0,
+          totalCompleted: weekData ? weekData.completedCount : 0
+        };
+      }
+
+      return {
+        ...user,
+        ...stats
+      };
+    });
+  }, [userList, adminStats, selectedWeek]);
 
   const fetchMyStudents = async () => {
     setIsProcessing(true);
@@ -48,6 +98,7 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
   useEffect(() => {
     if (activeTab === 'roster' || activeTab === 'library') {
       fetchMyStudents();
+      loadAdminStats();
     }
     if (activeTab === 'library') {
       fetchResources();
@@ -144,25 +195,69 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
             </label>
           </div>
 
+          <div className="flex flex-col md:flex-row gap-6 items-center mb-6">
+            <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
+              <select 
+                value={selectedWeek}
+                onChange={(e) => setSelectedWeek(e.target.value)}
+                className="px-4 py-2 bg-white text-tp-purple rounded-lg text-[9px] font-black uppercase tracking-widest outline-none border-none focus:ring-0 cursor-pointer"
+              >
+                <option value="overall">Overall View</option>
+                {availableWeeks.map(week => (
+                  <option key={week} value={week}>{week}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
           <div className="overflow-x-auto border border-gray-100 rounded-[32px] shadow-inner bg-gray-50/30">
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-white text-gray-500 text-[10px] font-black uppercase tracking-widest border-b border-gray-100">
                   <th className="px-8 py-5">Agent Name</th>
-                  <th className="px-4 py-5 text-center">CEFR</th>
-                  <th className="px-4 py-5 text-center">Fluency</th>
+                  <th className="px-4 py-5 text-center">
+                    {selectedWeek === 'overall' ? 'Weekly Mins' : `${selectedWeek} Minutes`}
+                  </th>
+                  <th className="px-4 py-5 text-center">
+                    {selectedWeek === 'overall' ? 'Overall Progress' : `${selectedWeek} Progress (%)`}
+                  </th>
+                  <th className="px-4 py-5 text-center">
+                    {selectedWeek === 'overall' ? 'Completed' : `${selectedWeek} Completed`}
+                  </th>
                   <th className="px-8 py-5 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 bg-white">
-                {userList.map((user) => (
+                {combinedStats.map((user: any) => (
                   <tr key={user.id} className="hover:bg-tp-purple/[0.02] transition-colors group">
                     <td className="px-8 py-5">
                       <p className="font-bold text-tp-purple text-base leading-none">{user.name}</p>
                       <p className="text-[10px] text-gray-400 font-medium mt-1">{user.email}</p>
                     </td>
-                    <td className="px-4 py-5 text-center font-black text-tp-red">{user.languageLevel}</td>
-                    <td className="px-4 py-5 text-center font-black text-tp-purple">{user.metrics?.fluency ?? '--'}</td>
+                    <td className="px-4 py-5 text-center">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold ${user.weeklyMinutes === 0 ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
+                        {user.weeklyMinutes}m
+                      </span>
+                    </td>
+                    <td className="px-4 py-5 min-w-[150px]">
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full rounded-full transition-all duration-1000 ${
+                              user.overallProgress >= 80 ? 'bg-emerald-500' : user.overallProgress >= 40 ? 'bg-indigo-500' : 'bg-rose-500'
+                            }`}
+                            style={{ width: `${user.overallProgress}%` }}
+                          ></div>
+                        </div>
+                        <span className="text-xs font-black text-gray-700 w-10">
+                          {user.overallProgress}%
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-5 text-center">
+                      <p className="text-sm font-bold text-gray-900">{user.totalCompleted}</p>
+                      <p className="text-[9px] text-gray-400 font-black uppercase tracking-widest">/ {user.totalAssigned}</p>
+                    </td>
                     <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 
