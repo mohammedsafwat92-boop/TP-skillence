@@ -2,6 +2,9 @@
 
 import type { Resource, QuizQuestion } from '../types';
 import { googleSheetService } from './googleSheetService';
+import { GoogleGenAI } from "@google/genai";
+
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> => {
   try {
@@ -15,8 +18,60 @@ const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> =>
     return await googleSheetService.proxyGeminiRequest(fullPayload);
   } catch (proxyError: any) {
     const errorStr = String(proxyError?.message || proxyError);
-    console.error(`[geminiService] Security Proxy call using model '${modelName}' failed. Error:`, errorStr);
-    throw new Error(`AI Integration Failure: Secure spreadsheet proxy call failed. Error: ${errorStr}`);
+    console.warn(`[geminiService] proxy_gemini_request failed, trying legacy proxy_gemini fallback. Error details:`, errorStr);
+    try {
+      // Legacy Web App proxy call format
+      return await googleSheetService.proxyGemini(modelName, payload);
+    } catch (legacyError: any) {
+      const legacyErrorStr = String(legacyError?.message || legacyError);
+      console.warn(`[geminiService] Both primary and legacy proxy actions failed. Error:`, legacyErrorStr);
+      
+      if (!API_KEY) {
+        console.error("[geminiService] Direct client fallback blocked: VITE_GEMINI_API_KEY is not defined in the environment.");
+        throw legacyError;
+      }
+
+      try {
+        console.log(`[geminiService] Activating direct direct-client fallback using modern GoogleGenAI SDK.`);
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+        
+        // Map target model for compatibility
+        let activeModel = modelName;
+        if (activeModel.includes('gemma') || activeModel.includes('gemini-3.5') || activeModel.includes('gemini-2.5')) {
+          activeModel = 'gemini-2.5-flash';
+        }
+
+        const contents = payload.contents;
+        const systemInstructionText = payload.systemInstruction || "";
+        const config = payload.config || payload.generationConfig || {};
+
+        const response = await ai.models.generateContent({
+          model: activeModel,
+          contents: contents,
+          config: {
+            systemInstruction: systemInstructionText || undefined,
+            ...config
+          }
+        });
+
+        return {
+          candidates: [
+            {
+              content: {
+                parts: [
+                  {
+                    text: response.text || ""
+                  }
+                ]
+              }
+            }
+          ]
+        };
+      } catch (directError: any) {
+        console.error("[geminiService] Direct client fallback call failed:", directError);
+        throw new Error(`AI Integration Failure: Secure spreadsheet proxy and direct fallbacks failed. Error: ${directError.message || directError}`);
+      }
+    }
   }
 };
 

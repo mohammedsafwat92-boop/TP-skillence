@@ -6,6 +6,7 @@ import AdminPanel from './components/AdminPanel';
 import CoachPanel from './components/CoachPanel';
 import LessonViewer from './components/LessonViewer';
 import Login from './components/Login';
+import LiveCoach from './components/LiveCoach';
 import { googleSheetService } from './services/googleSheetService';
 import { allTrainingModules } from './data/trainingData';
 import type { View, UserProfile, Resource } from './types';
@@ -172,6 +173,20 @@ const App: React.FC = () => {
 
     if (view.type === 'live-coach') {
       return <CoachPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} />;
+    }
+
+    if (view.type === 'live-ai-coach') {
+      if (currentUser.role !== 'admin') {
+        setTimeout(() => setView({ type: 'dashboard' }), 0);
+        return null;
+      }
+      return (
+        <LiveCoach 
+          currentUser={currentUser} 
+          onClose={() => setView({ type: 'dashboard' })} 
+          onImpersonate={handleImpersonate} 
+        />
+      );
     }
     
     if (view.type === 'lesson') return (

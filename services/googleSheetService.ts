@@ -98,17 +98,81 @@ export const googleSheetService = {
   bulkAssignRoster: (adminId: string, wave?: string) =>
     callApi('bulk_assign_roster', { adminId, wave }),
 
-  getWeeklyAssignments: (): Promise<Record<number, string[]>> =>
-    callApi('get_weekly_assignments'),
+  getWeeklyAssignments: async (): Promise<Record<number, string[]>> => {
+    try {
+      return await callApi('get_weekly_assignments');
+    } catch (e: any) {
+      console.warn("[googleSheetService] getWeeklyAssignments Web App failed, retrieving from localStorage. Error:", e?.message);
+      try {
+        const stored = localStorage.getItem("local_weekly_assignments");
+        return stored ? JSON.parse(stored) : {};
+      } catch (parseErr) {
+        return {};
+      }
+    }
+  },
 
-  assignToWeek: (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> =>
-    callApi('assign_to_week', { weekNumber, resourceIds, adminId }),
+  assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> => {
+    try {
+      return await callApi('assign_to_week', { weekNumber, resourceIds, adminId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] assignToWeek Web App failed, utilizing localStorage fallback. Error:", e?.message);
+      let local: Record<number, string[]> = {};
+      try {
+        const stored = localStorage.getItem("local_weekly_assignments");
+        local = stored ? JSON.parse(stored) : {};
+      } catch (parseErr) {
+        local = {};
+      }
+      local[weekNumber] = resourceIds;
+      localStorage.setItem("local_weekly_assignments", JSON.stringify(local));
+      return local;
+    }
+  },
 
-  saveTranscript: (userId: string, transcript: any): Promise<any> =>
-    callApi('save_transcript', { userId, transcript }),
+  saveTranscript: async (userId: string, transcript: any): Promise<any> => {
+    try {
+      return await callApi('save_transcript', { userId, transcript });
+    } catch (e: any) {
+      console.warn("[googleSheetService] saveTranscript Web App failed, utilizing localStorage fallback. Error:", e?.message);
+      const key = `local_transcripts_${userId}`;
+      let local: any[] = [];
+      try {
+        local = JSON.parse(localStorage.getItem(key) || "[]");
+      } catch (parseErr) {
+        local = [];
+      }
+      const id = 't-' + Date.now();
+      const dateString = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      const newEntry = {
+        id,
+        userId,
+        date: dateString,
+        topic: transcript.topic || 'General Coaching Session',
+        duration: transcript.duration || '5:00',
+        overallScore: transcript.overallScore || 'Completed',
+        messages: transcript.messages || []
+      };
+      local.push(newEntry);
+      localStorage.setItem(key, JSON.stringify(local));
+      return { id };
+    }
+  },
 
-  getTranscripts: (userId: string): Promise<any[]> =>
-    callApi('get_transcripts', { userId }),
+  getTranscripts: async (userId: string): Promise<any[]> => {
+    try {
+      return await callApi('get_transcripts', { userId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] getTranscripts Web App failed, retrieving from localStorage. Error:", e?.message);
+      const key = `local_transcripts_${userId}`;
+      try {
+        const stored = localStorage.getItem(key);
+        return stored ? JSON.parse(stored) : [];
+      } catch (parseErr) {
+        return [];
+      }
+    }
+  },
 
   proxyGemini: (model: string, payload: any): Promise<any> =>
     callApi('proxy_gemini', { model, payload }),

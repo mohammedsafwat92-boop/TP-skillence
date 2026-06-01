@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { DashboardIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon, ListeningIcon, ReadingIcon, PracticeIcon, BrainIcon } from './Icons';
+import { DashboardIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon, ListeningIcon, ReadingIcon, PracticeIcon, BrainIcon, PhoneIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
 interface SidebarProps {
@@ -56,6 +56,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
               <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
                 <SpeakingIcon className="w-5 h-5" />
                 <span className="ml-3">Simulations</span>
+              </NavItem>
+              <NavItem view={{ type: 'live-ai-coach' }} currentView={currentView} onNavigate={onNavigate}>
+                <PhoneIcon className="w-5 h-5" />
+                <span className="ml-3">Live AI Coach</span>
               </NavItem>
             </>
           )}

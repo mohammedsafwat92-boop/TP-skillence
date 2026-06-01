@@ -111,7 +111,8 @@ export type View =
   | { type: 'admin' }
   | { type: 'lesson'; resource: Resource; fromModuleId?: string }
   | { type: 'quiz'; quizId: string }
-  | { type: 'live-coach' };
+  | { type: 'live-coach' }
+  | { type: 'live-ai-coach' };
 
 export interface QuizQuestion {
   question: string;

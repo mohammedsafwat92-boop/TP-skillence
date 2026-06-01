@@ -53,6 +53,12 @@ function doPost(e) {
     } else if (action === 'get_transcripts') {
       res.data = getTranscripts(ss, json.userId);
       res.success = true;
+    } else if (action === 'get_weekly_assignments') {
+      res.data = getWeeklyAssignments(ss);
+      res.success = true;
+    } else if (action === 'assign_to_week') {
+      res.data = assignToWeek(ss, json.weekNumber, json.resourceIds, json.adminId);
+      res.success = true;
     } else if (action === 'proxy_gemini') {
       res.data = proxyGeminiCall(ss, json.model, json.payload);
       res.success = true;
@@ -571,6 +577,73 @@ function proxyGeminiRequest(payload) {
   }
   
   return JSON.parse(text);
+}
+
+function getWeeklyAssignments(ss) {
+  var sheet = ss.getSheetByName('WeeklyAssignments') || ss.insertSheet('WeeklyAssignments');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['WeekNumber', 'ResourceID', 'AssignedBy', 'AssignedDate']);
+    return {};
+  }
+  var data = sheet.getDataRange().getValues();
+  var assignments = {};
+  for (var i = 1; i < data.length; i++) {
+    var weekNum = Number(data[i][0]);
+    var resId = String(data[i][1]).trim();
+    if (isNaN(weekNum) || !resId) continue;
+    if (!assignments[weekNum]) {
+      assignments[weekNum] = [];
+    }
+    if (assignments[weekNum].indexOf(resId) === -1) {
+      assignments[weekNum].push(resId);
+    }
+  }
+  return assignments;
+}
+
+function assignToWeek(ss, weekNumber, resourceIds, adminId) {
+  var sheet = ss.getSheetByName('WeeklyAssignments') || ss.insertSheet('WeeklyAssignments');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['WeekNumber', 'ResourceID', 'AssignedBy', 'AssignedDate']);
+  }
+  
+  var numericWeek = Number(weekNumber);
+  if (isNaN(numericWeek)) {
+    throw new Error('Invalid Week Number ' + weekNumber);
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var rowsToKeep = [];
+  rowsToKeep.push(data[0]); // Header
+  
+  for (var i = 1; i < data.length; i++) {
+    var wNum = Number(data[i][0]);
+    if (wNum !== numericWeek) {
+      rowsToKeep.push(data[i]);
+    }
+  }
+  
+  // Clear the sheet
+  sheet.clearContents();
+  
+  // Re-write the kept rows
+  if (rowsToKeep.length > 0) {
+    sheet.getRange(1, 1, rowsToKeep.length, rowsToKeep[0].length).setValues(rowsToKeep);
+  }
+  
+  // Now append the new resource definitions
+  if (Array.isArray(resourceIds)) {
+    var today = new Date();
+    for (var i = 0; i < resourceIds.length; i++) {
+      var rId = String(resourceIds[i]).trim();
+      if (rId) {
+        sheet.appendRow([numericWeek, rId, adminId || 'System', today]);
+      }
+    }
+  }
+  
+  // Return the complete up-to-date weekly assignments map
+  return getWeeklyAssignments(ss);
 }
 
 function sendResponse(obj) {
