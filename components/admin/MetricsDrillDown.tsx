@@ -65,28 +65,63 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
   const [liveTranscripts, setLiveTranscripts] = useState<any[]>([]);
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState<boolean>(false);
 
+  // Robust JSON decompression and unpacking utility for compressed spreadsheet columns
+  const safeParseJson = (data: any, fallback: any = null) => {
+    if (!data) return fallback;
+    if (typeof data === 'object') return data;
+    try {
+      let cleanStr = String(data).trim();
+      // Remove extraneous wrapping quotes if present from double-serialization
+      if ((cleanStr.startsWith('"') && cleanStr.endsWith('"')) || (cleanStr.startsWith("'") && cleanStr.endsWith("'"))) {
+        cleanStr = cleanStr.slice(1, -1);
+      }
+      return JSON.parse(cleanStr);
+    } catch (e) {
+      console.warn("[MetricsDrillDown] JSON parse fallback triggered for:", data, e);
+      return fallback;
+    }
+  };
+
   // Retrieve stats associated with individual user profile
   const userStats = useMemo(() => {
     if (!user || !adminStats?.userStats) return null;
     return adminStats.userStats.find((s: any) => s.userId === user.id) || null;
   }, [adminStats, user]);
 
-  // Extract nested metrics using safe optional chaining
-  const svarMetrics = user?.metrics?.svar || user?.shlData?.metrics || {
-    fluency: 65,
-    vocabulary: 70,
-    grammar: 58,
-    pronunciation: 62,
-    coherence: 68
-  };
+  // Clean, unpack, and align SVAR and WriteX variables securely (Vector 3)
+  const cleanedMetrics = useMemo(() => {
+    const rawMetrics = user?.metrics ? safeParseJson(user.metrics, {}) : {};
+    const rawShlData = user?.shlData ? safeParseJson(user.shlData, {}) : {};
 
-  const writexMetrics = user?.metrics?.writex || user?.shlData?.writex || {
-    fluency: 72,
-    vocabulary: 68,
-    grammar: 64,
-    pronunciation: 0, // WriteX typically doesn't have pronunciation
-    coherence: 70
-  };
+    // Retrieve nested indicators
+    const svarSource = rawMetrics.svar || rawShlData.metrics || user?.metrics?.svar || {};
+    const writexSource = rawMetrics.writex || rawShlData.writex || user?.metrics?.writex || {};
+
+    const cleanIndicator = (val: any, fallback: number) => {
+      const num = Number(val);
+      return isNaN(num) || num <= 0 ? fallback : Math.min(100, Math.max(0, Math.round(num)));
+    };
+
+    return {
+      svar: {
+        fluency: cleanIndicator(svarSource.fluency, 65),
+        vocabulary: cleanIndicator(svarSource.vocabulary, 70),
+        grammar: cleanIndicator(svarSource.grammar, 58),
+        pronunciation: cleanIndicator(svarSource.pronunciation, 62),
+        coherence: cleanIndicator(svarSource.coherence, 68)
+      },
+      writex: {
+        fluency: cleanIndicator(writexSource.fluency, 72),
+        vocabulary: cleanIndicator(writexSource.vocabulary, 68),
+        grammar: cleanIndicator(writexSource.grammar, 64),
+        pronunciation: 0,
+        coherence: cleanIndicator(writexSource.coherence, 70)
+      }
+    };
+  }, [user]);
+
+  const svarMetrics = cleanedMetrics.svar;
+  const writexMetrics = cleanedMetrics.writex;
 
   // Synchronize transcripts from backend or mock dataset
   useEffect(() => {
@@ -102,7 +137,17 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
     googleSheetService.getTranscripts(user.id)
       .then((data) => {
         if (data && data.length > 0) {
-          setLiveTranscripts(data);
+          // Parse stringified message list within the columns safely
+          const cleansedData = data.map(item => {
+            const parsedMsgs = typeof item.messages === 'string'
+              ? safeParseJson(item.messages, [])
+              : item.messages;
+            return {
+              ...item,
+              messages: Array.isArray(parsedMsgs) ? parsedMsgs : []
+            };
+          });
+          setLiveTranscripts(cleansedData);
         } else {
           setLiveTranscripts(fallback);
         }
@@ -117,6 +162,28 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
   }, [isOpen, user?.id, user?.languageLevel]);
 
   const selectedTranscript = liveTranscripts[selectedTranscriptIndex] || liveTranscripts[0];
+
+  const parsedMessages = useMemo(() => {
+    if (!selectedTranscript || !selectedTranscript.messages) return [];
+    return selectedTranscript.messages.map((m: any) => {
+      // Clean and reconstruct messages seamlessly 
+      if (typeof m === 'string') {
+        const isAgent = m.startsWith('You:') || m.startsWith('Agent:');
+        return {
+          sender: isAgent ? 'Agent' : 'Customer',
+          text: m.replace(/^(You:|Agent:|Coach:|Customer:)\s*/i, ''),
+          grade: 'N/A',
+          rationale: ''
+        };
+      }
+      return {
+        sender: m.sender || m.role || 'Unknown',
+        text: m.text || m.content || '',
+        grade: m.grade || 'N/A',
+        rationale: m.rationale || ''
+      };
+    });
+  }, [selectedTranscript]);
 
   if (!isOpen || !user) return null;
 
@@ -359,7 +426,7 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
                       </div>
 
                       <div className="p-6 divide-y divide-gray-100 max-h-[380px] overflow-y-auto custom-scrollbar">
-                        {selectedTranscript.messages && selectedTranscript.messages.map((m: any, mIdx: number) => {
+                        {parsedMessages && parsedMessages.map((m: any, mIdx: number) => {
                           const isAgent = m.sender === 'Agent' || m.sender === 'You';
                           return (
                             <div key={`msg-${mIdx}`} className="py-4 first:pt-2 last:pb-2 flex flex-col md:flex-row md:items-start gap-4">

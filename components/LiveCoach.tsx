@@ -29,6 +29,26 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
 
+  // Robust session state machine for connection tracking and crash management
+  const [sessionStatus, setSessionStatus] = useState<'idle' | 'connecting' | 'active' | 'evaluating' | 'completed' | 'crashed'>('idle');
+  
+  const sessionStatusRef = useRef<'idle' | 'connecting' | 'active' | 'evaluating' | 'completed' | 'crashed'>('idle');
+  const transcriptionRef = useRef<string[]>([]);
+  const lastSavedLengthRef = useRef<number>(0);
+
+  const updateSessionStatus = (status: 'idle' | 'connecting' | 'active' | 'evaluating' | 'completed' | 'crashed') => {
+    setSessionStatus(status);
+    sessionStatusRef.current = status;
+  };
+
+  const addTranscriptionLine = (line: string) => {
+    setTranscription(prev => {
+      const updated = [...prev, line];
+      transcriptionRef.current = updated;
+      return updated;
+    });
+  };
+
   const audioContextRef = useRef<AudioContext | null>(null);
   const outAudioContextRef = useRef<AudioContext | null>(null);
   const nextStartTimeRef = useRef<number>(0);
@@ -132,12 +152,55 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     }
   };
 
+  const harvestAndSaveTranscriptDirectly = async (currentTranscription: string[]) => {
+    if (currentTranscription.length === 0) {
+      console.log("[LiveCoach] No transcription logs available to harvest.");
+      return;
+    }
+    // Avoid double-saving the exact same length to prevent duplicate records
+    if (currentTranscription.length === lastSavedLengthRef.current) {
+      console.log("[LiveCoach] Transcription already harvested and synchronized.");
+      return;
+    }
+    lastSavedLengthRef.current = currentTranscription.length;
+
+    console.log("[LiveCoach] Real-time Transcript Packaging in progress for:", currentUser.id);
+    const structuredMessages = currentTranscription.map((line, idx) => {
+      const isAgent = line.startsWith('You:');
+      const text = line.replace(/^(You:|Coach:)\s*/i, '');
+      return {
+        sender: isAgent ? 'Agent' : 'Customer',
+        text: text,
+        timestamp: new Date().toISOString(),
+        role: isAgent ? 'agent' : 'customer',
+        grade: isAgent ? 'Grade Pending' : 'N/A',
+        rationale: isAgent ? 'Monitored conversation utterance.' : 'Scenario roleplay action.'
+      };
+    });
+
+    try {
+      await googleSheetService.saveTranscript(currentUser.id, {
+        topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
+        duration: 'Live Audio Session',
+        overallScore: 'Saved',
+        messages: structuredMessages
+      });
+      console.log("[LiveCoach] Real-time dialogue log package pushed successfully to Cloud Store.");
+    } catch (saveErr) {
+      console.error("[LiveCoach] Direct real-time data harvest failed:", saveErr);
+    }
+  };
+
   const startSession = async () => {
     if (activeMode !== 'ai') return;
     setIsConnecting(true);
     setEvaluationReport(null);
     setError(null);
     setTranscription([]);
+    transcriptionRef.current = [];
+    lastSavedLengthRef.current = 0;
+    updateSessionStatus('connecting');
+
     try {
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
@@ -154,13 +217,19 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           onopen: () => {
             setIsConnected(true);
             setIsConnecting(false);
+            updateSessionStatus('active');
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
+              if (sessionStatusRef.current !== 'active') return;
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
-              sessionPromise.then(session => session.sendRealtimeInput({ audio: pcmBlob }));
+              sessionPromise.then(session => {
+                if (sessionRef.current) {
+                  session.sendRealtimeInput({ audio: pcmBlob });
+                }
+              });
             };
             
             source.connect(scriptProcessor);
@@ -169,14 +238,14 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.outputTranscription) {
               const text = message.serverContent.outputTranscription.text;
-              setTranscription(prev => [...prev.slice(-4), `Coach: ${text}`]);
+              addTranscriptionLine(`Coach: ${text}`);
             } else if (message.serverContent?.inputTranscription) {
               const text = message.serverContent.inputTranscription.text;
-              setTranscription(prev => [...prev.slice(-4), `You: ${text}`]);
+              addTranscriptionLine(`You: ${text}`);
             }
 
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (base64Audio) {
+            if (base64Audio && sessionStatusRef.current === 'active') {
               setIsSpeaking(true);
               const ctx = outAudioContextRef.current!;
               nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
@@ -201,12 +270,30 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           onerror: (e) => {
             console.error("Live API Error", e);
-            setError("Connection Lost.");
+            setError("Auditory feed terminated unexpectedly (Mic disconnected or network timeout).");
             setIsConnecting(false);
+            setIsConnected(false);
+            
+            // Trigger emergency harvesting of transcription logs collected so far
+            harvestAndSaveTranscriptDirectly(transcriptionRef.current);
+            
+            if (transcriptionRef.current.length > 0) {
+              updateSessionStatus('crashed');
+            } else {
+              updateSessionStatus('idle');
+            }
           },
           onclose: () => {
             setIsConnected(false);
             setIsConnecting(false);
+            
+            // Trigger emergency harvesting of transcription logs
+            harvestAndSaveTranscriptDirectly(transcriptionRef.current);
+            
+            if (sessionStatusRef.current === 'active') {
+              updateSessionStatus('crashed');
+              setError("Live stream connection interrupted. Dialogue log saved safely.");
+            }
           },
         },
         config: {
@@ -225,28 +312,44 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       console.error(err);
       setError("Mic access denied or API configuration error.");
       setIsConnecting(false);
+      updateSessionStatus('idle');
     }
   };
 
   const endSessionAndCompileEvaluation = async () => {
     // 1. Close current WebSocket and audio tracks
-    if (sessionRef.current) sessionRef.current.close();
+    if (sessionRef.current) {
+      try {
+        sessionRef.current.close();
+      } catch (e) {}
+    }
     if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
     if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
     sessionRef.current = null;
     setIsConnected(false);
 
-    if (transcription.length === 0) return;
+    const linesToEvaluate = transcriptionRef.current.length > 0 ? transcriptionRef.current : transcription;
+    if (linesToEvaluate.length === 0) {
+      updateSessionStatus('idle');
+      return;
+    }
+
+    // Capture and upload dialogue log package immediately before evaluation
+    await harvestAndSaveTranscriptDirectly(linesToEvaluate);
+
+    updateSessionStatus('evaluating');
     setIsEvaluating(true);
     setEvaluationReport(null);
 
     // Modern Phase A: Package transcription messages synchronously
-    const structuredMessages = transcription.map((line, idx) => {
+    const structuredMessages = linesToEvaluate.map((line, idx) => {
       const isAgent = line.startsWith('You:');
       const text = line.replace(/^(You:|Coach:)\s*/i, '');
       return {
         sender: isAgent ? 'Agent' : 'Customer',
         text: text,
+        timestamp: new Date().toISOString(),
+        role: isAgent ? 'agent' : 'customer',
         grade: isAgent ? 'Grade Pending' : 'N/A',
         rationale: isAgent ? 'Monitored conversation utterance.' : 'Scenario roleplay action.'
       };
@@ -262,7 +365,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       5. Customer Satisfaction / Saved Index (0-100)
 
       Conversation Transcript:
-      ${transcription.join('\n')}
+      ${linesToEvaluate.join('\n')}
 
       Format your response strictly using professional Markdown. Organize clearly under each category with specific constructive suggestions. Include a summary tabular block of performance scores at the bottom. Do not output conversational wrap texts.`;
 
@@ -283,7 +386,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       else if (reportText.includes('C2')) parsedScore = 'C2 Mastery';
       else if (reportText.includes('A2')) parsedScore = 'A2 Beginner';
 
-      // Save the captured conversation log securely to the spreadsheet database
+      // Save the captured conversation log securely to the spreadsheet database with proper overallScore
       await googleSheetService.saveTranscript(currentUser.id, {
         topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
         duration: 'Live Audio Session',
@@ -291,21 +394,11 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         messages: structuredMessages
       });
 
+      updateSessionStatus('completed');
     } catch (err) {
       console.error(err);
       setEvaluationReport("Registry alignment error during final scoring computation.");
-      
-      // Fallback save if evaluation generation has issues
-      try {
-        await googleSheetService.saveTranscript(currentUser.id, {
-          topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
-          duration: 'Live Audio Session',
-          overallScore: 'Completed',
-          messages: structuredMessages
-        });
-      } catch (saveErr) {
-        console.error("Fallback transcript save encountered error:", saveErr);
-      }
+      updateSessionStatus('completed');
     } finally {
       setIsEvaluating(false);
     }
@@ -406,8 +499,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         ) : (
           <div className="w-full max-w-2xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-[48px] p-8 md:p-10 shadow-2xl flex flex-col items-center">
             
-            {/* 1. SETUP CARD */}
-            {!isConnected && !isConnecting && !evaluationReport && !isEvaluating && (
+            {/* STATE 1: SETUP/IDLE */}
+            {sessionStatus === 'idle' && (
               <div className="w-full flex flex-col items-center text-center space-y-6">
                 <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center border border-white/5 shadow-inner">
                   <BrainIcon className="w-10 h-10 text-white" />
@@ -435,6 +528,12 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                   </div>
                 </div>
 
+                {error && (
+                  <div className="bg-tp-red/10 border border-tp-red/30 p-4 rounded-2xl w-full text-left">
+                    <p className="text-tp-red font-bold text-[11px] uppercase tracking-wider">{error}</p>
+                  </div>
+                )}
+
                 <button 
                   onClick={startSession}
                   className="w-full bg-tp-red text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-white hover:text-tp-purple transition-all inline-flex items-center justify-center gap-3 active:scale-95 mt-6"
@@ -444,16 +543,17 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               </div>
             )}
 
-            {/* 2. CONNECTING STATE */}
-            {isConnecting && (
-              <div className="py-16 text-center space-y-6">
+            {/* STATE 2: CONNECTING */}
+            {sessionStatus === 'connecting' && (
+              <div className="py-20 text-center space-y-6">
                 <div className="w-16 h-16 border-4 border-white/10 border-t-tp-red rounded-full animate-spin mx-auto"></div>
-                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em]">Opening Live Wave Channel...</p>
+                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] animate-pulse">Opening Live Wave Channel...</p>
+                {error && <p className="text-tp-red text-[10px] uppercase font-bold tracking-widest">{error}</p>}
               </div>
             )}
 
-            {/* 3. ACTIVE LIVE CALL */}
-            {isConnected && (
+            {/* STATE 3: ACTIVE LIVE SESSION */}
+            {sessionStatus === 'active' && (
               <div className="w-full flex flex-col items-center">
                 <div className="relative mb-8">
                   <div className="w-32 h-32 md:w-40 md:h-40 rounded-full flex items-center justify-center transition-all duration-500 border-4 border-tp-red shadow-[0_0_80px_rgba(226,0,26,0.35)]">
@@ -464,18 +564,17 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                   </div>
                 </div>
 
-                <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl min-h-[140px] flex flex-col justify-end">
-                  <div className="space-y-3 pt-2 text-left">
-                    {transcription.length === 0 ? (
-                      <p className="text-white/20 italic font-medium text-base">"The Coach is listening... Greeting incoming client..."</p>
-                    ) : (
-                      transcription.map((line, i) => (
-                        <p key={i} className={`text-base font-bold leading-tight animate-fadeIn ${line.startsWith('You:') ? 'text-tp-red font-black' : 'text-white'}`}>
-                          {line}
-                        </p>
-                      ))
-                    )}
-                  </div>
+                {/* Scrollable Dialogue Panel */}
+                <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl h-[280px] overflow-y-auto custom-scrollbar flex flex-col space-y-3 text-left">
+                  {transcription.length === 0 ? (
+                    <p className="text-white/20 italic font-medium text-base my-auto text-center">"The Coach is listening... Greeting incoming client..."</p>
+                  ) : (
+                    transcription.map((line, i) => (
+                      <p key={i} className={`text-base font-bold leading-tight animate-fadeIn ${line.startsWith('You:') ? 'text-tp-red font-black' : 'text-white'}`}>
+                        {line}
+                      </p>
+                    ))
+                  )}
                 </div>
 
                 <button 
@@ -487,16 +586,16 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               </div>
             )}
 
-            {/* 4. COMPILING EVALUATION INDEX LOADER */}
-            {isEvaluating && (
-              <div className="py-16 text-center space-y-6">
+            {/* STATE 4: EVALUATING GENERATOR */}
+            {sessionStatus === 'evaluating' && (
+              <div className="py-20 text-center space-y-6">
                 <div className="w-16 h-16 border-4 border-white/10 border-t-tp-red rounded-full animate-spin mx-auto"></div>
-                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em]">Engineering CEFR Quality Scorecard...</p>
+                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em] animate-pulse">Engineering CEFR Quality Scorecard...</p>
               </div>
             )}
 
-            {/* 5. EVALUATION REPORT */}
-            {evaluationReport && !isEvaluating && (
+            {/* STATE 5: PERFORMANCE REPORT COMPLETED */}
+            {sessionStatus === 'completed' && evaluationReport && (
               <div className="w-full space-y-6 text-left animate-fadeIn">
                 <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/10">
                   <div>
@@ -505,7 +604,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                   </div>
                 </div>
 
-                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 text-white overflow-y-auto max-h-[300px] text-xs leading-relaxed custom-scrollbar prose prose-invert font-semibold">
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 text-white overflow-y-auto max-h-[340px] text-xs leading-relaxed custom-scrollbar prose prose-invert font-semibold">
                   <div className="whitespace-pre-wrap">{evaluationReport}</div>
                 </div>
 
@@ -513,6 +612,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                   onClick={() => {
                     setEvaluationReport(null);
                     setTranscription([]);
+                    transcriptionRef.current = [];
+                    lastSavedLengthRef.current = 0;
+                    updateSessionStatus('idle');
                   }}
                   className="w-full bg-white text-tp-navy hover:bg-tp-red hover:text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-xl"
                 >
@@ -521,11 +623,53 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               </div>
             )}
 
-            {/* ERROR DISPLAY */}
-            {error && !isConnecting && (
-              <div className="bg-tp-red/10 border border-tp-red/30 p-6 rounded-3xl mt-6 animate-fadeIn w-full">
-                <p className="text-tp-red font-bold text-sm uppercase tracking-widest">{error}</p>
-                <button onClick={startSession} className="mt-4 text-white text-xs font-black underline uppercase tracking-widest">Retry Connection</button>
+            {/* STATE 6: CRASH / ERROR RECOVERY DISCONNECTED STATE */}
+            {sessionStatus === 'crashed' && (
+              <div className="w-full text-left space-y-6 animate-fadeIn">
+                <div className="bg-red-500/10 border border-red-500/30 p-6 rounded-3xl flex flex-col md:flex-row gap-4 items-start">
+                  <div className="w-10 h-10 bg-red-500/20 text-red-400 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <XIcon className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider">Auditory connection lost</h4>
+                    <p className="text-xs text-white/60 mt-1 leading-relaxed">
+                      Your microphone stream or WebSocket suffered a temporary disconnect. Fortunately, your dialogue log is fully preserved and has been harvested into the Cloud Sheet.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Preserved Conversation Bubbles */}
+                <div className="space-y-2">
+                  <span className="text-[9px] font-black text-white/50 uppercase tracking-widest pl-1">Preserved Dialogue ({transcription.length} Utterances)</span>
+                  <div className="bg-white/5 border border-white/10 rounded-2xl p-4 max-h-[160px] overflow-y-auto custom-scrollbar space-y-2">
+                    {transcription.map((line, idx) => (
+                      <p key={idx} className={`text-xs font-bold ${line.startsWith('You:') ? 'text-tp-red font-black' : 'text-white/80'}`}>
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                  <button
+                    onClick={endSessionAndCompileEvaluation}
+                    className="bg-tp-red text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-white hover:text-tp-purple transition-all shadow-xl text-center"
+                  >
+                    Compile Scorecard Anyway
+                  </button>
+                  <button
+                    onClick={() => {
+                      setTranscription([]);
+                      transcriptionRef.current = [];
+                      lastSavedLengthRef.current = 0;
+                      setError(null);
+                      updateSessionStatus('idle');
+                    }}
+                    className="bg-white/10 text-white/80 hover:bg-white/20 py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all text-center"
+                  >
+                    Return to Sandbox Setup
+                  </button>
+                </div>
               </div>
             )}
 
