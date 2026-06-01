@@ -1,4 +1,3 @@
-
 /// <reference types="vite/client" />
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -24,6 +23,10 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [selectedScenario, setSelectedScenario] = useState<'billing' | 'tech_support' | 'retention' | 'general'>('billing');
+  const [evaluationReport, setEvaluationReport] = useState<string | null>(null);
+  const [isEvaluating, setIsEvaluating] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   const audioContextRef = useRef<AudioContext | null>(null);
   const outAudioContextRef = useRef<AudioContext | null>(null);
@@ -105,10 +108,36 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     };
   };
 
+  const getSystemInstruction = (scenario: 'billing' | 'tech_support' | 'retention' | 'general') => {
+    switch (scenario) {
+      case 'billing':
+        return `You are simulating a customer named Madison who is highly irate because they were double-charged on their card this month.
+        Temperament: Highly impatient, demanding, interrupts the agent, skeptical of automated processes.
+        Goal: The agent must de-escalate the complaint using clear empathy statements, verify the account details professionally, issue immediate credit/refund options, and close with a structured save statement.
+        Language Requirements: Evaluate grammar and tone. Correct conversational syntax directly. Initiate conversation with: "This is ridiculous, why was I double-charged this month?!"`;
+      case 'tech_support':
+        return `You are simulating an anxious customer named Marcus who has lost access credentials for their enterprise account.
+        Temperament: Frustrated, technically illiterate, worried about missing critical business meetings.
+        Goal: The agent must de-escalate anxiety by providing reassuring, step-by-step guidance, avoid confusing developer vocabulary, and clearly direct Marcus through resetting their security tokens.
+        Language Requirements: Check for clear phrasing, active verbs, and pacing suitable for beginners. Initiate with: "Hi, I'm completely locked out of my corporate login and I've got a client meeting in ten minutes! Please help!"`;
+      case 'retention':
+        return `You are simulating an assertive client named Arthur who wants to cancel because of competitor features and prices.
+        Temperament: Professional, demanding, highly rational, comparing dollar-to-dollar values.
+        Goal: The agent must validate Arthur's loyalty, identify core customized feature advantages, present promotional retention tier upgrades, and use persuasive saves.
+        Language Requirements: Check for professional corporate voice and persuasive vocabulary. Initiate with: "Hello, I'm calling to cancel my subscription. I've found a cheaper alternative that has similar configurations."`;
+      default:
+        return `You are an expert Professional English Language Coach. 
+        Simulate a realistic corporate support roleplay. Provide direct oral and textual feedback with CEFR grade notations in conversational turn-takings.`;
+    }
+  };
+
   const startSession = async () => {
     if (activeMode !== 'ai') return;
+    setIsConnecting(true);
+    setEvaluationReport(null);
+    setError(null);
+    setTranscription([]);
     try {
-      setError(null);
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
       
@@ -119,17 +148,18 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
+        model: 'gemini-3.1-flash-live-preview',
         callbacks: {
           onopen: () => {
             setIsConnected(true);
+            setIsConnecting(false);
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
             
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
-              sessionPromise.then(session => session.sendRealtimeInput({ media: pcmBlob }));
+              sessionPromise.then(session => session.sendRealtimeInput({ audio: pcmBlob }));
             };
             
             source.connect(scriptProcessor);
@@ -171,8 +201,12 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           onerror: (e) => {
             console.error("Live API Error", e);
             setError("Connection Lost.");
+            setIsConnecting(false);
           },
-          onclose: () => setIsConnected(false),
+          onclose: () => {
+            setIsConnected(false);
+            setIsConnecting(false);
+          },
         },
         config: {
           responseModalities: [Modality.AUDIO],
@@ -181,10 +215,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          systemInstruction: `You are an expert Professional Language Coach for corporate support agents. 
-          Your goal is to simulate realistic customer scenarios. 
-          Provide real-time feedback on English usage, tone, and professional directness.
-          Initiate the conversation by greeting the agent as a customer calling with a complex inquiry about their service subscription.`,
+          systemInstruction: getSystemInstruction(selectedScenario),
         },
       });
 
@@ -192,17 +223,55 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     } catch (err) {
       console.error(err);
       setError("Mic access denied or API configuration error.");
+      setIsConnecting(false);
+    }
+  };
+
+  const endSessionAndCompileEvaluation = async () => {
+    // 1. Close current WebSocket and audio tracks
+    if (sessionRef.current) sessionRef.current.close();
+    if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+    if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
+    sessionRef.current = null;
+    setIsConnected(false);
+
+    if (transcription.length === 0) return;
+    setIsEvaluating(true);
+    setEvaluationReport(null);
+    try {
+      const prompt = `Evaluate this corporate customer support dialogue between an Agent (You) and the simulation Customer (Coach).
+      Analyze the Agent's performance strictly across these metrics:
+      1. Fluency & Speed
+      2. Syntactic & Grammatical Accuracy
+      3. Emotional De-escalating Alignment (Empathy Phrasing)
+      4. Standardized CEFR Level (A2, B1, B2, C1, C2)
+      5. Customer Satisfaction / Saved Index (0-100)
+
+      Conversation Transcript:
+      ${transcription.join('\n')}
+
+      Format your response strictly using professional Markdown. Organize clearly under each category with specific constructive suggestions. Include a summary tabular block of performance scores at the bottom. Do not output conversational wrap texts.`;
+
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash',
+        contents: prompt
+      });
+      setEvaluationReport(response.text || "Failed to generate evaluation report.");
+    } catch (err) {
+      console.error(err);
+      setEvaluationReport("Registry alignment error during final scoring computation.");
+    } finally {
+      setIsEvaluating(false);
     }
   };
 
   useEffect(() => {
-    if (activeMode === 'ai') {
-      startSession();
-    }
     return () => {
       if (sessionRef.current) sessionRef.current.close();
-      if (audioContextRef.current) audioContextRef.current.close();
-      if (outAudioContextRef.current) outAudioContextRef.current.close();
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+      if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
     };
   }, [activeMode]);
 
@@ -291,42 +360,131 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             </div>
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center flex-1">
-            <div className="relative mb-12">
-              <div className={`w-40 h-40 md:w-56 md:h-56 rounded-full flex items-center justify-center transition-all duration-500 border-4 ${isConnected ? 'border-tp-red shadow-[0_0_80px_rgba(226,0,26,0.3)]' : 'border-white/10'}`}>
-                <div className={`absolute inset-0 rounded-full border-2 border-tp-red/30 animate-ping ${isSpeaking ? 'opacity-100' : 'opacity-0'}`}></div>
-                <div className={`w-28 h-28 md:w-36 md:h-36 bg-white/5 rounded-full flex items-center justify-center relative overflow-hidden`}>
-                    <BrainIcon className={`w-14 h-14 transition-all duration-300 ${isConnected ? 'text-white' : 'text-white/20'}`} />
+          <div className="w-full max-w-2xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-[48px] p-8 md:p-10 shadow-2xl flex flex-col items-center">
+            
+            {/* 1. SETUP CARD */}
+            {!isConnected && !isConnecting && !evaluationReport && !isEvaluating && (
+              <div className="w-full flex flex-col items-center text-center space-y-6">
+                <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center border border-white/5 shadow-inner">
+                  <BrainIcon className="w-10 h-10 text-white" />
                 </div>
-              </div>
-            </div>
+                <div>
+                  <span className="text-[10px] font-black uppercase text-tp-red tracking-[0.3em]">AI Sandbox</span>
+                  <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Client Simulation Setup</h3>
+                  <p className="text-xs text-white/50 max-w-sm mx-auto font-medium leading-relaxed mt-2">
+                    Configure your digital client target scenario and de-escalation stress metric to start the auditory roleplay session.
+                  </p>
+                </div>
 
-            {error && (
-              <div className="bg-tp-red/10 border border-tp-red/30 p-6 rounded-3xl mb-12 animate-fadeIn">
+                <div className="w-full space-y-4 pt-4 text-left">
+                  <div className="space-y-1.5">
+                    <label className="text-[9px] font-black uppercase text-white/60 tracking-widest pl-1">Target Persona Scenario</label>
+                    <select 
+                      value={selectedScenario}
+                      onChange={(e) => setSelectedScenario(e.target.value as any)}
+                      className="w-full bg-tp-navy text-white text-white/90 border border-white/10 font-bold text-xs uppercase tracking-widest px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-tp-red shadow-xl cursor-pointer"
+                    >
+                      <option value="billing">Madison — Double-Charge Dispute (Irate Customer)</option>
+                      <option value="tech_support">Marcus — Lost Security Tokens (Anxious Customer)</option>
+                      <option value="retention">Arthur — Competitor Exit Saving (Assertive Customer)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={startSession}
+                  className="w-full bg-tp-red text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-white hover:text-tp-purple transition-all inline-flex items-center justify-center gap-3 active:scale-95 mt-6"
+                >
+                  <SpeakingIcon className="w-4 h-4" /> Connect Digital Client
+                </button>
+              </div>
+            )}
+
+            {/* 2. CONNECTING STATE */}
+            {isConnecting && (
+              <div className="py-16 text-center space-y-6">
+                <div className="w-16 h-16 border-4 border-white/10 border-t-tp-red rounded-full animate-spin mx-auto"></div>
+                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em]">Opening Live Wave Channel...</p>
+              </div>
+            )}
+
+            {/* 3. ACTIVE LIVE CALL */}
+            {isConnected && (
+              <div className="w-full flex flex-col items-center">
+                <div className="relative mb-8">
+                  <div className="w-32 h-32 md:w-40 md:h-40 rounded-full flex items-center justify-center transition-all duration-500 border-4 border-tp-red shadow-[0_0_80px_rgba(226,0,26,0.35)]">
+                    <div className={`absolute inset-0 rounded-full border-2 border-tp-red/30 animate-ping ${isSpeaking ? 'opacity-100' : 'opacity-0'}`}></div>
+                    <div className="w-24 h-24 md:w-30 md:h-30 bg-white/5 rounded-full flex items-center justify-center relative overflow-hidden">
+                        <BrainIcon className="w-12 h-12 text-white animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl min-h-[140px] flex flex-col justify-end">
+                  <div className="space-y-3 pt-2 text-left">
+                    {transcription.length === 0 ? (
+                      <p className="text-white/20 italic font-medium text-base">"The Coach is listening... Greeting incoming client..."</p>
+                    ) : (
+                      transcription.map((line, i) => (
+                        <p key={i} className={`text-base font-bold leading-tight animate-fadeIn ${line.startsWith('You:') ? 'text-tp-red font-black' : 'text-white'}`}>
+                          {line}
+                        </p>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <button 
+                  onClick={endSessionAndCompileEvaluation}
+                  className="w-full bg-tp-red hover:bg-tp-red/80 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all mt-6 shadow-xl"
+                >
+                  End & Evaluate Dialogue
+                </button>
+              </div>
+            )}
+
+            {/* 4. COMPILING EVALUATION INDEX LOADER */}
+            {isEvaluating && (
+              <div className="py-16 text-center space-y-6">
+                <div className="w-16 h-16 border-4 border-white/10 border-t-tp-red rounded-full animate-spin mx-auto"></div>
+                <p className="text-white/60 text-xs font-black uppercase tracking-[0.3em]">Engineering CEFR Quality Scorecard...</p>
+              </div>
+            )}
+
+            {/* 5. EVALUATION REPORT */}
+            {evaluationReport && !isEvaluating && (
+              <div className="w-full space-y-6 text-left animate-fadeIn">
+                <div className="flex justify-between items-center bg-white/5 p-4 rounded-2xl border border-white/10">
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-tp-red tracking-widest">Quality Assurance Scorecard</span>
+                    <h4 className="text-base font-black text-white uppercase tracking-tight mt-0.5">Performance Assessment</h4>
+                  </div>
+                </div>
+
+                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 text-white overflow-y-auto max-h-[300px] text-xs leading-relaxed custom-scrollbar prose prose-invert font-semibold">
+                  <div className="whitespace-pre-wrap">{evaluationReport}</div>
+                </div>
+
+                <button 
+                  onClick={() => {
+                    setEvaluationReport(null);
+                    setTranscription([]);
+                  }}
+                  className="w-full bg-white text-tp-navy hover:bg-tp-red hover:text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest transition-all shadow-xl"
+                >
+                  Start New Roleplay Session
+                </button>
+              </div>
+            )}
+
+            {/* ERROR DISPLAY */}
+            {error && !isConnecting && (
+              <div className="bg-tp-red/10 border border-tp-red/30 p-6 rounded-3xl mt-6 animate-fadeIn w-full">
                 <p className="text-tp-red font-bold text-sm uppercase tracking-widest">{error}</p>
                 <button onClick={startSession} className="mt-4 text-white text-xs font-black underline uppercase tracking-widest">Retry Connection</button>
               </div>
             )}
 
-            <div className="w-full max-w-2xl bg-white/5 backdrop-blur-md border border-white/10 rounded-[40px] p-10 shadow-2xl min-h-[180px] flex flex-col justify-end">
-              <div className="space-y-4">
-                {transcription.length === 0 ? (
-                  <p className="text-white/20 italic font-medium text-lg">"The Coach is listening..."</p>
-                ) : (
-                  transcription.map((line, i) => (
-                    <p key={i} className={`text-lg font-bold leading-tight animate-fadeIn ${line.startsWith('You:') ? 'text-tp-red' : 'text-white'}`}>
-                      {line}
-                    </p>
-                  ))
-                )}
-              </div>
-              <div className="mt-8 pt-6 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] flex items-center">
-                    <div className={`w-2 h-2 rounded-full mr-3 ${isConnected ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`}></div>
-                    Registry Link: {isConnected ? 'Synchronized' : 'Offline'}
-                  </span>
-              </div>
-            </div>
           </div>
         )}
       </div>

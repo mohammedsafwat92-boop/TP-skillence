@@ -49,7 +49,8 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
         resource.title, 
         resource.url,
         resource.type,
-        resource.scrapedText
+        resource.scrapedText,
+        resource.level
       );
       
       if (questions.length === 0) {

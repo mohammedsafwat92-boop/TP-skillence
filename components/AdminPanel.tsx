@@ -4,6 +4,7 @@ import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
+import { MetricsDrillDown } from './admin/MetricsDrillDown';
 import { 
   Users, 
   TrendingUp, 
@@ -47,6 +48,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
   const [targetWeek, setTargetWeek] = useState<number>(1);
   const [activeWave, setActiveWave] = useState<string>('all');
+  const [drilldownUser, setDrilldownUser] = useState<UserProfile | null>(null);
+  const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
 
   const wavesList = useMemo(() => {
     if (!userList) return [];
@@ -504,6 +507,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                       <td className="px-8 py-6 text-right">
                         <div className="flex items-center justify-end gap-2">
                           <button 
+                            onClick={() => { setDrilldownUser(user); setIsDrilldownOpen(true); }}
+                            className="p-2 text-gray-400 hover:text-indigo-650 hover:bg-indigo-50 rounded-lg transition-all"
+                            title="Audit Metrics"
+                          >
+                            <Brain className="w-5 h-5" />
+                          </button>
+                          <button 
                             onClick={() => onImpersonate(user)}
                             className="p-2 text-gray-400 hover:text-tp-purple hover:bg-tp-purple/5 rounded-lg transition-all"
                             title="View Hub"
@@ -699,6 +709,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       )}
 
       {activeTab === 'content' && <ResourceUploader onUploadComplete={onUpdateContent} />}
+      
+      <MetricsDrillDown 
+        isOpen={isDrilldownOpen}
+        onClose={() => { setIsDrilldownOpen(false); setDrilldownUser(null); }}
+        user={drilldownUser}
+        adminStats={adminStats}
+      />
     </div>
   );
 };

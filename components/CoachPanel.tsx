@@ -4,6 +4,7 @@ import { googleSheetService } from '../services/googleSheetService';
 import { shlService } from '../services/shlService';
 import { ClipboardListIcon, BrainIcon, UserIcon, PlusIcon, SearchIcon, CheckCircleIcon } from './Icons';
 import type { UserProfile, Resource } from '../types';
+import { MetricsDrillDown } from './admin/MetricsDrillDown';
 
 interface CoachPanelProps {
   onUpdateContent: () => void;
@@ -21,6 +22,8 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<any>(null);
   const [selectedWeek, setSelectedWeek] = useState<string>('overall');
+  const [drilldownUser, setDrilldownUser] = useState<UserProfile | null>(null);
+  const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
 
   const loadAdminStats = async () => {
     try {
@@ -261,6 +264,12 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
                     <td className="px-8 py-5 text-right">
                       <div className="flex justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                         <button 
+                          onClick={() => { setDrilldownUser(user); setIsDrilldownOpen(true); }}
+                          className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-navy transition-all shadow-md"
+                        >
+                          Audit Metrics
+                        </button>
+                        <button 
                           onClick={() => { setSelectedTargetUserId(user.id); setActiveTab('library'); }} 
                           className="bg-tp-navy text-white px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-md"
                         >
@@ -344,6 +353,13 @@ const CoachPanel: React.FC<CoachPanelProps> = ({ onUpdateContent, currentUser, o
           </div>
         </div>
       )}
+      
+      <MetricsDrillDown 
+        isOpen={isDrilldownOpen}
+        onClose={() => { setIsDrilldownOpen(false); setDrilldownUser(null); }}
+        user={drilldownUser}
+        adminStats={adminStats}
+      />
     </div>
   );
 };

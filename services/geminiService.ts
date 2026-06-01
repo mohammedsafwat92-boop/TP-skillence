@@ -281,7 +281,7 @@ export const geminiService = {
     }
   },
 
-  generateQuiz: async (title: string, url: string, type: string, scrapedText?: string): Promise<QuizQuestion[]> => {
+  generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
     const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
     
     try {
@@ -299,6 +299,12 @@ export const geminiService = {
           role: "user",
           parts: [{
             text: `You are an expert curriculum designer. Based ONLY on the following content summary, generate a rigorous 5-question multiple-choice quiz. 
+
+CRITICAL DIFFICULTY TUNING:
+The target student is studying at the ${level || 'Intermediate'} CEFR level. 
+- For Beginner levels (A1, A2): Keep sentence structures clear, simple, and literal. Test fundamental facts directly stated in the text.
+- For Intermediate levels (B1, B2): Introduce standard corporate vocabulary and operational idioms. Test context-based reasoning and secondary details.
+- For Advanced levels (C1, C2): Structure nuanced, highly analytical options with subtle, sophisticated language testing logical inference, underlying motivations, and complex arguments.
 
 CRITICAL RULES:
 1. Every single question MUST have exactly 4 options.
