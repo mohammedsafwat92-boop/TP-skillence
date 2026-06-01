@@ -102,5 +102,14 @@ export const googleSheetService = {
     callApi('get_weekly_assignments'),
 
   assignToWeek: (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> =>
-    callApi('assign_to_week', { weekNumber, resourceIds, adminId })
+    callApi('assign_to_week', { weekNumber, resourceIds, adminId }),
+
+  saveTranscript: (userId: string, transcript: any): Promise<any> =>
+    callApi('save_transcript', { userId, transcript }),
+
+  getTranscripts: (userId: string): Promise<any[]> =>
+    callApi('get_transcripts', { userId }),
+
+  proxyGemini: (model: string, payload: any): Promise<any> =>
+    callApi('proxy_gemini', { model, payload })
 };

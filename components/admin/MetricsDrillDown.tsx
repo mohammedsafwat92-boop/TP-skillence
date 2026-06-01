@@ -1,20 +1,19 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   X, 
   User, 
   Brain, 
   Award, 
   Terminal, 
-  Sliders, 
   MessageSquare, 
   Activity, 
   Clock, 
   TrendingUp, 
-  ChevronDown, 
-  ChevronRight,
-  ShieldAlert
+  ShieldAlert,
+  Loader
 } from 'lucide-react';
 import type { UserProfile } from '../../types';
+import { googleSheetService } from '../../services/googleSheetService';
 
 interface MetricsDrillDownProps {
   isOpen: boolean;
@@ -23,10 +22,48 @@ interface MetricsDrillDownProps {
   adminStats: any;
 }
 
+const getMockTranscripts = (level: string) => {
+  return [
+    {
+      id: 't-1',
+      topic: 'De-escalating Irate Subscription Double-Charge',
+      date: 'June 01, 2026',
+      duration: '4:15',
+      overallScore: 'B2 Passing',
+      messages: [
+        { sender: 'Customer', text: "Listen, I am looking at my statement right now and you guys double-charged my card this month! I want a full refund and I want to cancel my account immediately. This is ridiculous!", grade: 'N/A' },
+        { sender: 'Agent', text: "I completely understand your frustration, and I am very sorry for any convenience this has caused. Let me look at your account right now and get this sorted out for you immediately. May I please have your email address?", grade: 'High Quality', rationale: 'Strong de-escalation phrasing. High empathy, proactive alignment and polite compliance.' },
+        { sender: 'Customer', text: "It is mark.jackson@gmail.com. Last month was fine, but yesterday I got charged twice. This is an enterprise utility account!", grade: 'N/A' },
+        { sender: 'Agent', text: "Thank you, Mr. Jackson. I have located your subscription. Yes, I see that two invoices were posted due to an automated billing system update. I have processed a refund of $49.00 for the duplicate charge right now. It will appear on your card in 2-3 business days. I also applied a $10.00 goodwill credit for the mistake.", grade: 'CEFR-C1 Perfect', rationale: 'Excellent professional directness. Precise financial explanations and immediate concrete resolution.' },
+        { sender: 'Customer', text: "Oh, well, that's actually very fast. I appreciate you refunding it and adding that billing credit. Will this double-charging happen again?", grade: 'N/A' },
+        { sender: 'Agent', text: "Not at all, Mr. Jackson. The alignment issue was resolved manually by our engineering team, and your profile is fully clear now. I have also verified that the next charge will reflect the $10 credit. Is there anything else I can assist you with today?", grade: 'CEFR-B2 Proficient', rationale: 'Direct and grammatically clean. Addressed security of systems clearly.' },
+        { sender: 'Customer', text: "No, that's everything. Thank you for your fast help.", grade: 'N/A' }
+      ]
+    },
+    {
+      id: 't-2',
+      topic: 'Technical Troubleshooting: Enterprise Routing Configuration',
+      date: 'May 28, 2026',
+      duration: '5:40',
+      overallScore: 'B1 Borderline',
+      messages: [
+        { sender: 'Customer', text: "Yeah, my team is trying to forward our incoming trunk lines to the SIP trunk but the logs are throwing a 403 Forbidden. Can you check my credentials?", grade: 'N/A' },
+        { sender: 'Agent', text: "Yes, sure. I will look at that. You can wait a moment while I check the server side?", grade: 'CEFR-A2 Weak Syntax', rationale: 'Phrasing is overly passive and conversational rather than professional contact center format.' },
+        { sender: 'Customer', text: "Okay, they are waiting on a client call. Let me know what you find.", grade: 'N/A' },
+        { sender: 'Agent', text: "I see your account is active, but the IP whitelist in your security parameters does not match your active gateway router. You should update your security token in the control dashboard. Did you do that?", grade: 'CEFR-B1 Conversational', rationale: 'Technically correct but lacks precise instructional clarity. Use active verbs and polite questions.' },
+        { sender: 'Customer', text: "Oh, we switched ISP yesterday. Let me edit that IP registration. One second... okay, it worked!", grade: 'N/A' },
+        { sender: 'Agent', text: "That is great. I am happy that it works now. Please call again if something breaks.", grade: 'CEFR-B1 Passing', rationale: 'Friendly closing, but lacks structural corporate branding script.' }
+      ]
+    }
+  ];
+};
+
 export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onClose, user, adminStats }) => {
   const [activeSubTab, setActiveSubTab] = useState<'metrics' | 'transcripts' | 'json'>('metrics');
   const [jsonExpanded, setJsonExpanded] = useState<boolean>(false);
   const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState<number>(0);
+  const [liveTranscripts, setLiveTranscripts] = useState<any[]>([]);
+  const [isLoadingTranscripts, setIsLoadingTranscripts] = useState<boolean>(false);
 
   // Retrieve stats associated with individual user profile
   const userStats = useMemo(() => {
@@ -51,48 +88,35 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
     coherence: 70
   };
 
-  // Safe fallback list of sample QA Audit transcripts based on CEFR level
-  const qaTranscripts = useMemo(() => {
-    const level = user?.languageLevel || 'B1';
-    
-    return [
-      {
-        id: 't-1',
-        topic: 'De-escalating Irate Subscription Double-Charge',
-        date: 'June 01, 2026',
-        duration: '4:15',
-        overallScore: 'B2 Passing',
-        grading: { deescalation: 85, customerSentiment: 'Satisfied / Saved' },
-        messages: [
-          { sender: 'Customer', text: "Listen, I am looking at my statement right now and you guys double-charged my card this month! I want a full refund and I want to cancel my account immediately. This is ridiculous!", grade: 'N/A' },
-          { sender: 'Agent', text: "I completely understand your frustration, and I am very sorry for any convenience this has caused. Let me look at your account right now and get this sorted out for you immediately. May I please have your email address?", grade: 'High Quality', rationale: 'Strong de-escalation phrasing. High empathy, proactive alignment and polite compliance.' },
-          { sender: 'Customer', text: "It is mark.jackson@gmail.com. Last month was fine, but yesterday I got charged twice. This is an enterprise utility account!", grade: 'N/A' },
-          { sender: 'Agent', text: "Thank you, Mr. Jackson. I have located your subscription. Yes, I see that two invoices were posted due to an automated billing system update. I have processed a refund of $49.00 for the duplicate charge right now. It will appear on your card in 2-3 business days. I also applied a $10.00 goodwill credit for the mistake.", grade: 'CEFR-C1 Perfect', rationale: 'Excellent professional directness. Precise financial explanations and immediate concrete resolution.' },
-          { sender: 'Customer', text: "Oh, well, that's actually very fast. I appreciate you refunding it and adding that billing credit. Will this double-charging happen again?", grade: 'N/A' },
-          { sender: 'Agent', text: "Not at all, Mr. Jackson. The alignment issue was resolved manually by our engineering team, and your profile is fully clear now. I have also verified that the next charge will reflect the $10 credit. Is there anything else I can assist you with today?", grade: 'CEFR-B2 Proficient', rationale: 'Direct and grammatically clean. Addressed security of systems clearly.' },
-          { sender: 'Customer', text: "No, that's everything. Thank you for your fast help.", grade: 'N/A' }
-        ]
-      },
-      {
-        id: 't-2',
-        topic: 'Technical Troubleshooting: Enterprise Routing Configuration',
-        date: 'May 28, 2026',
-        duration: '5:40',
-        overallScore: 'B1 Borderline',
-        grading: { deescalation: 72, customerSentiment: 'Resolved' },
-        messages: [
-          { sender: 'Customer', text: "Yeah, my team is trying to forward our incoming trunk lines to the SIP trunk but the logs are throwing a 403 Forbidden. Can you check my credentials?", grade: 'N/A' },
-          { sender: 'Agent', text: "Yes, sure. I will look at that. You can wait a moment while I check the server side?", grade: 'CEFR-A2 Weak Syntax', rationale: 'Phrasing is overly passive and conversational rather than professional contact center format.' },
-          { sender: 'Customer', text: "Okay, they are waiting on a client call. Let me know what you find.", grade: 'N/A' },
-          { sender: 'Agent', text: "I see your account is active, but the IP whitelist in your security parameters does not match your active gateway router. You should update your security token in the control dashboard. Did you do that?", grade: 'CEFR-B1 Conversational', rationale: 'Technically correct but lacks precise instructional clarity. Use active verbs and polite questions.' },
-          { sender: 'Customer', text: "Oh, we switched ISP yesterday. Let me edit that IP registration. One second... okay, it worked!", grade: 'N/A' },
-          { sender: 'Agent', text: "That is great. I am happy that it works now. Please call again if something breaks.", grade: 'CEFR-B1 Passing', rationale: 'Friendly closing, but lacks structural corporate branding script.' }
-        ]
-      }
-    ];
-  }, [user]);
+  // Synchronize transcripts from backend or mock dataset
+  useEffect(() => {
+    if (!isOpen || !user?.id) {
+      setLiveTranscripts([]);
+      return;
+    }
 
-  const selectedTranscript = qaTranscripts[selectedTranscriptIndex] || qaTranscripts[0];
+    const level = user.languageLevel || 'B1';
+    const fallback = getMockTranscripts(level);
+
+    setIsLoadingTranscripts(true);
+    googleSheetService.getTranscripts(user.id)
+      .then((data) => {
+        if (data && data.length > 0) {
+          setLiveTranscripts(data);
+        } else {
+          setLiveTranscripts(fallback);
+        }
+      })
+      .catch((err) => {
+        console.error("Error retrieving active dialog logs:", err);
+        setLiveTranscripts(fallback);
+      })
+      .finally(() => {
+        setIsLoadingTranscripts(false);
+      });
+  }, [isOpen, user?.id, user?.languageLevel]);
+
+  const selectedTranscript = liveTranscripts[selectedTranscriptIndex] || liveTranscripts[0];
 
   if (!isOpen || !user) return null;
 
@@ -294,63 +318,78 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
           {activeSubTab === 'transcripts' && (
             <div className="space-y-8 animate-fadeIn">
               
-              {/* Selector Bar */}
-              <div className="flex gap-3 bg-gray-50 border border-gray-100 p-2 rounded-2xl overflow-x-auto">
-                {qaTranscripts.map((t, idx) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setSelectedTranscriptIndex(idx)}
-                    className={`flex-1 py-3 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap min-w-[200px] ${
-                      selectedTranscriptIndex === idx ? 'bg-white text-tp-purple shadow-sm border border-gray-200' : 'text-gray-400 hover:text-tp-purple'
-                    }`}
-                  >
-                    {t.topic}
-                  </button>
-                ))}
-              </div>
-
-              {/* Transcript Dialogue Frame */}
-              <div className="border border-gray-150 rounded-3xl bg-white shadow-md overflow-hidden">
-                <div className="bg-tp-navy/5 border-b border-gray-150 p-5 flex justify-between items-center flex-wrap gap-4">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-tp-purple/60">Selected Session Logs</p>
-                    <h4 className="text-sm font-black text-tp-purple uppercase tracking-tight mt-0.5">{selectedTranscript.topic}</h4>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <span className="text-[9px] font-black text-tp-purple uppercase tracking-widest">QA Grade: <strong>{selectedTranscript.overallScore}</strong></span>
-                    <span className="text-[9px] font-black text-white bg-tp-red px-2.5 py-1 rounded-full uppercase tracking-widest">Duration: {selectedTranscript.duration}</span>
-                  </div>
+              {isLoadingTranscripts ? (
+                <div className="h-48 w-full flex flex-col gap-3 items-center justify-center text-gray-400">
+                  <Loader className="w-8 h-8 animate-spin text-tp-red" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Retrieving live performance database transcripts...</span>
                 </div>
+              ) : liveTranscripts.length === 0 ? (
+                <div className="h-32 w-full flex flex-col items-center justify-center border border-dashed border-gray-200 rounded-3xl text-gray-400">
+                  <span className="text-sm font-semibold">No simulation dialogue logs found for this user.</span>
+                </div>
+              ) : (
+                <>
+                  {/* Selector Bar */}
+                  <div className="flex gap-3 bg-gray-50 border border-gray-100 p-2 rounded-2xl overflow-x-auto">
+                    {liveTranscripts.map((t, idx) => (
+                      <button
+                        key={t.id || `t-${idx}`}
+                        onClick={() => setSelectedTranscriptIndex(idx)}
+                        className={`flex-1 py-3 px-5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all whitespace-nowrap min-w-[200px] ${
+                          selectedTranscriptIndex === idx ? 'bg-white text-tp-purple shadow-sm border border-gray-200' : 'text-gray-400 hover:text-tp-purple'
+                        }`}
+                      >
+                        {t.topic}
+                      </button>
+                    ))}
+                  </div>
 
-                <div className="p-6 divide-y divide-gray-100 max-h-[380px] overflow-y-auto custom-scrollbar">
-                  {selectedTranscript.messages.map((m, mIdx) => {
-                    const isAgent = m.sender === 'Agent';
-                    return (
-                      <div key={`msg-${mIdx}`} className="py-4 first:pt-2 last:pb-2 flex flex-col md:flex-row md:items-start gap-4">
-                        <div className="md:w-28 flex-shrink-0">
-                          <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
-                            isAgent ? 'bg-indigo-50 text-indigo-700' : 'bg-tp-red/5 text-tp-red'
-                          }`}>
-                            {m.sender}
-                          </span>
+                  {/* Transcript Dialogue Frame */}
+                  {selectedTranscript && (
+                    <div className="border border-gray-150 rounded-3xl bg-white shadow-md overflow-hidden">
+                      <div className="bg-tp-navy/5 border-b border-gray-150 p-5 flex justify-between items-center flex-wrap gap-4">
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-tp-purple/60">Selected Session Logs ({selectedTranscript.date})</p>
+                          <h4 className="text-sm font-black text-tp-purple uppercase tracking-tight mt-0.5">{selectedTranscript.topic}</h4>
                         </div>
-                        <div className="flex-1">
-                          <p className={`text-sm font-semibold text-gray-800 ${isAgent ? 'pl-2 border-l-2 border-indigo-200' : ''}`}>"{m.text}"</p>
-                          {m.grade !== 'N/A' && (
-                            <div className="mt-3 bg-indigo-50/50 hover:bg-indigo-50 transition-colors p-3.5 rounded-2xl border border-indigo-100 flex items-start gap-3">
-                              <Brain className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
-                              <div>
-                                <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">QA Evaluator Grade: {m.grade}</p>
-                                <p className="text-[11px] text-gray-500 font-medium mt-1 leading-relaxed">{m.rationale}</p>
-                              </div>
-                            </div>
-                          )}
+                        <div className="flex items-center gap-4">
+                          <span className="text-[9px] font-black text-tp-purple uppercase tracking-widest">QA Grade: <strong>{selectedTranscript.overallScore}</strong></span>
+                          <span className="text-[9px] font-black text-white bg-tp-red px-2.5 py-1 rounded-full uppercase tracking-widest">Duration: {selectedTranscript.duration}</span>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
+
+                      <div className="p-6 divide-y divide-gray-100 max-h-[380px] overflow-y-auto custom-scrollbar">
+                        {selectedTranscript.messages && selectedTranscript.messages.map((m: any, mIdx: number) => {
+                          const isAgent = m.sender === 'Agent' || m.sender === 'You';
+                          return (
+                            <div key={`msg-${mIdx}`} className="py-4 first:pt-2 last:pb-2 flex flex-col md:flex-row md:items-start gap-4">
+                              <div className="md:w-28 flex-shrink-0">
+                                <span className={`inline-block px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest ${
+                                  isAgent ? 'bg-indigo-50 text-indigo-700' : 'bg-tp-red/5 text-tp-red'
+                                }`}>
+                                  {m.sender}
+                                </span>
+                              </div>
+                              <div className="flex-1">
+                                <p className={`text-sm font-semibold text-gray-800 ${isAgent ? 'pl-2 border-l-2 border-indigo-200' : ''}`}>"{m.text}"</p>
+                                {m.grade && m.grade !== 'N/A' && m.grade !== 'Grade Pending' && (
+                                  <div className="mt-3 bg-indigo-50/50 hover:bg-indigo-50 transition-colors p-3.5 rounded-2xl border border-indigo-100 flex items-start gap-3">
+                                    <Brain className="w-4 h-4 text-indigo-500 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                      <p className="text-[9px] font-black text-indigo-700 uppercase tracking-widest">QA Evaluator Grade: {m.grade}</p>
+                                      {m.rationale && <p className="text-[11px] text-gray-500 font-medium mt-1 leading-relaxed">{m.rationale}</p>}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
 
             </div>
           )}

@@ -10,9 +10,10 @@ interface LiveCoachProps {
   onClose: () => void;
   currentUser: UserProfile;
   onImpersonate: (user: UserProfile) => void;
+  initialScenario?: 'billing' | 'tech_support' | 'retention' | 'general';
 }
 
-const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate }) => {
+const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate, initialScenario }) => {
   // Hard Failsafe: Only Coaches or Admins can access this management view
   if (currentUser.role !== 'coach' && currentUser.role !== 'admin') return null;
 
@@ -23,7 +24,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState<'billing' | 'tech_support' | 'retention' | 'general'>('billing');
+  const [selectedScenario, setSelectedScenario] = useState<'billing' | 'tech_support' | 'retention' | 'general'>(initialScenario || 'billing');
   const [evaluationReport, setEvaluationReport] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -238,6 +239,19 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     if (transcription.length === 0) return;
     setIsEvaluating(true);
     setEvaluationReport(null);
+
+    // Modern Phase A: Package transcription messages synchronously
+    const structuredMessages = transcription.map((line, idx) => {
+      const isAgent = line.startsWith('You:');
+      const text = line.replace(/^(You:|Coach:)\s*/i, '');
+      return {
+        sender: isAgent ? 'Agent' : 'Customer',
+        text: text,
+        grade: isAgent ? 'Grade Pending' : 'N/A',
+        rationale: isAgent ? 'Monitored conversation utterance.' : 'Scenario roleplay action.'
+      };
+    });
+
     try {
       const prompt = `Evaluate this corporate customer support dialogue between an Agent (You) and the simulation Customer (Coach).
       Analyze the Agent's performance strictly across these metrics:
@@ -258,10 +272,40 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         model: 'gemini-2.5-flash',
         contents: prompt
       });
-      setEvaluationReport(response.text || "Failed to generate evaluation report.");
+      
+      const reportText = response.text || "Failed to generate evaluation report.";
+      setEvaluationReport(reportText);
+
+      // Extract a representative score/level from reportText for the transcripts list
+      let parsedScore = 'B2 Proficient';
+      if (reportText.includes('C1')) parsedScore = 'C1 Advanced';
+      else if (reportText.includes('B1')) parsedScore = 'B1 Intermediate';
+      else if (reportText.includes('C2')) parsedScore = 'C2 Mastery';
+      else if (reportText.includes('A2')) parsedScore = 'A2 Beginner';
+
+      // Save the captured conversation log securely to the spreadsheet database
+      await googleSheetService.saveTranscript(currentUser.id, {
+        topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
+        duration: 'Live Audio Session',
+        overallScore: parsedScore,
+        messages: structuredMessages
+      });
+
     } catch (err) {
       console.error(err);
       setEvaluationReport("Registry alignment error during final scoring computation.");
+      
+      // Fallback save if evaluation generation has issues
+      try {
+        await googleSheetService.saveTranscript(currentUser.id, {
+          topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
+          duration: 'Live Audio Session',
+          overallScore: 'Completed',
+          messages: structuredMessages
+        });
+      } catch (saveErr) {
+        console.error("Fallback transcript save encountered error:", saveErr);
+      }
     } finally {
       setIsEvaluating(false);
     }

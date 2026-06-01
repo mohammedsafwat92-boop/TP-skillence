@@ -47,6 +47,15 @@ function doPost(e) {
       // Corrected Payload: targetUid, resourceId, adminId
       res.data = manualAssign(ss, json.targetUid, json.resourceId, json.adminId);
       res.success = true;
+    } else if (action === 'save_transcript') {
+      res.data = saveTranscript(ss, json.userId, json.transcript);
+      res.success = true;
+    } else if (action === 'get_transcripts') {
+      res.data = getTranscripts(ss, json.userId);
+      res.success = true;
+    } else if (action === 'proxy_gemini') {
+      res.data = proxyGeminiCall(ss, json.model, json.payload);
+      res.success = true;
     }
 
   } catch (err) {
@@ -420,6 +429,82 @@ function safeParse(str) {
     console.error("JSON Parse Error:", e);
     return {};
   }
+}
+
+function saveTranscript(ss, userId, transcript) {
+  const sheet = ss.getSheetByName('Transcripts') || ss.insertSheet('Transcripts');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['ID', 'UserID', 'Date', 'Topic', 'Duration', 'OverallScore', 'MessageData']);
+  }
+  const id = 't-' + Date.now();
+  const dateString = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+  const messageData = JSON.stringify(transcript.messages || []);
+  
+  sheet.appendRow([
+    id,
+    userId,
+    dateString,
+    transcript.topic || 'General Coaching Session',
+    transcript.duration || '5:00',
+    transcript.overallScore || 'B2 Passing',
+    messageData
+  ]);
+  return { id };
+}
+
+function getTranscripts(ss, userId) {
+  const sheet = ss.getSheetByName('Transcripts');
+  if (!sheet || sheet.getLastRow() < 2) return [];
+  const data = sheet.getDataRange().getValues();
+  const transcripts = [];
+  
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][1]) === String(userId)) {
+      transcripts.push({
+        id: data[i][0],
+        userId: data[i][1],
+        date: data[i][2],
+        topic: data[i][3],
+        duration: data[i][4],
+        overallScore: data[i][5],
+        messages: safeParse(data[i][6])
+      });
+    }
+  }
+  return transcripts;
+}
+
+function proxyGeminiCall(ss, modelName, payload) {
+  // Retrieve backend API Key from ScriptProperties or spreadsheet Configuration
+  let key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) {
+    const configSheet = ss.getSheetByName('Config');
+    if (configSheet) {
+      const cellVal = configSheet.getRange(1, 2).getValue();
+      if (cellVal) key = cellVal;
+    }
+  }
+  
+  // Use a hardcoded project fallback placeholder if none is registered in standard properties
+  const targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-2.5-flash') + ':generateContent?key=' + targetKey;
+  
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(payload),
+    muteHttpExceptions: true
+  };
+  
+  const response = UrlFetchApp.fetch(url, options);
+  const code = response.getResponseCode();
+  const text = response.getContentText();
+  
+  if (code !== 200) {
+    throw new Error('Gemini API call failed with code ' + code + ': ' + text);
+  }
+  
+  return JSON.parse(text);
 }
 
 function sendResponse(obj) {
