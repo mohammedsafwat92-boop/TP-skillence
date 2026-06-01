@@ -35,9 +35,9 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
       <div className="lg:hidden absolute top-4 right-4"><button onClick={onClose} className="p-2 text-white/50 hover:text-white rounded-full"><XIcon /></button></div>
 
       <div className="flex flex-col items-center justify-center pt-10 pb-6 border-b border-white/10" onClick={() => onNavigate({ type: 'dashboard' })}>
-        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 cursor-pointer hover:scale-105 transition-transform"><span className="text-tp-purple font-black text-2xl">TP</span></div>
-        <h1 className="text-sm font-bold tracking-[0.1em] text-white/90 uppercase">Teleperformance</h1>
-        <p className="text-xs text-tp-red font-bold uppercase tracking-[0.2em] mt-1">Egypt • Skillence</p>
+        <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-xl mb-4 cursor-pointer hover:scale-105 transition-transform"><span className="text-tp-purple font-black text-2xl">S</span></div>
+        <h1 className="text-sm font-bold tracking-[0.1em] text-white/90 uppercase">Skillence</h1>
+        <p className="text-xs text-tp-red font-bold uppercase tracking-[0.2em] mt-1">Egypt</p>
       </div>
       
       <nav className="flex-1 py-8 overflow-y-auto custom-scrollbar">

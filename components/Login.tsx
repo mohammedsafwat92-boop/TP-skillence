@@ -49,7 +49,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
       <div className="w-full max-w-md relative z-10 animate-fadeIn">
         <div className="text-center mb-10">
           <div className="inline-flex w-20 h-20 bg-white rounded-[24px] items-center justify-center shadow-2xl mb-6">
-            <span className="text-tp-purple font-black text-3xl">TP</span>
+            <span className="text-tp-purple font-black text-3xl">S</span>
           </div>
           <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Skillence Academy</h1>
           <div className="flex items-center justify-center gap-2 mt-2">
@@ -119,7 +119,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
 
         <div className="text-center mt-8">
           <p className="text-white/20 text-[8px] font-black uppercase tracking-[0.3em]">
-            © 2025 Teleperformance Egypt • Client Specialized Track
+            © 2025 Skillence Egypt • Client Specialized Track
           </p>
         </div>
       </div>

@@ -46,6 +46,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string[]>>({});
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
   const [targetWeek, setTargetWeek] = useState<number>(1);
+  const [activeWave, setActiveWave] = useState<string>('all');
+
+  const wavesList = useMemo(() => {
+    if (!userList) return [];
+    const extracted = new Set<string>();
+    userList.forEach(u => {
+      if (u.wave) extracted.add(u.wave);
+    });
+    return Array.from(extracted).filter(Boolean).sort();
+  }, [userList]);
 
   const availableWeeks = useMemo(() => {
     if (!adminStats?.userStats) return [];
@@ -59,8 +69,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const combinedStats = useMemo(() => {
     if (!userList || !adminStats?.userStats) return [];
     
-    return userList
-      .filter(u => u.role === 'agent')
+    let activeUsers = userList.filter(u => u.role === 'agent');
+    if (activeWave !== 'all') {
+      activeUsers = activeUsers.filter(u => u.wave === activeWave);
+    }
+    
+    return activeUsers
       .map(user => {
         const stats = adminStats.userStats.find((s: any) => s.userId === user.id) || {
           weeklyMinutes: 0,
@@ -86,7 +100,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           ...stats
         };
       });
-  }, [userList, adminStats, selectedWeek]);
+  }, [userList, adminStats, selectedWeek, activeWave]);
 
   const filteredStats = useMemo(() => {
     return combinedStats.filter(user => {
@@ -99,12 +113,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const metrics = useMemo(() => {
     const totalAgents = combinedStats.length;
-    const avgProgress = adminStats?.rosterAverage || 0;
+    // Recalculate average progress dynamically based on filtered agents
+    const totalProgress = combinedStats.reduce((acc, u) => acc + (u.overallProgress || 0), 0);
+    const avgProgress = totalAgents > 0 ? Math.round(totalProgress / totalAgents) : 0;
+    
     const totalWeeklyProgress = combinedStats.reduce((acc, u) => acc + (u.weeklyProgress || 0), 0);
     const avgWeeklyProgress = totalAgents > 0 ? Math.round(totalWeeklyProgress / totalAgents) : 0;
     const atRisk = combinedStats.filter(u => u.overallProgress < 30).length;
     return { totalAgents, avgProgress, avgWeeklyProgress, atRisk };
-  }, [combinedStats, adminStats]);
+  }, [combinedStats]);
 
   const fetchUsers = async () => {
     if (currentUser.role !== 'admin') return;
@@ -149,14 +166,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const handleBulkAssignRoster = async () => {
     if (!currentUser) return;
-    if (!window.confirm("This will assign ALL eligible courses to EVERY trainee in the system. The system will then automatically drip them 3 hours a week based on their cohort start date. Proceed?")) return;
+    const targetGroup = activeWave === 'all' ? 'EVERY trainee in the system' : `EVERY trainee in ${activeWave}`;
+    if (!window.confirm(`This will assign ALL eligible courses to ${targetGroup}. The system will then automatically drip them 3 hours a week based on their cohort start date. Proceed?`)) return;
 
     setIsBulkAssigning(true);
     try {
-      const response = await googleSheetService.bulkAssignRoster(currentUser.id);
-      // Note: callApi returns json.data, so we might need to adjust if the backend returns success/message differently
-      // But based on callApi implementation, it throws if !success.
-      alert(`Success! Roster bulk assignment initiated.`);
+      const response = await googleSheetService.bulkAssignRoster(currentUser.id, activeWave === 'all' ? undefined : activeWave);
+      alert(`Success! Bulk roster assignment initiated for ${activeWave === 'all' ? 'all trainees' : activeWave}.`);
       loadAdminStats();
     } catch (error) {
       console.error('Error in bulk assign:', error);
@@ -273,7 +289,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           </h1>
           <p className="text-xs font-black text-gray-500 uppercase tracking-widest mt-2 ml-1">Enterprise Console</p>
         </div>
-        <div className="flex bg-tp-purple/5 p-1.5 rounded-2xl overflow-x-auto max-w-full shadow-inner border border-tp-purple/10">
+        <div className="flex flex-wrap items-center gap-4 w-full lg:w-auto">
+          {/* Cohort Wave Dropdown Filter */}
+          <div className="flex items-center gap-2 bg-tp-purple/5 px-4 py-2 rounded-2xl border border-tp-purple/10">
+            <span className="text-[10px] font-black text-tp-purple uppercase tracking-widest">Cohort:</span>
+            <select
+              value={activeWave}
+              onChange={(e) => setActiveWave(e.target.value)}
+              className="bg-white text-tp-purple font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-xl border border-tp-purple/10 focus:outline-none focus:ring-2 focus:ring-tp-purple/20 cursor-pointer"
+            >
+              <option value="all">🌐 All Waves</option>
+              {wavesList.map(wave => (
+                <option key={wave} value={wave}>🌊 {wave}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex bg-tp-purple/5 p-1.5 rounded-2xl overflow-x-auto max-w-full shadow-inner border border-tp-purple/10">
           {[
             { id: 'users', label: 'Roster' },
             { id: 'library', label: 'Resource Library' },
@@ -290,6 +322,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           ))}
         </div>
       </div>
+    </div>
 
       {assignmentSuccess && (
         <div className="mb-10 bg-green-50 border border-green-200 text-green-700 p-6 rounded-[32px] flex items-center gap-5 animate-fadeIn shadow-xl shadow-green-100/50">
@@ -412,6 +445,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <thead>
                   <tr className="bg-gray-50/50 border-b border-gray-100">
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest">Agent ID</th>
+                    <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Cohort/Wave</th>
                     <th className="px-8 py-5 text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">
                       {selectedWeek === 'overall' ? 'Weekly Mins' : `${selectedWeek} Minutes`}
                     </th>
@@ -437,6 +471,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                             <p className="text-[10px] text-gray-400 font-medium uppercase tracking-widest">{user.email}</p>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-8 py-6 text-center">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-black bg-indigo-50 text-tp-purple uppercase tracking-widest">
+                          {user.wave || 'Pilot/Unassigned'}
+                        </span>
                       </td>
                       <td className="px-8 py-6 text-center">
                         <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-bold ${user.weeklyMinutes === 0 ? 'bg-rose-50 text-rose-600' : 'bg-indigo-50 text-indigo-600'}`}>
@@ -503,7 +542,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               ) : (
                 <ClipboardList className="w-5 h-5" />
               )}
-              {isBulkAssigning ? 'Processing Roster...' : 'Bulk Assign All to Roster'}
+              {isBulkAssigning ? 'Processing Roster...' : activeWave === 'all' ? 'Bulk Assign All to Roster' : `Bulk Assign ${activeWave} to Roster`}
             </button>
           </div>
         </div>

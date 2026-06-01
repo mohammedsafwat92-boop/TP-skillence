@@ -41,13 +41,39 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     const svar = m.svar || {};
     const writex = m.writex || {};
 
+    const fallback = (val: any, fallbackVal: any) => {
+      if (val !== undefined && val !== null && val !== '') return Number(val);
+      if (fallbackVal !== undefined && fallbackVal !== null && fallbackVal !== '') return Number(fallbackVal);
+      return 0;
+    };
+
     return [
-      { label: 'Fluency', score: Number(svar.fluency) || 0 },
-      { label: 'Vocabulary', score: Number(svar.vocabulary) || 0 },
-      { label: 'Grammar', score: Number(writex.grammar || svar.grammar) || 0 },
-      { label: 'Pronunciation', score: Number(svar.pronunciation) || 0 },
-      { label: 'Coherence', score: Number(writex.coherence || svar.coherence) || 0 }
+      { label: 'Fluency', score: fallback(svar.fluency, m.fluency) },
+      { label: 'Vocabulary', score: fallback(svar.vocabulary, m.vocabulary) },
+      { label: 'Grammar', score: fallback(writex.grammar, m.grammar || svar.grammar) },
+      { label: 'Pronunciation', score: fallback(svar.pronunciation, m.pronunciation) },
+      { label: 'Coherence', score: fallback(writex.coherence, m.coherence || svar.coherence) }
     ];
+  }, [user]);
+
+  const isMetricsEmpty = useMemo(() => {
+    const m = user?.metrics;
+    if (!m) return true;
+    
+    const svar = m.svar || {};
+    const writex = m.writex || {};
+    
+    // Check nested svar
+    const svarKeys = Object.keys(svar).filter(k => svar[k as keyof typeof svar] !== undefined && svar[k as keyof typeof svar] !== null && svar[k as keyof typeof svar] !== '');
+    // Check nested writex
+    const keysWritex = Object.keys(writex).filter(k => writex[k as keyof typeof writex] !== undefined && writex[k as keyof typeof writex] !== null);
+    const writexKeys = keysWritex.filter(k => writex[k as keyof typeof writex] !== '');
+    
+    // Check flat keys
+    const flatKeys = ['fluency', 'vocabulary', 'grammar', 'pronunciation', 'coherence'];
+    const hasFlat = flatKeys.some(k => m[k] !== undefined && m[k] !== null && m[k] !== '');
+
+    return svarKeys.length === 0 && writexKeys.length === 0 && !hasFlat;
   }, [user]);
 
   // Tab Logic & Filtering (Case-insensitive matching)
@@ -92,13 +118,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     const diffTime = nextSunday.getTime() - now.getTime();
     const daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
 
+    // Calculate weekly average score
+    const weeklyCompleted = resources.filter(r => 
+      r.progress?.status === 'completed' && 
+      r.progress.completedAt && 
+      new Date(r.progress.completedAt) >= startOfWeek
+    );
+
+    const scoredCompleted = weeklyCompleted.filter(r => 
+      r.progress?.score !== undefined && 
+      r.progress.score !== null && 
+      r.progress.score > 0
+    );
+
+    const weeklyAverageScore = scoredCompleted.length > 0
+      ? Math.round(scoredCompleted.reduce((sum, r) => sum + (r.progress.score || 0), 0) / scoredCompleted.length)
+      : 0;
+
     return {
       weeklyProgress: Math.min(Math.round((weeklyMinutes / WEEKLY_TARGET) * 100), 100),
       weeklyMinutes,
       daysRemaining,
       overallProgress: totalAssigned > 0 ? Math.round((completedCount / totalAssigned) * 100) : 0,
       completedCount,
-      totalAssigned
+      totalAssigned,
+      weeklyAverageScore
     };
   }, [resources]);
 
@@ -130,9 +174,14 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
               </span>
             </div>
             <div className="flex justify-between items-end mb-3">
-              <p className="text-2xl font-black text-tp-purple">
-                {stats.weeklyMinutes} <span className="text-xs text-gray-400 font-bold">/ 180 MINS</span>
-              </p>
+              <div>
+                <p className="text-2xl font-black text-tp-purple">
+                  {stats.weeklyMinutes} <span className="text-xs text-gray-400 font-bold">/ 180 MINS</span>
+                </p>
+                <p className="text-[10px] font-black text-tp-red uppercase tracking-widest mt-1">
+                  Weekly Avg Score: {stats.weeklyAverageScore > 0 ? `${stats.weeklyAverageScore}%` : 'N/A'}
+                </p>
+              </div>
               <span className="text-xs font-black text-tp-purple">{stats.weeklyProgress}%</span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
@@ -212,26 +261,33 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
           Competency Metrics
         </h3>
         
-        <div className="space-y-5">
-          {competencyMetrics.map((metric, idx) => (
-            <div key={idx}>
-              <div className="flex justify-between items-center mb-1.5">
-                <span className="text-sm font-medium text-gray-700">{metric.label}</span>
-                <span className="text-sm font-bold text-gray-900">{metric.score}%</span>
+        {isMetricsEmpty ? (
+          <div className="py-8 text-center flex flex-col items-center justify-center border border-dashed border-gray-100 rounded-xl bg-gray-50/50">
+            <span className="text-xl font-black text-gray-400 block mb-1">N/A</span>
+            <span className="text-[10px] font-black text-tp-red uppercase tracking-widest">Pending Assessment</span>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {competencyMetrics.map((metric, idx) => (
+              <div key={idx}>
+                <div className="flex justify-between items-center mb-1.5">
+                  <span className="text-sm font-medium text-gray-700">{metric.label}</span>
+                  <span className="text-sm font-bold text-gray-900">{metric.score > 0 ? `${metric.score}%` : 'N/A'}</span>
+                </div>
+                <div className="w-full bg-gray-100 rounded-full h-2">
+                  <div 
+                    className={`h-2 rounded-full transition-all duration-1000 ease-out ${
+                      metric.score >= 80 ? 'bg-emerald-500' : 
+                      metric.score >= 60 ? 'bg-amber-400' : 
+                      metric.score > 0 ? 'bg-rose-500' : 'bg-gray-300'
+                    }`}
+                    style={{ width: `${metric.score}%` }}
+                  ></div>
+                </div>
               </div>
-              <div className="w-full bg-gray-100 rounded-full h-2">
-                <div 
-                  className={`h-2 rounded-full transition-all duration-1000 ease-out ${
-                    metric.score >= 80 ? 'bg-emerald-500' : 
-                    metric.score >= 60 ? 'bg-amber-400' : 
-                    metric.score > 0 ? 'bg-rose-500' : 'bg-gray-300'
-                  }`}
-                  style={{ width: `${metric.score}%` }}
-                ></div>
-              </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
         </div>
 

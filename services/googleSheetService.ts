@@ -95,8 +95,8 @@ export const googleSheetService = {
   getAdminStats: () =>
     callApi('get_admin_stats'),
 
-  bulkAssignRoster: (adminId: string) =>
-    callApi('bulk_assign_roster', { adminId }),
+  bulkAssignRoster: (adminId: string, wave?: string) =>
+    callApi('bulk_assign_roster', { adminId, wave }),
 
   getWeeklyAssignments: (): Promise<Record<number, string[]>> =>
     callApi('get_weekly_assignments'),

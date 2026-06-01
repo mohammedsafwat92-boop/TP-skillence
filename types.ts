@@ -38,6 +38,25 @@ export interface UserCredentials {
   accessCode: string;
 }
 
+export interface AssessmentMetrics {
+  fluency?: number | null;
+  vocabulary?: number | null;
+  grammar?: number | null;
+  pronunciation?: number | null;
+  coherence?: number | null;
+}
+
+export interface UserMetrics {
+  svar?: AssessmentMetrics | null;
+  writex?: AssessmentMetrics | null;
+  fluency?: number | null;
+  vocabulary?: number | null;
+  grammar?: number | null;
+  pronunciation?: number | null;
+  coherence?: number | null;
+  [key: string]: any;
+}
+
 export interface UserProfile {
   id: string;
   name: string;
@@ -45,12 +64,13 @@ export interface UserProfile {
   role: 'admin' | 'coach' | 'agent';
   languageLevel: string;
   rosterId: string;
-  metrics?: any; // Uses 'any' to safely parse nested svar/writex objects from the database
+  metrics?: UserMetrics | null;
   assignedModules?: string[];
   assignedCoach?: string; 
   generatedCredentials?: UserCredentials;
   overallProgress?: number;
   weeklyProgress?: number;
+  wave?: string;
 }
 
 export interface Roster {
