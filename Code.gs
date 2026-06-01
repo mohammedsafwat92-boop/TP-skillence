@@ -56,6 +56,9 @@ function doPost(e) {
     } else if (action === 'proxy_gemini') {
       res.data = proxyGeminiCall(ss, json.model, json.payload);
       res.success = true;
+    } else if (action === 'proxy_gemini_request') {
+      res.data = proxyGeminiRequest(json.payload);
+      res.success = true;
     }
 
   } catch (err) {
@@ -499,6 +502,69 @@ function proxyGeminiCall(ss, modelName, payload) {
   const response = UrlFetchApp.fetch(url, options);
   const code = response.getResponseCode();
   const text = response.getContentText();
+  
+  if (code !== 200) {
+    throw new Error('Gemini API call failed with code ' + code + ': ' + text);
+  }
+  
+  return JSON.parse(text);
+}
+
+function proxyGeminiRequest(payload) {
+  // Retrieve backend API Key from ScriptProperties or spreadsheet Configuration
+  var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  if (!key) {
+    try {
+      var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SHEET_ID);
+      var configSheet = ss.getSheetByName('Config');
+      if (configSheet) {
+        var cellVal = configSheet.getRange(1, 2).getValue();
+        if (cellVal) key = cellVal;
+      }
+    } catch(e) {}
+  }
+  
+  var targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
+  var modelName = payload.model || 'gemini-3.5-flash';
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + targetKey;
+  
+  // Build standard Gemini request from the prompt and systemInstruction
+  var prompt = payload.prompt || '';
+  var systemInstruction = payload.systemInstruction || '';
+  
+  var contents = [];
+  if (payload.contents) {
+    contents = payload.contents;
+  } else {
+    contents = [{ role: 'user', parts: [{ text: prompt }] }];
+  }
+  
+  var geminiPayload = {
+    contents: contents
+  };
+  
+  if (systemInstruction) {
+    geminiPayload.systemInstruction = {
+      parts: [{ text: systemInstruction }]
+    };
+  }
+  
+  if (payload.config) {
+    geminiPayload.generationConfig = payload.config;
+  } else if (payload.generationConfig) {
+    geminiPayload.generationConfig = payload.generationConfig;
+  }
+  
+  var options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(geminiPayload),
+    muteHttpExceptions: true
+  };
+  
+  var response = UrlFetchApp.fetch(url, options);
+  var code = response.getResponseCode();
+  var text = response.getContentText();
   
   if (code !== 200) {
     throw new Error('Gemini API call failed with code ' + code + ': ' + text);

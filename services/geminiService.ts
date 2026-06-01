@@ -2,57 +2,21 @@
 
 import type { Resource, QuizQuestion } from '../types';
 import { googleSheetService } from './googleSheetService';
-import { GoogleGenAI } from "@google/genai";
-
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 
 const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> => {
   try {
-    return await googleSheetService.proxyGemini(modelName, payload);
+    // Securely delegate entirely to our Google Web App endpoint
+    const fullPayload = {
+      model: modelName,
+      contents: payload.contents,
+      systemInstruction: payload.systemInstruction || "",
+      config: payload.config || payload.generationConfig
+    };
+    return await googleSheetService.proxyGeminiRequest(fullPayload);
   } catch (proxyError: any) {
     const errorStr = String(proxyError?.message || proxyError);
-    console.warn(`[geminiService] Proxy call using model '${modelName}' failed. Error details:`, errorStr);
-    
-    if (!API_KEY) {
-      console.error("[geminiService] Client fallback blocked: VITE_GEMINI_API_KEY is not defined in the environment.");
-      throw proxyError;
-    }
-
-    try {
-      console.log(`[geminiService] Stale/missing Apps Script proxy detected. Activating direct client fallback mode using modern SDK.`);
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
-      
-      let activeModel = modelName;
-      if (activeModel.includes('gemma') || activeModel.includes('gemini-2.5') || activeModel.includes('gemini-1.5')) {
-        activeModel = 'gemini-3.5-flash';
-      }
-
-      const contents = payload.contents;
-      const config = payload.config || {};
-
-      const response = await ai.models.generateContent({
-        model: activeModel,
-        contents: contents,
-        config: config
-      });
-
-      return {
-        candidates: [
-          {
-            content: {
-              parts: [
-                {
-                  text: response.text || ""
-                }
-              ]
-            }
-          }
-        ]
-      };
-    } catch (directError: any) {
-      console.error("[geminiService] Direct Gemini API fallback call failed too:", directError);
-      throw new Error(`AI Integration Failure: Real-time Gemini calls failed. Error: ${directError.message || directError}`);
-    }
+    console.error(`[geminiService] Security Proxy call using model '${modelName}' failed. Error:`, errorStr);
+    throw new Error(`AI Integration Failure: Secure spreadsheet proxy call failed. Error: ${errorStr}`);
   }
 };
 

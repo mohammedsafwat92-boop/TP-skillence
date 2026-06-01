@@ -111,5 +111,8 @@ export const googleSheetService = {
     callApi('get_transcripts', { userId }),
 
   proxyGemini: (model: string, payload: any): Promise<any> =>
-    callApi('proxy_gemini', { model, payload })
+    callApi('proxy_gemini', { model, payload }),
+
+  proxyGeminiRequest: (payload: any): Promise<any> =>
+    callApi('proxy_gemini_request', { payload })
 };
