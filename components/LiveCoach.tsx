@@ -55,12 +55,31 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
   const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
 
   const teardownAudio = () => {
     console.log("[LiveCoach] Active stream node teardown initiated...");
     
-    // 1. Disconnect the audioProcessor (ScriptProcessorNode) and set .onaudioprocess = null
+    // Clean up AudioWorkletNode
+    if (audioWorkletNodeRef.current) {
+      try {
+        audioWorkletNodeRef.current.disconnect();
+      } catch (err) {
+        console.warn("[LiveCoach] Error disconnecting audioWorkletNode:", err);
+      }
+      if (audioWorkletNodeRef.current.port) {
+        try {
+          audioWorkletNodeRef.current.port.close();
+        } catch (err) {
+          console.warn("[LiveCoach] Error closing audioWorkletNode port:", err);
+        }
+        audioWorkletNodeRef.current.port.onmessage = null;
+      }
+      audioWorkletNodeRef.current = null;
+    }
+
+    // Clean up ScriptProcessorNode
     if (scriptProcessorRef.current) {
       try {
         scriptProcessorRef.current.disconnect();
@@ -258,8 +277,30 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       microphoneStreamRef.current = stream;
 
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      audioContextRef.current = audioCtx;
       outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      // Create inline AudioWorklet Blob
+      const workletCode = `
+        class PCMProcessor extends AudioWorkletProcessor {
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input && input[0] && input[0].length > 0) {
+              const inputData = input[0];
+              // Post the Float32Array PCM chunk
+              this.port.postMessage(inputData);
+            }
+            return true;
+          }
+        }
+        registerProcessor('pcm-processor', PCMProcessor);
+      `;
+      const blob = new window.Blob([workletCode], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
+      
+      await audioCtx.audioWorklet.addModule(workletUrl);
+      URL.revokeObjectURL(workletUrl);
 
       // WebSocket Gatekeeper logic mapping
       const safeSendRealtimeInput = (session: any, pcmBlob: Blob) => {
@@ -282,13 +323,15 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             setIsConnected(true);
             setIsConnecting(false);
             updateSessionStatus('active');
-            const source = audioContextRef.current!.createMediaStreamSource(stream);
-            const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
-            scriptProcessorRef.current = scriptProcessor;
             
-            scriptProcessor.onaudioprocess = (e) => {
+            const source = audioContextRef.current!.createMediaStreamSource(stream);
+            
+            const workletNode = new AudioWorkletNode(audioContextRef.current!, 'pcm-processor');
+            audioWorkletNodeRef.current = workletNode;
+            
+            workletNode.port.onmessage = (event) => {
               if (sessionStatusRef.current !== 'active') return;
-              const inputData = e.inputBuffer.getChannelData(0);
+              const inputData = event.data; // Float32Array from Worklet
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(session => {
                 if (sessionRef.current) {
@@ -297,8 +340,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               });
             };
             
-            source.connect(scriptProcessor);
-            scriptProcessor.connect(audioContextRef.current!.destination);
+            source.connect(workletNode);
+            // Simply let it process data without outputting to destination to prevent echoing and feedback loops
           },
           onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.outputTranscription) {
