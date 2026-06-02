@@ -272,7 +272,13 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
       
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const ai = new GoogleGenAI({ 
+        apiKey: API_KEY,
+        apiVersion: 'v1beta',
+        httpOptions: {
+          apiVersion: 'v1beta'
+        }
+      });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       microphoneStreamRef.current = stream;
@@ -392,7 +398,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               updateSessionStatus('idle');
             }
           },
-          onclose: () => {
+          onclose: (event?: any) => {
+            console.warn(`[LiveCoach] WebSocket connection closed - Code: ${event?.code || "none"}, Reason: ${event?.reason || "none"}`);
             setIsConnected(false);
             setIsConnecting(false);
             teardownAudio();
@@ -402,7 +409,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             
             if (sessionStatusRef.current === 'active') {
               updateSessionStatus('crashed');
-              setError("Live stream connection interrupted. Dialogue log saved safely.");
+              setError(`Live stream connection interrupted (Code: ${event?.code || "1006"}, Reason: ${event?.reason || "abnormal/unknown"}). Dialogue log saved safely.`);
             }
           },
         },
@@ -413,7 +420,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          systemInstruction: getSystemInstruction(selectedScenario),
+          systemInstruction: {
+            parts: [{ text: getSystemInstruction(selectedScenario) }]
+          },
         },
       });
 
