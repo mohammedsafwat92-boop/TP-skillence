@@ -54,6 +54,54 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
+  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
+  const microphoneStreamRef = useRef<MediaStream | null>(null);
+
+  const teardownAudio = () => {
+    console.log("[LiveCoach] Active stream node teardown initiated...");
+    
+    // 1. Disconnect the audioProcessor (ScriptProcessorNode) and set .onaudioprocess = null
+    if (scriptProcessorRef.current) {
+      try {
+        scriptProcessorRef.current.disconnect();
+      } catch (err) {
+        console.warn("[LiveCoach] Error disconnecting scriptProcessor:", err);
+      }
+      scriptProcessorRef.current.onaudioprocess = null;
+      scriptProcessorRef.current = null;
+    }
+
+    // 2. Iterate through microphoneStream.getTracks() and call .stop() on each track
+    if (microphoneStreamRef.current) {
+      try {
+        microphoneStreamRef.current.getTracks().forEach(track => {
+          track.stop();
+        });
+      } catch (err) {
+        console.warn("[LiveCoach] Error stopping media stream tracks:", err);
+      }
+      microphoneStreamRef.current = null;
+    }
+
+    // 3. Check the audioContext.state and call .close() if it is not already closed
+    if (audioContextRef.current) {
+      if (audioContextRef.current.state !== 'closed') {
+        audioContextRef.current.close().catch(err => {
+          console.warn("[LiveCoach] Error closing input audioContext:", err);
+        });
+      }
+      audioContextRef.current = null;
+    }
+
+    if (outAudioContextRef.current) {
+      if (outAudioContextRef.current.state !== 'closed') {
+        outAudioContextRef.current.close().catch(err => {
+          console.warn("[LiveCoach] Error closing output audioContext:", err);
+        });
+      }
+      outAudioContextRef.current = null;
+    }
+  };
 
   const fetchStudents = async () => {
     setIsLoadingStudents(true);
@@ -208,8 +256,24 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const ai = new GoogleGenAI({ apiKey: API_KEY });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      microphoneStreamRef.current = stream;
+
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      // WebSocket Gatekeeper logic mapping
+      const safeSendRealtimeInput = (session: any, pcmBlob: Blob) => {
+        const socket = session?.conn?.ws;
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+          console.warn("[LiveCoach] WebSocket is not open (readyState:", socket ? socket.readyState : "undefined", "). Suppressing audio chunk transmission.");
+          return;
+        }
+        try {
+          session.sendRealtimeInput({ audio: pcmBlob });
+        } catch (err) {
+          console.error("[LiveCoach] Error sending realtime audio input through session context:", err);
+        }
+      };
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-3.1-flash-live-preview',
@@ -220,6 +284,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             updateSessionStatus('active');
             const source = audioContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
+            scriptProcessorRef.current = scriptProcessor;
             
             scriptProcessor.onaudioprocess = (e) => {
               if (sessionStatusRef.current !== 'active') return;
@@ -227,7 +292,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(session => {
                 if (sessionRef.current) {
-                  session.sendRealtimeInput({ audio: pcmBlob });
+                  safeSendRealtimeInput(session, pcmBlob);
                 }
               });
             };
@@ -270,6 +335,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           onerror: (e) => {
             console.error("Live API Error", e);
+            teardownAudio();
             setError("Auditory feed terminated unexpectedly (Mic disconnected or network timeout).");
             setIsConnecting(false);
             setIsConnected(false);
@@ -286,6 +352,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           onclose: () => {
             setIsConnected(false);
             setIsConnecting(false);
+            teardownAudio();
             
             // Trigger emergency harvesting of transcription logs
             harvestAndSaveTranscriptDirectly(transcriptionRef.current);
@@ -323,8 +390,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         sessionRef.current.close();
       } catch (e) {}
     }
-    if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
-    if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
+    teardownAudio();
     sessionRef.current = null;
     setIsConnected(false);
 
@@ -406,9 +472,12 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
   useEffect(() => {
     return () => {
-      if (sessionRef.current) sessionRef.current.close();
-      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
-      if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
+      if (sessionRef.current) {
+        try {
+          sessionRef.current.close();
+        } catch (e) {}
+      }
+      teardownAudio();
     };
   }, [activeMode]);
 
