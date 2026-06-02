@@ -54,73 +54,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   const nextStartTimeRef = useRef<number>(0);
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const sessionRef = useRef<any>(null);
-  const scriptProcessorRef = useRef<ScriptProcessorNode | null>(null);
-  const audioWorkletNodeRef = useRef<AudioWorkletNode | null>(null);
-  const microphoneStreamRef = useRef<MediaStream | null>(null);
-
-  const teardownAudio = () => {
-    console.log("[LiveCoach] Active stream node teardown initiated...");
-    
-    // Clean up AudioWorkletNode
-    if (audioWorkletNodeRef.current) {
-      try {
-        audioWorkletNodeRef.current.disconnect();
-      } catch (err) {
-        console.warn("[LiveCoach] Error disconnecting audioWorkletNode:", err);
-      }
-      if (audioWorkletNodeRef.current.port) {
-        try {
-          audioWorkletNodeRef.current.port.close();
-        } catch (err) {
-          console.warn("[LiveCoach] Error closing audioWorkletNode port:", err);
-        }
-        audioWorkletNodeRef.current.port.onmessage = null;
-      }
-      audioWorkletNodeRef.current = null;
-    }
-
-    // Clean up ScriptProcessorNode
-    if (scriptProcessorRef.current) {
-      try {
-        scriptProcessorRef.current.disconnect();
-      } catch (err) {
-        console.warn("[LiveCoach] Error disconnecting scriptProcessor:", err);
-      }
-      scriptProcessorRef.current.onaudioprocess = null;
-      scriptProcessorRef.current = null;
-    }
-
-    // 2. Iterate through microphoneStream.getTracks() and call .stop() on each track
-    if (microphoneStreamRef.current) {
-      try {
-        microphoneStreamRef.current.getTracks().forEach(track => {
-          track.stop();
-        });
-      } catch (err) {
-        console.warn("[LiveCoach] Error stopping media stream tracks:", err);
-      }
-      microphoneStreamRef.current = null;
-    }
-
-    // 3. Check the audioContext.state and call .close() if it is not already closed
-    if (audioContextRef.current) {
-      if (audioContextRef.current.state !== 'closed') {
-        audioContextRef.current.close().catch(err => {
-          console.warn("[LiveCoach] Error closing input audioContext:", err);
-        });
-      }
-      audioContextRef.current = null;
-    }
-
-    if (outAudioContextRef.current) {
-      if (outAudioContextRef.current.state !== 'closed') {
-        outAudioContextRef.current.close().catch(err => {
-          console.warn("[LiveCoach] Error closing output audioContext:", err);
-        });
-      }
-      outAudioContextRef.current = null;
-    }
-  };
 
   const fetchStudents = async () => {
     setIsLoadingStudents(true);
@@ -272,55 +205,11 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
       
-      const ai = new GoogleGenAI({ 
-        apiKey: API_KEY,
-        apiVersion: 'v1beta',
-        httpOptions: {
-          apiVersion: 'v1beta'
-        }
-      });
+      const ai = new GoogleGenAI({ apiKey: API_KEY });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      microphoneStreamRef.current = stream;
-
-      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      audioContextRef.current = audioCtx;
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-
-      // Create inline AudioWorklet Blob
-      const workletCode = `
-        class PCMProcessor extends AudioWorkletProcessor {
-          process(inputs, outputs, parameters) {
-            const input = inputs[0];
-            if (input && input[0] && input[0].length > 0) {
-              const inputData = input[0];
-              // Post the Float32Array PCM chunk
-              this.port.postMessage(inputData);
-            }
-            return true;
-          }
-        }
-        registerProcessor('pcm-processor', PCMProcessor);
-      `;
-      const blob = new window.Blob([workletCode], { type: 'application/javascript' });
-      const workletUrl = URL.createObjectURL(blob);
-      
-      await audioCtx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
-
-      // WebSocket Gatekeeper logic mapping
-      const safeSendRealtimeInput = (session: any, pcmBlob: Blob) => {
-        const socket = session?.conn?.ws;
-        if (!socket || socket.readyState !== WebSocket.OPEN) {
-          console.warn("[LiveCoach] WebSocket is not open (readyState:", socket ? socket.readyState : "undefined", "). Suppressing audio chunk transmission.");
-          return;
-        }
-        try {
-          session.sendRealtimeInput({ audio: pcmBlob });
-        } catch (err) {
-          console.error("[LiveCoach] Error sending realtime audio input through session context:", err);
-        }
-      };
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-3.1-flash-live-preview',
@@ -329,25 +218,22 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             setIsConnected(true);
             setIsConnecting(false);
             updateSessionStatus('active');
-            
             const source = audioContextRef.current!.createMediaStreamSource(stream);
+            const scriptProcessor = audioContextRef.current!.createScriptProcessor(4096, 1, 1);
             
-            const workletNode = new AudioWorkletNode(audioContextRef.current!, 'pcm-processor');
-            audioWorkletNodeRef.current = workletNode;
-            
-            workletNode.port.onmessage = (event) => {
+            scriptProcessor.onaudioprocess = (e) => {
               if (sessionStatusRef.current !== 'active') return;
-              const inputData = event.data; // Float32Array from Worklet
+              const inputData = e.inputBuffer.getChannelData(0);
               const pcmBlob = createBlob(inputData);
               sessionPromise.then(session => {
                 if (sessionRef.current) {
-                  safeSendRealtimeInput(session, pcmBlob);
+                  session.sendRealtimeInput({ audio: pcmBlob });
                 }
               });
             };
             
-            source.connect(workletNode);
-            // Simply let it process data without outputting to destination to prevent echoing and feedback loops
+            source.connect(scriptProcessor);
+            scriptProcessor.connect(audioContextRef.current!.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.outputTranscription) {
@@ -384,7 +270,6 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           onerror: (e) => {
             console.error("Live API Error", e);
-            teardownAudio();
             setError("Auditory feed terminated unexpectedly (Mic disconnected or network timeout).");
             setIsConnecting(false);
             setIsConnected(false);
@@ -398,18 +283,16 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
               updateSessionStatus('idle');
             }
           },
-          onclose: (event?: any) => {
-            console.warn(`[LiveCoach] WebSocket connection closed - Code: ${event?.code || "none"}, Reason: ${event?.reason || "none"}`);
+          onclose: () => {
             setIsConnected(false);
             setIsConnecting(false);
-            teardownAudio();
             
             // Trigger emergency harvesting of transcription logs
             harvestAndSaveTranscriptDirectly(transcriptionRef.current);
             
             if (sessionStatusRef.current === 'active') {
               updateSessionStatus('crashed');
-              setError(`Live stream connection interrupted (Code: ${event?.code || "1006"}, Reason: ${event?.reason || "abnormal/unknown"}). Dialogue log saved safely.`);
+              setError("Live stream connection interrupted. Dialogue log saved safely.");
             }
           },
         },
@@ -420,9 +303,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          systemInstruction: {
-            parts: [{ text: getSystemInstruction(selectedScenario) }]
-          },
+          systemInstruction: getSystemInstruction(selectedScenario),
         },
       });
 
@@ -442,7 +323,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         sessionRef.current.close();
       } catch (e) {}
     }
-    teardownAudio();
+    if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+    if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
     sessionRef.current = null;
     setIsConnected(false);
 
@@ -524,12 +406,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
   useEffect(() => {
     return () => {
-      if (sessionRef.current) {
-        try {
-          sessionRef.current.close();
-        } catch (e) {}
-      }
-      teardownAudio();
+      if (sessionRef.current) sessionRef.current.close();
+      if (audioContextRef.current) audioContextRef.current.close().catch(() => {});
+      if (outAudioContextRef.current) outAudioContextRef.current.close().catch(() => {});
     };
   }, [activeMode]);
 
