@@ -222,12 +222,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
       
-      const proxyBaseUrl = `${window.location.protocol}//${window.location.host}/api/stream`;
       const ai = new GoogleGenAI({ 
         apiKey: API_KEY,
-        httpOptions: {
-          baseUrl: proxyBaseUrl
-        }
+        httpOptions: { apiVersion: 'v1beta' } 
       });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -252,7 +249,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const workletUrl = URL.createObjectURL(workletBlob);
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'models/gemini-2.0-flash-exp',
         callbacks: {
           onopen: async () => {
             setIsConnected(true);
@@ -355,7 +352,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           },
           outputAudioTranscription: {},
           inputAudioTranscription: {},
-          systemInstruction: getSystemInstruction(selectedScenario),
+          systemInstruction: { parts: [{ text: getSystemInstruction(selectedScenario) }] },
         },
       });
 
