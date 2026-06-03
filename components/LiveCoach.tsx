@@ -222,7 +222,13 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       if (!API_KEY) console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
       
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const proxyBaseUrl = `${window.location.protocol}//${window.location.host}/api/stream`;
+      const ai = new GoogleGenAI({ 
+        apiKey: API_KEY,
+        httpOptions: {
+          baseUrl: proxyBaseUrl
+        }
+      });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });

@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/api/stream(.*)", "destination": "/api/stream.ts" },
     { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
