@@ -146,26 +146,175 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     };
   };
 
-  const getSystemInstruction = (scenario: 'billing' | 'tech_support' | 'retention' | 'general') => {
-    switch (scenario) {
-      case 'billing':
-        return `You are simulating a customer named Madison who is highly irate because they were double-charged on their card this month.
-        Temperament: Highly impatient, demanding, interrupts the agent, skeptical of automated processes.
-        Goal: The agent must de-escalate the complaint using clear empathy statements, verify the account details professionally, issue immediate credit/refund options, and close with a structured save statement.
-        Language Requirements: Evaluate grammar and tone. Correct conversational syntax directly. Initiate conversation with: "This is ridiculous, why was I double-charged this month?!"`;
-      case 'tech_support':
-        return `You are simulating an anxious customer named Marcus who has lost access credentials for their enterprise account.
-        Temperament: Frustrated, technically illiterate, worried about missing critical business meetings.
-        Goal: The agent must de-escalate anxiety by providing reassuring, step-by-step guidance, avoid confusing developer vocabulary, and clearly direct Marcus through resetting their security tokens.
-        Language Requirements: Check for clear phrasing, active verbs, and pacing suitable for beginners. Initiate with: "Hi, I'm completely locked out of my corporate login and I've got a client meeting in ten minutes! Please help!"`;
-      case 'retention':
-        return `You are simulating an assertive client named Arthur who wants to cancel because of competitor features and prices.
-        Temperament: Professional, demanding, highly rational, comparing dollar-to-dollar values.
-        Goal: The agent must validate Arthur's loyalty, identify core customized feature advantages, present promotional retention tier upgrades, and use persuasive saves.
-        Language Requirements: Check for professional corporate voice and persuasive vocabulary. Initiate with: "Hello, I'm calling to cancel my subscription. I've found a cheaper alternative that has similar configurations."`;
-      default:
-        return `You are an expert Professional English Language Coach. 
-        Simulate a realistic corporate support roleplay. Provide direct oral and textual feedback with CEFR grade notations in conversational turn-takings.`;
+  const startSession = async () => {
+    if (activeMode !== 'ai') return;
+    setIsConnecting(true);
+    setEvaluationReport(null);
+    setError(null);
+    setTranscription([]);
+    transcriptionRef.current = [];
+    lastSavedLengthRef.current = 0;
+    updateSessionStatus('connecting');
+
+    try {
+      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      
+      // Safeguard: Check if environment variable failed to load on Vercel
+      if (!API_KEY) {
+        console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
+        setError("Missing API Key. Ensure VITE_GEMINI_API_KEY is added to your Vercel Environment Variables.");
+        setIsConnecting(false);
+        updateSessionStatus('idle');
+        return;
+      }
+      
+      // Clean initialization targeting the default streaming-supported tier
+      const ai = new GoogleGenAI({ 
+        apiKey: API_KEY
+      });
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+
+      // Inline AudioWorklet processor Blob Url definition
+      const workletCode = `
+        class AudioProcessor extends AudioWorkletProcessor {
+          process(inputs, outputs, parameters) {
+            const input = inputs[0];
+            if (input && input.length > 0) {
+              const channelData = input[0];
+              this.port.postMessage(channelData);
+            }
+            return true;
+          }
+        }
+        registerProcessor('audio-processor', AudioProcessor);
+      `;
+      const workletBlob = new globalThis.Blob([workletCode], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(workletBlob);
+
+      const sessionPromise = ai.live.connect({
+        // FIX: Remove 'models/' prefix to prevent URL path doubling in standalone mode
+        model: 'gemini-2.0-flash-exp', 
+        callbacks: {
+          onopen: async () => {
+            setIsConnected(true);
+            setIsConnecting(false);
+            updateSessionStatus('active');
+            
+            const source = audioContextRef.current!.createMediaStreamSource(stream);
+            
+            try {
+              await audioContextRef.current!.audioWorklet.addModule(workletUrl);
+              const workletNode = new AudioWorkletNode(audioContextRef.current!, 'audio-processor');
+              workletNodeRef.current = workletNode;
+
+              workletNode.port.onmessage = (e) => {
+                if (sessionStatusRef.current !== 'active') return;
+                const inputData = e.data;
+                const pcmBlob = createBlob(inputData);
+                
+                sessionPromise.then(session => {
+                  // FIX: Wrap inside a precise try/catch structure to insulate the microtask queue from closed sockets
+                  if (sessionRef.current && sessionStatusRef.current === 'active') {
+                    try {
+                      session.sendRealtimeInput({ audio: pcmBlob });
+                    } catch (sendErr) {
+                      console.warn("[LiveCoach] Suppressed audio chunk chunk-write to closing/closed socket.");
+                    }
+                  }
+                }).catch(err => {
+                  console.error("[LiveCoach] Microtask session unresolved:", err);
+                });
+              };
+
+              source.connect(workletNode);
+              workletNode.connect(audioContextRef.current!.destination);
+              
+              URL.revokeObjectURL(workletUrl);
+            } catch (err) {
+              console.error("AudioWorklet initialization failed", err);
+            }
+          },
+          onmessage: async (message: LiveServerMessage) => {
+            if (message.serverContent?.outputTranscription) {
+              const text = message.serverContent.outputTranscription.text;
+              addTranscriptionLine(`Coach: ${text}`);
+            } else if (message.serverContent?.inputTranscription) {
+              const text = message.serverContent.inputTranscription.text;
+              addTranscriptionLine(`You: ${text}`);
+            }
+
+            const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
+            if (base64Audio && sessionStatusRef.current === 'active') {
+              setIsSpeaking(true);
+              const ctx = outAudioContextRef.current!;
+              nextStartTimeRef.current = Math.max(nextStartTimeRef.current, ctx.currentTime);
+              const buffer = await decodeAudioData(decodeBase64(base64Audio), ctx);
+              const source = ctx.createBufferSource();
+              source.buffer = buffer;
+              source.connect(ctx.destination);
+              source.addEventListener('ended', () => {
+                sourcesRef.current.delete(source);
+                if (sourcesRef.current.size === 0) setIsSpeaking(false);
+              });
+              source.start(nextStartTimeRef.current);
+              nextStartTimeRef.current += buffer.duration;
+              sourcesRef.current.add(source);
+            }
+
+            if (message.serverContent?.interrupted) {
+              sourcesRef.current.forEach(s => s.stop());
+              sourcesRef.current.clear();
+              nextStartTimeRef.current = 0;
+            }
+          },
+          onerror: (e) => {
+            console.error("Live API Error", e);
+            setError("Auditory feed terminated unexpectedly (Mic disconnected or network timeout).");
+            setIsConnecting(false);
+            setIsConnected(false);
+            cleanupAudioWorklet();
+            
+            harvestAndSaveTranscriptDirectly(transcriptionRef.current);
+            
+            if (transcriptionRef.current.length > 0) {
+              updateSessionStatus('crashed');
+            } else {
+              updateSessionStatus('idle');
+            }
+          },
+          onclose: () => {
+            setIsConnected(false);
+            setIsConnecting(false);
+            cleanupAudioWorklet();
+            
+            harvestAndSaveTranscriptDirectly(transcriptionRef.current);
+            
+            if (sessionStatusRef.current === 'active') {
+              updateSessionStatus('crashed');
+              setError("Live stream connection interrupted. Dialogue log saved safely.");
+            }
+          },
+        },
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Kore' } },
+          },
+          outputAudioTranscription: {},
+          inputAudioTranscription: {},
+          systemInstruction: { parts: [{ text: getSystemInstruction(selectedScenario) }] },
+        },
+      });
+
+      sessionRef.current = await sessionPromise;
+    } catch (err) {
+      console.error(err);
+      setError("Mic access denied or API configuration error.");
+      setIsConnecting(false);
+      updateSessionStatus('idle');
     }
   };
 
