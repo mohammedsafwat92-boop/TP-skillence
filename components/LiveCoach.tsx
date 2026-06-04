@@ -277,12 +277,11 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
                 const pcmBlob = createBlob(inputData);
                 
                 sessionPromise.then(session => {
-                  // FIX: Wrap inside a precise try/catch structure to insulate the microtask queue from closed sockets
-                  if (sessionRef.current && sessionStatusRef.current === 'active') {
+                  if (session && sessionStatusRef.current === 'active') {
                     try {
                       session.sendRealtimeInput({ audio: pcmBlob });
                     } catch (sendErr) {
-                      console.warn("[LiveCoach] Suppressed audio chunk chunk-write to closing/closed socket.");
+                      console.warn("[LiveCoach] Audio transmission prevented: Socket is already closing or closed.");
                     }
                   }
                 }).catch(err => {
