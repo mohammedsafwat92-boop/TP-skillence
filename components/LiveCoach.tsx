@@ -224,7 +224,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       
       const ai = new GoogleGenAI({ 
         apiKey: API_KEY,
-        httpOptions: { apiVersion: 'v1beta' } 
+        apiVersion: 'v1beta'
       });
       
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -249,7 +249,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const workletUrl = URL.createObjectURL(workletBlob);
 
       const sessionPromise = ai.live.connect({
-        model: 'models/gemini-2.0-flash-exp',
+        model: 'gemini-3.1-flash-live-preview',
         callbacks: {
           onopen: async () => {
             setIsConnected(true);
