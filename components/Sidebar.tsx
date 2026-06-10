@@ -65,9 +65,22 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
           )}
 
           {isCoach && (
-            <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
-               <AdminIcon className="w-5 h-5" />
-               <span className="ml-3 font-bold">Coach Hub</span>
+            <>
+              <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
+                 <AdminIcon className="w-5 h-5" />
+                 <span className="ml-3 font-bold">Coach Hub</span>
+              </NavItem>
+              <NavItem view={{ type: 'live-ai-coach' }} currentView={currentView} onNavigate={onNavigate}>
+                <PhoneIcon className="w-5 h-5" />
+                <span className="ml-3">Live AI Coach</span>
+              </NavItem>
+            </>
+          )}
+
+          {currentUser?.role === 'agent' && (
+            <NavItem view={{ type: 'live-ai-coach' }} currentView={currentView} onNavigate={onNavigate}>
+              <PhoneIcon className="w-5 h-5" />
+              <span className="ml-3">Live AI Coach</span>
             </NavItem>
           )}
         </ul>

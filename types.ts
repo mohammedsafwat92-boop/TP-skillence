@@ -71,6 +71,8 @@ export interface UserProfile {
   overallProgress?: number;
   weeklyProgress?: number;
   wave?: string;
+  assignedScenarioId?: string;
+  waveNumber?: string;
 }
 
 export interface Roster {

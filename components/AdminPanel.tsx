@@ -4,6 +4,7 @@ import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
+import QuickAddAgent from './admin/QuickAddAgent';
 import { MetricsDrillDown } from './admin/MetricsDrillDown';
 import { 
   Users, 
@@ -705,7 +706,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       )}
 
       {activeTab === 'onboarding' && (
-        <UserUploader currentUser={currentUser} onUserCreated={fetchUsers} />
+        <div className="space-y-6">
+          <QuickAddAgent onAgentAdded={fetchUsers} />
+          <div className="relative flex py-5 items-center max-w-4xl mx-auto">
+            <div className="flex-grow border-t border-white/10"></div>
+            <span className="flex-shrink mx-4 text-xs font-black uppercase text-white/40 tracking-widest">or batch ingest pdf reports</span>
+            <div className="flex-grow border-t border-white/10"></div>
+          </div>
+          <UserUploader currentUser={currentUser} onUserCreated={fetchUsers} />
+        </div>
       )}
 
       {activeTab === 'content' && <ResourceUploader onUploadComplete={onUpdateContent} />}

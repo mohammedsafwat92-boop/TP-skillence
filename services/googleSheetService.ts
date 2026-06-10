@@ -178,5 +178,15 @@ export const googleSheetService = {
     callApi('proxy_gemini', { model, payload }),
 
   proxyGeminiRequest: (payload: any): Promise<any> =>
-    callApi('proxy_gemini_request', { payload })
+    callApi('proxy_gemini_request', { payload }),
+
+  addSingleUser: async (userData: { name: string; email: string; waveNumber: string; role: 'agent' }): Promise<boolean> => {
+    try {
+      await callApi('addSingleUser', userData);
+      return true;
+    } catch (e) {
+      console.error("[googleSheetService] addSingleUser failed:", e);
+      return false;
+    }
+  }
 };

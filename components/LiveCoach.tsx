@@ -6,25 +6,68 @@ import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
 import { googleSheetService } from '../services/googleSheetService';
 import type { UserProfile } from '../types';
 
+export interface RoleplayScenario {
+  id: string;
+  category: string;
+  subTopic: string;
+  description: string;
+  tone: string;
+  skillTested: string;
+  expectedApproach: string;
+  difficulty: 'Basic' | 'Moderate' | 'Advanced';
+}
+
+const ETIHAD_ROLEPLAY_BANK: RoleplayScenario[] = [
+  { id: 'NB001', category: 'New Booking', subTopic: 'First-Time Traveler', description: 'Guest never booked a flight before and is unfamiliar with timelines, rules, or terminology.', tone: 'Curious, unsure', skillTested: 'Education, patience', expectedApproach: 'Use simple language, avoid industry jargon, verify understanding step-by-step.', difficulty: 'Basic' },
+  { id: 'NC001', category: 'Name Correction', subTopic: 'Minor Name Spelling Update', description: 'Minor spelling correction request (one character difference) during a high-pressure rush context.', tone: 'Fast-speaking guest with unclear accent', skillTested: 'Active listening, double-confirmation', expectedApproach: 'Slow down the interaction pace, repeat spellings explicitly using the phonetic alphabet.', difficulty: 'Basic' },
+  { id: 'FC003', category: 'Flight Change Requests', subTopic: 'Fare Difference Explanation', description: 'Passenger is shocked and combative regarding a large fare difference calculation for an involuntary shift.', tone: 'Indirect complaints, resistant', skillTested: 'Empathy, explanation of complex fare rules', expectedApproach: 'Acknowledge the financial concern clearly, break down the pricing components transparently without becoming defensive.', difficulty: 'Moderate' },
+  { id: 'TA003', category: 'Travel Agency Related', subTopic: 'Agency vs Airline Responsibility Clarification', description: 'Third-party agency mismanaged the flight segments and is actively blaming airline systems to the passenger.', tone: 'Guest mixes multiple administrative issues', skillTested: 'Prioritization, controlling the call flow structure', expectedApproach: 'Separate third-party responsibilities clearly from airline control lines, address concerns systematically.', difficulty: 'Advanced' },
+  { id: 'AS008', category: 'Ancillary Services', subTopic: 'Bassinet Availability Limitation', description: 'The requested aircraft bassinet positions are fully booked; parent is highly anxious and emotional about a long-haul itinerary.', tone: 'Passenger mixing intense emotional appeal with logic', skillTested: 'Deep empathy, alternative reassurance tracking', expectedApproach: 'Validate the emotional stress of traveling with an infant, pivot immediately to seat buffering or alternative cabin options.', difficulty: 'Moderate' }
+];
+
 interface LiveCoachProps {
   onClose: () => void;
   currentUser: UserProfile;
   onImpersonate: (user: UserProfile) => void;
-  initialScenario?: 'billing' | 'tech_support' | 'retention' | 'general';
+  initialScenario?: string;
 }
 
 const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate, initialScenario }) => {
-  // Hard Failsafe: Only Coaches or Admins can access this management view
-  if (currentUser.role !== 'coach' && currentUser.role !== 'admin') return null;
+  // Hard Failsafe: Only Coaches, Admins, or Agents can access this view
+  if (currentUser.role !== 'coach' && currentUser.role !== 'admin' && currentUser.role !== 'agent') return null;
 
-  const [activeMode, setActiveMode] = useState<'ai' | 'directory'>('directory');
+  const [activeMode, setActiveMode] = useState<'ai' | 'directory'>(currentUser.role === 'agent' ? 'ai' : 'directory');
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [transcription, setTranscription] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [students, setStudents] = useState<UserProfile[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
-  const [selectedScenario, setSelectedScenario] = useState<'billing' | 'tech_support' | 'retention' | 'general'>(initialScenario || 'billing');
+  
+  // Custom states for Etihad Roleplay Bank selection
+  const [selectedScenario, setSelectedScenario] = useState<RoleplayScenario>(() => {
+    if (initialScenario) {
+      const match = ETIHAD_ROLEPLAY_BANK.find(s => s.id === initialScenario);
+      if (match) return match;
+    }
+    return ETIHAD_ROLEPLAY_BANK[0];
+  });
+  
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
+  const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All');
+
+  // Agent Auto-Binding Mission Brief check
+  useEffect(() => {
+    if (currentUser.role === 'agent') {
+      const targetId = currentUser.assignedScenarioId || 'NB001';
+      const assigned = ETIHAD_ROLEPLAY_BANK.find(s => s.id === targetId);
+      if (assigned) {
+        setSelectedScenario(assigned);
+      }
+    }
+  }, [currentUser]);
+
   const [evaluationReport, setEvaluationReport] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -146,27 +189,18 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     };
   };
 
-  const getSystemInstruction = (scenario: 'billing' | 'tech_support' | 'retention' | 'general') => {
-    switch (scenario) {
-      case 'billing':
-        return `You are simulating a customer named Madison who is highly irate because they were double-charged on their card this month.
-        Temperament: Highly impatient, demanding, interrupts the agent, skeptical of automated processes.
-        Goal: The agent must de-escalate the complaint using clear empathy statements, verify the account details professionally, issue immediate credit/refund options, and close with a structured save statement.
-        Language Requirements: Evaluate grammar and tone. Correct conversational syntax directly. Initiate conversation with: "This is ridiculous, why was I double-charged this month?!"`;
-      case 'tech_support':
-        return `You are simulating an anxious customer named Marcus who has lost access credentials for their enterprise account.
-        Temperament: Frustrated, technically illiterate, worried about missing critical business meetings.
-        Goal: The agent must de-escalate anxiety by providing reassuring, step-by-step guidance, avoid confusing developer vocabulary, and clearly direct Marcus through resetting their security tokens.
-        Language Requirements: Check for clear phrasing, active verbs, and pacing suitable for beginners. Initiate with: "Hi, I'm completely locked out of my corporate login and I've got a client meeting in ten minutes! Please help!"`;
-      case 'retention':
-        return `You are simulating an assertive client named Arthur who wants to cancel because of competitor features and prices.
-        Temperament: Professional, demanding, highly rational, comparing dollar-to-dollar values.
-        Goal: The agent must validate Arthur's loyalty, identify core customized feature advantages, present promotional retention tier upgrades, and use persuasive saves.
-        Language Requirements: Check for professional corporate voice and persuasive vocabulary. Initiate with: "Hello, I'm calling to cancel my subscription. I've found a cheaper alternative that has similar configurations."`;
-      default:
-        return `You are an expert Professional English Language Coach. 
-        Simulate a realistic corporate support roleplay. Provide direct oral and textual feedback with CEFR grade notations in conversational turn-takings.`;
-    }
+  const getSystemInstruction = (scenario: RoleplayScenario) => {
+    return `You are simulating an airline guest in an aviation support interaction.
+    Category: ${scenario.category}
+    Sub-Topic/Issue: ${scenario.subTopic}
+    Description of the situation: ${scenario.description}
+    Customer's Temperament/Tone: ${scenario.tone}
+    Expected Agent Skill / Approach to test: ${scenario.skillTested}
+    Expected approach: ${scenario.expectedApproach}
+    Difficulty level: ${scenario.difficulty}
+
+    Your goal: Dynamic, high-fidelity customer simulation.
+    Wait for the agent to initialize contact, then react naturally matching the passenger tone, mixing emotional/logical cues. Maintain character seamlessly. Do not break role.`;
   };
 
   const harvestAndSaveTranscriptDirectly = async (currentTranscription: string[]) => {
@@ -197,7 +231,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
     try {
       await googleSheetService.saveTranscript(currentUser.id, {
-        topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
+        topic: `Live Roleplay: ${selectedScenario.category} (${selectedScenario.subTopic})`,
         duration: 'Live Audio Session',
         overallScore: 'Saved',
         messages: structuredMessages
@@ -453,7 +487,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
       // Save the captured conversation log securely to the spreadsheet database with proper overallScore
       await googleSheetService.saveTranscript(currentUser.id, {
-        topic: `Live Roleplay: ${selectedScenario.replace('_', ' ').toUpperCase()}`,
+        topic: `Live Roleplay: ${selectedScenario.category} (${selectedScenario.subTopic})`,
         duration: 'Live Audio Session',
         overallScore: parsedScore,
         messages: structuredMessages
@@ -563,50 +597,195 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             </div>
           </div>
         ) : (
-          <div className="w-full max-w-2xl bg-white/5 backdrop-blur-xl border border-white/10 rounded-[48px] p-8 md:p-10 shadow-2xl flex flex-col items-center">
+          <div className={`w-full ${sessionStatus === 'idle' && currentUser.role !== 'agent' ? 'max-w-4xl' : 'max-w-2xl'} bg-white/5 backdrop-blur-xl border border-white/10 rounded-[48px] p-8 md:p-10 shadow-2xl flex flex-col items-center`}>
             
             {/* STATE 1: SETUP/IDLE */}
             {sessionStatus === 'idle' && (
-              <div className="w-full flex flex-col items-center text-center space-y-6">
-                <div className="w-20 h-20 bg-white/10 rounded-3xl flex items-center justify-center border border-white/5 shadow-inner">
-                  <BrainIcon className="w-10 h-10 text-white" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-black uppercase text-tp-red tracking-[0.3em]">AI Sandbox</span>
-                  <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Client Simulation Setup</h3>
-                  <p className="text-xs text-white/50 max-w-sm mx-auto font-medium leading-relaxed mt-2">
-                    Configure your digital client target scenario and de-escalation stress metric to start the auditory roleplay session.
-                  </p>
-                </div>
-
-                <div className="w-full space-y-4 pt-4 text-left">
-                  <div className="space-y-1.5">
-                    <label className="text-[9px] font-black uppercase text-white/60 tracking-widest pl-1">Target Persona Scenario</label>
-                    <select 
-                      value={selectedScenario}
-                      onChange={(e) => setSelectedScenario(e.target.value as any)}
-                      className="w-full bg-tp-navy text-white text-white/90 border border-white/10 font-bold text-xs uppercase tracking-widest px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-tp-red shadow-xl cursor-pointer"
-                    >
-                      <option value="billing">Madison — Double-Charge Dispute (Irate Customer)</option>
-                      <option value="tech_support">Marcus — Lost Security Tokens (Anxious Customer)</option>
-                      <option value="retention">Arthur — Competitor Exit Saving (Assertive Customer)</option>
-                    </select>
+              currentUser.role === 'agent' ? (
+                /* AGENT VIEW: LOCKED GUIDED MISSION */
+                <div className="w-full flex flex-col items-center text-center space-y-6">
+                  <div className="w-20 h-20 bg-tp-red/10 rounded-3xl flex items-center justify-center border border-tp-red/20 shadow-inner">
+                    <BrainIcon className="w-10 h-10 text-tp-red" />
                   </div>
-                </div>
-
-                {error && (
-                  <div className="bg-tp-red/10 border border-tp-red/30 p-4 rounded-2xl w-full text-left">
-                    <p className="text-tp-red font-bold text-[11px] uppercase tracking-wider">{error}</p>
+                  
+                  <div>
+                    <span className="text-[10px] font-black uppercase text-tp-red tracking-[0.3em]">Assigned Training Mission</span>
+                    <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Guided Simulation Brief</h3>
                   </div>
-                )}
 
-                <button 
-                  onClick={startSession}
-                  className="w-full bg-tp-red text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-white hover:text-tp-purple transition-all inline-flex items-center justify-center gap-3 active:scale-95 mt-6"
-                >
-                  <SpeakingIcon className="w-4 h-4" /> Connect Digital Client
-                </button>
-              </div>
+                  <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-left space-y-4 shadow-xl">
+                    <div className="flex justify-between items-center pb-3 border-b border-white/10">
+                      <div>
+                        <span className="text-[10px] uppercase font-black text-white/40 tracking-wider">Mission Segment</span>
+                        <p className="text-white font-black text-base uppercase tracking-tight mt-0.5">{selectedScenario.category}</p>
+                      </div>
+                      <span className={`text-[10px] font-black uppercase px-3 py-1 rounded-full ${
+                        selectedScenario.difficulty === 'Basic' ? 'bg-green-500/10 text-green-400' :
+                        selectedScenario.difficulty === 'Moderate' ? 'bg-yellow-500/10 text-yellow-500' :
+                        'bg-red-500/10 text-red-400'
+                      }`}>
+                        {selectedScenario.difficulty} Difficulty
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-white/40 tracking-wider">Subject Issue / Challenge</span>
+                      <p className="text-white font-bold text-sm mt-0.5">{selectedScenario.subTopic}</p>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-white/40 tracking-wider">Briefing Description</span>
+                      <p className="text-white/80 text-xs font-semibold leading-relaxed mt-1">{selectedScenario.description}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                        <span className="text-[9px] uppercase font-black text-yellow-500 tracking-wider block">Passenger Temperament</span>
+                        <p className="text-white font-bold text-xs mt-0.5">{selectedScenario.tone}</p>
+                      </div>
+                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                        <span className="text-[9px] uppercase font-black text-green-400 tracking-wider block">Metric Skill Checked</span>
+                        <p className="text-white font-bold text-xs mt-0.5">{selectedScenario.skillTested}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-tp-red/10 border border-tp-red/30 p-4 rounded-2xl w-full text-left">
+                      <p className="text-tp-red font-bold text-[11px] uppercase tracking-wider">{error}</p>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={startSession}
+                    className="w-full bg-tp-red text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-white hover:text-tp-purple transition-all inline-flex items-center justify-center gap-3 active:scale-95"
+                  >
+                    <SpeakingIcon className="w-4 h-4" /> Start Live Simulation
+                  </button>
+                </div>
+              ) : (
+                /* ADMIN/COACH VIEW: FULL SANDBOX DASHBOARD */
+                <div className="w-full flex flex-col items-center space-y-6">
+                  <div className="w-full flex flex-col md:flex-row justify-between items-center gap-4">
+                    <div className="text-left">
+                      <span className="text-[10px] font-black uppercase text-tp-red tracking-[0.3em]">Simulation Sandbox</span>
+                      <h3 className="text-2xl font-black uppercase tracking-tight text-white mt-1">Roleplay Bank Directory</h3>
+                    </div>
+
+                    {/* Integrated Search & Category & Difficulty Filter UI */}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Search topics..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:ring-1 focus:ring-tp-red font-semibold placeholder-white/30"
+                      />
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => setSelectedCategory(e.target.value)}
+                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-[10px] text-white font-black uppercase tracking-wider cursor-pointer outline-none focus:ring-1 focus:ring-tp-red"
+                      >
+                        <option value="All">All Categories</option>
+                        {Array.from(new Set(ETIHAD_ROLEPLAY_BANK.map(s => s.category))).map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={selectedDifficulty}
+                        onChange={(e) => setSelectedDifficulty(e.target.value)}
+                        className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-[10px] text-white font-black uppercase tracking-wider cursor-pointer outline-none focus:ring-1 focus:ring-tp-red"
+                      >
+                        <option value="All">All Difficulties</option>
+                        <option value="Basic">Basic</option>
+                        <option value="Moderate">Moderate</option>
+                        <option value="Advanced">Advanced</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Scenario Grid Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full max-h-[220px] overflow-y-auto pr-2 custom-scrollbar">
+                    {ETIHAD_ROLEPLAY_BANK.filter(sc => {
+                      const matchesSearch = sc.subTopic.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                            sc.category.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                                            sc.description.toLowerCase().includes(searchTerm.toLowerCase());
+                      const matchesCategory = selectedCategory === 'All' || sc.category === selectedCategory;
+                      const matchesDifficulty = selectedDifficulty === 'All' || sc.difficulty === selectedDifficulty;
+                      return matchesSearch && matchesCategory && matchesDifficulty;
+                    }).map((sc) => {
+                      const isSelected = selectedScenario.id === sc.id;
+                      return (
+                        <div 
+                          key={sc.id}
+                          onClick={() => setSelectedScenario(sc)}
+                          className={`cursor-pointer text-left p-5 rounded-3xl border transition-all ${
+                            isSelected 
+                              ? 'bg-tp-red/15 border-tp-red shadow-[0_0_20px_rgba(226,0,26,0.15)]' 
+                              : 'bg-white/5 border-white/10 hover:bg-white/10'
+                          }`}
+                        >
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[9px] font-black uppercase text-tp-red tracking-wider bg-tp-red/10 px-2.5 py-1 rounded">
+                              {sc.id}
+                            </span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded ${
+                              sc.difficulty === 'Basic' ? 'bg-green-500/10 text-green-400' :
+                              sc.difficulty === 'Moderate' ? 'bg-yellow-500/10 text-yellow-500' :
+                              'bg-red-500/10 text-red-400'
+                            }`}>
+                              {sc.difficulty}
+                            </span>
+                          </div>
+                          <h4 className="text-white font-bold text-sm leading-tight">{sc.category}</h4>
+                          <p className="text-white/80 font-semibold text-xs mt-0.5">{sc.subTopic}</p>
+                          <p className="text-white/40 text-xs line-clamp-2 mt-2 leading-relaxed font-semibold">{sc.description}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Single Selected Summary View details */}
+                  <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 text-left space-y-4 font-semibold text-xs">
+                    <div className="flex justify-between items-center pb-3 border-b border-white/10">
+                      <div>
+                        <span className="text-[10px] uppercase font-black text-white/40 tracking-wider">Mission Target Brief</span>
+                        <p className="text-white font-black text-base uppercase mt-0.5">{selectedScenario.category} ({selectedScenario.subTopic})</p>
+                      </div>
+                      <span className="text-sm font-black text-tp-red uppercase">{selectedScenario.id}</span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase font-black text-white/40 tracking-wider">Briefing Description</span>
+                      <p className="text-white/80 text-xs font-semibold leading-relaxed mt-1">{selectedScenario.description}</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                        <span className="text-[9px] uppercase font-black text-yellow-500 tracking-wider block">Guest Tone / Temperament</span>
+                        <p className="text-white font-bold text-xs mt-0.5">{selectedScenario.tone}</p>
+                      </div>
+                      <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                        <span className="text-[9px] uppercase font-black text-green-400 tracking-wider block">Metric Skill Checked</span>
+                        <p className="text-white font-bold text-xs mt-0.5">{selectedScenario.skillTested}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {error && (
+                    <div className="bg-tp-red/10 border border-tp-red/30 p-4 rounded-2xl w-full text-left">
+                      <p className="text-tp-red font-bold text-[11px] uppercase tracking-wider">{error}</p>
+                    </div>
+                  )}
+
+                  <button 
+                    onClick={startSession}
+                    className="w-full bg-tp-red text-white py-5 rounded-2xl font-black uppercase text-xs tracking-[0.2em] shadow-xl hover:bg-white hover:text-tp-purple transition-all inline-flex items-center justify-center gap-3 active:scale-95"
+                  >
+                    <SpeakingIcon className="w-4 h-4" /> Connect Digital Client
+                  </button>
+                </div>
+              )
             )}
 
             {/* STATE 2: CONNECTING */}

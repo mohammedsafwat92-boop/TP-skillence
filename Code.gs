@@ -65,6 +65,9 @@ function doPost(e) {
     } else if (action === 'proxy_gemini_request') {
       res.data = proxyGeminiRequest(json.payload);
       res.success = true;
+    } else if (action === 'addSingleUser') {
+      res.data = addSingleUser(ss, json);
+      res.success = true;
     }
 
   } catch (err) {
@@ -648,4 +651,53 @@ function assignToWeek(ss, weekNumber, resourceIds, adminId) {
 
 function sendResponse(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function addSingleUser(ss, data) {
+  var sheet = ss.getSheetByName('Users') || ss.insertSheet('Users');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['UID', 'Name', 'Email', 'Role', 'Password', 'AssignedCoach', 'CEFRLevel', 'WaveNumber', 'SHLData', 'PerformanceData']);
+  }
+  
+  var sheetData = sheet.getDataRange().getValues();
+  var headers = sheetData[0];
+  var mapping = {};
+  for (var i = 0; i < headers.length; i++) {
+    mapping[headers[i].toString().trim()] = i;
+  }
+  
+  // Create a default row of empty cells with correct length
+  var newRow = [];
+  for (var i = 0; i < headers.length; i++) {
+    newRow.push('');
+  }
+  
+  // Generate random pass/code like '1234'
+  var randomPass = Math.floor(1000 + Math.random() * 9000).toString();
+  var newUid = 'u-' + Date.now();
+  
+  var setInMapping = function(possibleHeaders, val) {
+    for (var i = 0; i < possibleHeaders.length; i++) {
+      var h = possibleHeaders[i];
+      if (mapping[h] !== undefined) {
+        newRow[mapping[h]] = val;
+        return;
+      }
+    }
+  };
+  
+  setInMapping(['UID', 'id', 'ID'], newUid);
+  setInMapping(['Name', 'name'], data.name || '');
+  setInMapping(['Email', 'email'], data.email || '');
+  setInMapping(['Role', 'role'], data.role || 'agent');
+  setInMapping(['Password', 'password', 'AccessCode'], randomPass);
+  setInMapping(['AssignedCoach', 'assignedCoach'], 'Unassigned');
+  setInMapping(['CEFRLevel', 'LanguageLevel', 'languageLevel'], 'B1');
+  setInMapping(['WaveNumber', 'Wave', 'waveNumber', 'wave'], data.waveNumber || '');
+  setInMapping(['SHLData'], '{}');
+  setInMapping(['PerformanceData'], '{}');
+  
+  sheet.appendRow(newRow);
+  SpreadsheetApp.flush();
+  return { id: newUid, name: data.name, email: data.email };
 }

@@ -176,7 +176,7 @@ const App: React.FC = () => {
     }
 
     if (view.type === 'live-ai-coach') {
-      if (currentUser.role !== 'admin') {
+      if (currentUser.role !== 'admin' && currentUser.role !== 'coach' && currentUser.role !== 'agent') {
         setTimeout(() => setView({ type: 'dashboard' }), 0);
         return null;
       }
