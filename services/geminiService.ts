@@ -279,19 +279,15 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: ANTI-CHATTER PROMPT LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: FLATTENED PAYLOAD LOADED!");
     try {
       const randomSeed = `${Date.now()}-${Math.random()}`;
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
 
+      // Provide the system instruction as a simple string - the proxy in Code.gs will format it correctly
       const payload = {
-        // Use systemInstruction to force the persona at the highest system level
-        systemInstruction: {
-          parts: [{
-            text: "You are a headless JSON API. You do not converse. You do not use a scratchpad. You do not think out loud. You respond ONLY with a raw JSON array. No markdown formatting. Start your response immediately with '[' and end with ']'."
-          }]
-        },
+        systemInstruction: "You are a headless JSON API. You do not converse. You do not use a scratchpad. You do not think out loud. You respond ONLY with a raw JSON array. No markdown formatting.",
         contents: [{
           role: "user",
           parts: [{
