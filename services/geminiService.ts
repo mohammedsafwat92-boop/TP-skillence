@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'CONTAINMENT PROTOCOL' + 8192 TOKENS LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'ABSOLUTE BRACKET' EXTRACTOR LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -319,8 +319,8 @@ Analyzing content... drafting questions... checking difficulty...
           }]
         }],
         generationConfig: {
-          temperature: 0.4, // Optimal for Gemma reasoning + formatting
-          maxOutputTokens: 8192 // Massive runway so it never gets cut off
+          temperature: 0.4,
+          maxOutputTokens: 8192
         }
       };
 
@@ -336,26 +336,24 @@ Analyzing content... drafting questions... checking difficulty...
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Extracting JSON via Containment Regex...");
+        console.log("▶️ [Step 4] API responded! Executing Absolute Bracket Extraction...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // 1. Try to extract strictly from the markdown block
-        const markdownMatch = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/i);
+        // 1. Strip all thinking tags and their contents
+        resultText = resultText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
         
-        if (markdownMatch && markdownMatch[1]) {
-          resultText = markdownMatch[1].trim();
+        // 2. Strip all markdown backticks to flatten the string
+        resultText = resultText.replace(/\`\`\`json/gi, "").replace(/\`\`\`/g, "");
+
+        // 3. Find the absolute first and last brackets to isolate the array
+        const firstBracket = resultText.indexOf('[');
+        const lastBracket = resultText.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          resultText = resultText.substring(firstBracket, lastBracket + 1);
         } else {
-          // 2. Fallback: Strip the <thinking> tag completely and hunt for the brackets
-          resultText = resultText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").trim();
-          const firstBracket = resultText.indexOf('[');
-          const lastBracket = resultText.lastIndexOf(']');
-          
-          if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-            resultText = resultText.substring(firstBracket, lastBracket + 1);
-          } else {
-             console.error("Failed to find JSON array. Raw output:", resultText);
-             throw new Error("No JSON array structure found in model response.");
-          }
+           console.error("Failed to find JSON array. Raw output after cleaning:", resultText);
+           throw new Error("No JSON array structure found in model response.");
         }
         
         const parsedQuiz = JSON.parse(resultText);
@@ -364,7 +362,7 @@ Analyzing content... drafting questions... checking difficulty...
           throw new Error("Parsed quiz is not a valid array.");
         }
         
-        console.log("✅ [Step 5] Quiz successfully generated!", parsedQuiz);
+        console.log("✅ [Step 5] Quiz successfully generated and parsed!", parsedQuiz);
 
         return parsedQuiz.map((q: any) => {
           const options = Array.isArray(q.options) 
