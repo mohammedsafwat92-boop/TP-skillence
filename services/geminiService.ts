@@ -298,15 +298,15 @@ export const geminiService = {
 
 CRITICAL DIFFICULTY TUNING:
 The target student is studying at the ${level || 'Intermediate'} CEFR level. 
-- For Beginner levels (A1, A2): Keep sentence structures clear, simple, and literal. Test fundamental facts directly stated in the text.
-- For Intermediate levels (B1, B2): Introduce standard corporate vocabulary and operational idioms. Test context-based reasoning and secondary details.
-- For Advanced levels (C1, C2): Structure nuanced, highly analytical options with subtle, sophisticated language testing logical inference, underlying motivations, and complex arguments.
+- Beginner (A1, A2): Keep sentence structures clear and literal. Test fundamental facts.
+- Intermediate (B1, B2): Introduce standard corporate vocabulary. Test context-based reasoning.
+- Advanced (C1, C2): Structure nuanced options testing logical inference and complex arguments.
 
 CRITICAL RULES:
 1. Every single question MUST have exactly 4 options.
-2. The 'correctOptionId' MUST exactly match the 'id' of one of the 4 options.
-3. Escape all internal quotation marks. Do not use unescaped double quotes inside the 'text' fields.
-4. UNIQUE ATTEMPT DIRECTIVE: Generate completely new, unique questions. Do not ask the most obvious questions. Dig into different details, secondary themes, methodologies, or specific examples mentioned in the text.
+2. The 'correctAnswer' MUST be an integer representing the zero-based index of the correct option (0, 1, 2, or 3).
+3. Provide a brief 'explanation' for why the answer is correct.
+4. Escape all internal quotation marks. Do not use unescaped double quotes inside text.
 5. Randomization Seed (Forces new output): ${randomSeed}
 
 Content Title: ${title}
@@ -315,15 +315,10 @@ Content Summary: ${content || "No content extracted. Rely on title."}
 Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in markdown blocks like \`\`\`json. The JSON must perfectly match this structure:
 [
   {
-    "id": "q1",
-    "text": "What is the primary theme discussed?",
-    "options": [
-      { "id": "o1", "text": "Option A" },
-      { "id": "o2", "text": "Option B" },
-      { "id": "o3", "text": "Option C" },
-      { "id": "o4", "text": "Option D" }
-    ],
-    "correctOptionId": "o2"
+    "question": "What is the primary theme discussed?",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswer": 1,
+    "explanation": "Option B is correct because..."
   }
 ]`
           }]
@@ -341,32 +336,45 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
           throw new Error("Parsed quiz is not a valid array.");
         }
         
-        return parsedQuiz.map((q: any) => ({
-          question: q.text || q.question,
-          options: q.options.map((o: any) => typeof o === 'string' ? o : o.text),
-          correctAnswer: q.options.findIndex((o: any) => o.id === q.correctOptionId || o === q.correctAnswer),
-          explanation: q.explanation || ""
-        }));
+        return parsedQuiz.map((q: any) => {
+          // Robust mapping to handle slight model hallucinations
+          const options = Array.isArray(q.options) 
+            ? q.options.map((o: any) => typeof o === 'string' ? o : (o.text || String(o)))
+            : ["Option A", "Option B", "Option C", "Option D"];
+          
+          let correctIdx = Number(q.correctAnswer);
+          if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
+             // Fallback logic if the model returned a string ID instead of an index
+             if (q.correctOptionId && Array.isArray(q.options)) {
+                 correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
+             }
+             if (correctIdx === -1 || isNaN(correctIdx)) correctIdx = 0;
+          }
+
+          return {
+            question: q.question || q.text || "Unknown Question",
+            options: options,
+            correctAnswer: correctIdx,
+            explanation: q.explanation || "No explanation provided."
+          };
+        });
       };
 
-      // Try Gemma 3 first via proxy, fall back to Gemini 3.5 Flash
       try {
-        return await attemptGeneration('gemma-3-27b-it');
+        return await attemptGeneration('gemma-4-31b-it');
       } catch (gemmaError) {
-        console.warn("Primary model failed or proxy not supported. Trying gemini-3.5-flash...", gemmaError);
-        return await attemptGeneration('gemini-3.5-flash');
+        console.warn("Primary Gemma model failed. Trying gemini-2.5-flash fallback...", gemmaError);
+        return await attemptGeneration('gemini-2.5-flash');
       }
 
     } catch (error) {
       console.error("Quiz Gen Error via Proxy (Both models failed):", error);
-      return [
-        {
-          question: "The AI encountered an error generating this quiz. Please try again later.",
-          options: ["Acknowledge", "Retry", "Skip", "Exit"],
-          correctAnswer: 0,
-          explanation: ""
-        }
-      ];
+      return [{
+        question: "The AI encountered an error generating this quiz. Please try again later.",
+        options: ["Acknowledge", "Retry", "Skip", "Exit"],
+        correctAnswer: 0,
+        explanation: "System fallback triggered due to JSON parsing or network failure."
+      }];
     }
   },
 

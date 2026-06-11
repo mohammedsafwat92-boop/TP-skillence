@@ -72,8 +72,8 @@ export const googleSheetService = {
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
     callApi('register_shl_user', userData),
     
-  fetchAllUsers: () => 
-    callApi('admin_get_users'),
+  fetchAllUsers: (requesterEmail?: string, requesterRole?: string) => 
+    callApi('admin_get_users', { requesterEmail, requesterRole }),
     
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
     callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
@@ -92,8 +92,8 @@ export const googleSheetService = {
     // Explicitly send targetUid, resourceId, and adminId as requested
     callApi('assign_manual_resource', { targetUid, resourceId, adminId }),
 
-  getAdminStats: () =>
-    callApi('get_admin_stats'),
+  getAdminStats: (requesterEmail?: string, requesterRole?: string) =>
+    callApi('get_admin_stats', { requesterEmail, requesterRole }),
 
   bulkAssignRoster: (adminId: string, wave?: string) =>
     callApi('bulk_assign_roster', { adminId, wave }),

@@ -32,7 +32,7 @@ interface AdminPanelProps {
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
-  if (currentUser.role !== 'admin') return null;
+  if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return null;
 
   const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -128,10 +128,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   }, [combinedStats]);
 
   const fetchUsers = async () => {
-    if (currentUser.role !== 'admin') return;
+    if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return;
     setIsProcessing(true);
     try {
-      const users = await googleSheetService.fetchAllUsers();
+      const users = await googleSheetService.fetchAllUsers(currentUser.email, currentUser.role);
       setUserList(Array.isArray(users) ? users : []);
     } catch (err) {
       setUserList([]);
@@ -152,7 +152,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const loadAdminStats = async () => {
     try {
-      const data = await googleSheetService.getAdminStats();
+      const data = await googleSheetService.getAdminStats(currentUser.email, currentUser.role);
       setAdminStats(data);
     } catch (err) {
       console.error('Error fetching admin stats:', err);

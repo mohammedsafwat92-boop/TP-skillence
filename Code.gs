@@ -28,13 +28,13 @@ function doPost(e) {
       res.data = getUserPlan(ss, json.uid, json.role);
       res.success = true;
     } else if (action === 'get_admin_stats') {
-      res.data = getAdminStats(ss);
+      res.data = getAdminStats(ss, json.requesterEmail, json.requesterRole);
       res.success = true;
     } else if (action === 'get_all_resources') {
       res.data = getAllResources(ss);
       res.success = true;
     } else if (action === 'admin_get_users') {
-      res.data = fetchAllUsers(ss);
+      res.data = fetchAllUsers(ss, json.requesterEmail, json.requesterRole);
       res.success = true;
     } else if (action === 'submit_progress') {
       res.data = updateProgress(ss, json.uid, json.resourceId, json.passed, json.score, json.timeTaken);
@@ -225,7 +225,7 @@ function getUserPlan(ss, uid, role) {
   };
 }
 
-function getAdminStats(ss) {
+function getAdminStats(ss, requesterEmail, requesterRole) {
   const userSheet = ss.getSheetByName('Users');
   const resSheet = ss.getSheetByName('Resources');
   const progSheet = ss.getSheetByName('Progress');
@@ -256,6 +256,10 @@ function getAdminStats(ss) {
 
   for (let i = 1; i < userData.length; i++) {
     if (userData[i][roleIdx] !== 'agent') continue;
+    
+    const coachIdx = userHeaders.indexOf('AssignedCoach');
+    const assignedCoach = String(userData[i][coachIdx] || 'Unassigned');
+    if (requesterRole === 'coach' && assignedCoach !== requesterEmail) continue;
     
     const uid = String(userData[i][uidIdx]);
     agentCount++;
@@ -359,7 +363,7 @@ function findUser(ss, email, password) {
   return null;
 }
 
-function fetchAllUsers(ss) {
+function fetchAllUsers(ss, requesterEmail, requesterRole) {
   const sheet = ss.getSheetByName('Users');
   if (!sheet) return [];
   const data = sheet.getDataRange().getValues();
@@ -370,6 +374,9 @@ function fetchAllUsers(ss) {
   
   for (let i = 1; i < data.length; i++) {
     const row = data[i];
+    const assignedCoach = row[mapping['AssignedCoach']] || 'Unassigned';
+    if (requesterRole === 'coach' && assignedCoach !== requesterEmail) continue;
+
     users.push({
       id: row[mapping['UID']],
       email: row[mapping['Email']],
