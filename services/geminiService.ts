@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: MACHINE PROMPT + TOKEN LIMIT INCREASE LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: SMART REGEX EXTRACTOR LOADED!");
     try {
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
@@ -288,15 +288,22 @@ export const geminiService = {
         contents: [{
           role: "user",
           parts: [{
-            text: `TASK: Extract multiple-choice quiz from content.
-FORMAT: JSON Array ONLY.
-RULES: No scratchpad. No thoughts. No preamble. No markdown. Output must start immediately with '[' and end with ']'.
+            text: `TASK: Extract a 5-question multiple-choice quiz from the content.
+FORMAT: JSON Array of Objects ONLY.
+RULES: No preamble. No markdown formatting. No thinking steps. Just raw JSON.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
 
 OUTPUT SCHEMA:
-[{"question":"...","options":["...","...","...","..."],"correctAnswer":0,"explanation":"..."}]`
+[
+  {
+    "question": "...",
+    "options": ["...", "...", "...", "..."],
+    "correctAnswer": 0,
+    "explanation": "..."
+  }
+]`
           }]
         }],
         generationConfig: {
@@ -309,18 +316,17 @@ OUTPUT SCHEMA:
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Clean up markdown if the model disobeys
+        // Clean markdown wrappers just in case
         resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-        // AGGRESSIVE EXTRACTION
-        const firstBracket = resultText.indexOf('[');
-        const lastBracket = resultText.lastIndexOf(']');
+        // SMART REGEX: Looks specifically for an array containing objects
+        const jsonMatch = resultText.match(/\[\s*\{[\s\S]*\}\s*\]/);
         
-        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-          resultText = resultText.substring(firstBracket, lastBracket + 1);
+        if (jsonMatch) {
+          resultText = jsonMatch[0];
         } else {
-          console.error("Failed to find array brackets in output. Raw output was:", resultText);
-          throw new Error("No JSON array found in model response.");
+          console.error("Failed to find JSON array. Raw output was:", resultText);
+          throw new Error("No JSON array structure found in model response.");
         }
         
         const parsedQuiz = JSON.parse(resultText);
