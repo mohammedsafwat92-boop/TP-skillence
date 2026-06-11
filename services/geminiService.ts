@@ -279,41 +279,41 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: NEW REGEX EXTRACTOR IS RUNNING!");
+    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: ANTI-CHATTER PROMPT LOADED!");
     try {
       const randomSeed = `${Date.now()}-${Math.random()}`;
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
+        // Use systemInstruction to force the persona at the highest system level
+        systemInstruction: {
+          parts: [{
+            text: "You are a headless JSON API. You do not converse. You do not use a scratchpad. You do not think out loud. You respond ONLY with a raw JSON array. No markdown formatting. Start your response immediately with '[' and end with ']'."
+          }]
+        },
         contents: [{
           role: "user",
           parts: [{
-            text: `You are an expert curriculum designer. Based ONLY on the following content summary, generate a rigorous 5-question multiple-choice quiz. 
+            text: `Generate a rigorous 5-question multiple-choice quiz based ONLY on the provided content summary.
 
-CRITICAL DIFFICULTY TUNING:
-The target student is studying at the ${level || 'Intermediate'} CEFR level. 
-- Beginner (A1, A2): Keep sentence structures clear and literal. Test fundamental facts.
-- Intermediate (B1, B2): Introduce standard corporate vocabulary. Test context-based reasoning.
-- Advanced (C1, C2): Structure nuanced options testing logical inference and complex arguments.
+CRITICAL PARAMETERS:
+- Difficulty: ${level || 'Intermediate'} CEFR level.
+- Format: Exactly 4 options per question.
+- 'correctAnswer': An integer representing the zero-based index of the correct option (0, 1, 2, or 3).
+- 'explanation': A brief rationale for the correct answer.
+- Seed: ${randomSeed}
 
-CRITICAL RULES:
-1. Every single question MUST have exactly 4 options.
-2. The 'correctAnswer' MUST be an integer representing the zero-based index of the correct option (0, 1, 2, or 3).
-3. Provide a brief 'explanation' for why the answer is correct.
-4. Escape all internal quotation marks. Do not use unescaped double quotes inside text.
-5. Randomization Seed: ${randomSeed}
+CONTENT TITLE: ${title}
+CONTENT SUMMARY: ${content || "No content extracted. Rely on title."}
 
-Content Title: ${title}
-Content Summary: ${content || "No content extracted. Rely on title."}
-
-Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in markdown blocks like \`\`\`json. The JSON must perfectly match this structure:
+REQUIRED JSON SCHEMA:
 [
   {
-    "question": "What is the primary theme discussed?",
+    "question": "Example Question?",
     "options": ["Option A", "Option B", "Option C", "Option D"],
     "correctAnswer": 1,
-    "explanation": "Option B is correct because..."
+    "explanation": "Because..."
   }
 ]`
           }]
@@ -324,14 +324,14 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // AGGRESSIVE EXTRACTION: Find the first [ and the last ]
+        // AGGRESSIVE EXTRACTION
         const firstBracket = resultText.indexOf('[');
         const lastBracket = resultText.lastIndexOf(']');
         
         if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
           resultText = resultText.substring(firstBracket, lastBracket + 1);
         } else {
-          console.error("Failed to find array brackets in output:", resultText);
+          console.error("Failed to find array brackets in output. Raw output was:", resultText);
           throw new Error("No JSON array found in model response.");
         }
         
@@ -363,16 +363,15 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         });
       };
 
-      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
       console.error("Gemma Quiz Gen Error:", error);
       return [{
-        question: "The AI encountered an error generating this quiz. The content may have been too complex.",
+        question: "The AI encountered an error formatting this quiz. The content may have been too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "JSON parsing failed or model timeout."
+        explanation: "JSON parsing failed due to model hallucination."
       }];
     }
   },
