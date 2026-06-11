@@ -279,6 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
+    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: NEW REGEX EXTRACTOR IS RUNNING!");
     try {
       const randomSeed = `${Date.now()}-${Math.random()}`;
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -323,14 +324,15 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Aggressive Regex: Find the first '[' and the last ']'
+        // AGGRESSIVE EXTRACTION: Find the first [ and the last ]
         const firstBracket = resultText.indexOf('[');
         const lastBracket = resultText.lastIndexOf(']');
         
         if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
           resultText = resultText.substring(firstBracket, lastBracket + 1);
         } else {
-            throw new Error("No JSON array found in model response.");
+          console.error("Failed to find array brackets in output:", resultText);
+          throw new Error("No JSON array found in model response.");
         }
         
         const parsedQuiz = JSON.parse(resultText);
@@ -361,6 +363,7 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         });
       };
 
+      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
