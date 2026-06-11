@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'ABSOLUTE BRACKET' EXTRACTOR LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'ZERO-TOLERANCE FEW-SHOT' LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,39 +288,39 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        contents: [{
-          role: "user",
-          parts: [{
-            text: `TASK: Create a 5-question multiple-choice quiz based ONLY on the provided content.
+        contents: [
+          // FEW-SHOT TURN 1: The User asks for a quiz
+          {
+            role: "user",
+            parts: [{ text: "Convert the following content into a 1-question multiple-choice quiz. Return ONLY a valid JSON array. NO formatting. NO preamble. Content: The capital of France is Paris." }]
+          },
+          // FEW-SHOT TURN 2: The Model responds strictly with JSON
+          {
+            role: "model",
+            parts: [{ text: "[\n  {\n    \"question\": \"What is the capital of France?\",\n    \"options\": [\"London\", \"Berlin\", \"Paris\", \"Madrid\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"Paris is the capital of France.\"\n  }\n]" }]
+          },
+          // REAL TURN: Your actual dynamic request
+          {
+            role: "user",
+            parts: [{
+              text: `Convert the following content into a 5-question multiple-choice quiz. Return ONLY a valid JSON array. NO formatting. NO preamble. NO markdown blocks.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
 
-INSTRUCTIONS:
-1. You MUST plan your questions first. Write your thought process, draft questions, and verify rules inside <thinking> ... </thinking> XML tags.
-2. After your thinking is complete, you MUST output the final quiz as a JSON array inside a \`\`\`json ... \`\`\` markdown block.
-3. The JSON array must contain exactly 5 objects.
-4. Each object must have: "question", "options" (array of 4 strings), "correctAnswer" (0-3 index), and "explanation".
-
-EXAMPLE STRUCTURE:
-<thinking>
-Analyzing content... drafting questions... checking difficulty...
-</thinking>
-\`\`\`json
-[
-  {
-    "question": "...",
-    "options": ["A", "B", "C", "D"],
-    "correctAnswer": 0,
-    "explanation": "..."
-  }
-]
-\`\`\``
-          }]
-        }],
+REQUIRED SCHEMA PER OBJECT:
+{
+  "question": "string",
+  "options": ["string", "string", "string", "string"],
+  "correctAnswer": integer (0 to 3),
+  "explanation": "string"
+}`
+            }]
+          }
+        ],
         generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 8192
+          temperature: 0.1, // Ultra-low temperature for strict format compliance
+          maxOutputTokens: 2500
         }
       };
 
@@ -339,13 +339,10 @@ Analyzing content... drafting questions... checking difficulty...
         console.log("▶️ [Step 4] API responded! Executing Absolute Bracket Extraction...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // 1. Strip all thinking tags and their contents
-        resultText = resultText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
-        
-        // 2. Strip all markdown backticks to flatten the string
+        // 1. Strip all markdown backticks to flatten the string
         resultText = resultText.replace(/\`\`\`json/gi, "").replace(/\`\`\`/g, "");
 
-        // 3. Find the absolute first and last brackets to isolate the array
+        // 2. Find the absolute first and last brackets to isolate the array
         const firstBracket = resultText.indexOf('[');
         const lastBracket = resultText.lastIndexOf(']');
         
