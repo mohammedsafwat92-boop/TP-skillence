@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'ZERO-TOLERANCE FEW-SHOT' LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: INDESTRUCTIBLE SCANNER + NATIVE JSON MODE LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,22 +288,12 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        contents: [
-          // FEW-SHOT TURN 1: The User asks for a quiz
-          {
-            role: "user",
-            parts: [{ text: "Convert the following content into a 1-question multiple-choice quiz. Return ONLY a valid JSON array. NO formatting. NO preamble. Content: The capital of France is Paris." }]
-          },
-          // FEW-SHOT TURN 2: The Model responds strictly with JSON
-          {
-            role: "model",
-            parts: [{ text: "[\n  {\n    \"question\": \"What is the capital of France?\",\n    \"options\": [\"London\", \"Berlin\", \"Paris\", \"Madrid\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"Paris is the capital of France.\"\n  }\n]" }]
-          },
-          // REAL TURN: Your actual dynamic request
-          {
-            role: "user",
-            parts: [{
-              text: `Convert the following content into a 5-question multiple-choice quiz. Return ONLY a valid JSON array. NO formatting. NO preamble. NO markdown blocks.
+        // Native system instruction mapped correctly for Code.gs (Must be a String!)
+        systemInstruction: "You are a strict JSON data API. You must generate a 5-question multiple choice quiz. Output ONLY a valid JSON array of objects. No markdown. No conversational text.",
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
@@ -315,20 +305,20 @@ REQUIRED SCHEMA PER OBJECT:
   "correctAnswer": integer (0 to 3),
   "explanation": "string"
 }`
-            }]
-          }
-        ],
+          }]
+        }],
         generationConfig: {
-          temperature: 0.1, // Ultra-low temperature for strict format compliance
-          maxOutputTokens: 2500
+          temperature: 0.2,
+          maxOutputTokens: 4096,
+          responseMimeType: "application/json" // Native API JSON Enforcement
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting 90s max)`);
+        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error("API Timeout: Model took longer than 90 seconds.")), 90000)
+          setTimeout(() => reject(new Error("API Timeout")), 90000)
         );
 
         const data = await Promise.race([
@@ -336,29 +326,37 @@ REQUIRED SCHEMA PER OBJECT:
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Executing Absolute Bracket Extraction...");
+        console.log("▶️ [Step 4] API responded! Running Indestructible Scanner...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // 1. Strip all markdown backticks to flatten the string
-        resultText = resultText.replace(/\`\`\`json/gi, "").replace(/\`\`\`/g, "");
+        // INDESTRUCTIBLE JSON SCANNER: 
+        // Checks every combination of [ and ] until JSON.parse succeeds.
+        let parsedQuiz = null;
+        let firstBracket = resultText.indexOf('[');
+        
+        while (firstBracket !== -1 && !parsedQuiz) {
+            let lastBracket = resultText.lastIndexOf(']');
+            while (lastBracket > firstBracket && !parsedQuiz) {
+                try {
+                    const slice = resultText.substring(firstBracket, lastBracket + 1);
+                    const attempt = JSON.parse(slice);
+                    if (Array.isArray(attempt) && attempt.length > 0) {
+                        parsedQuiz = attempt; // Success!
+                    }
+                } catch (e) {
+                    // Not valid JSON, move to the next inner closing bracket
+                    lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+                }
+            }
+            // Exhausted closing brackets, move to the next opening bracket
+            firstBracket = resultText.indexOf('[', firstBracket + 1);
+        }
 
-        // 2. Find the absolute first and last brackets to isolate the array
-        const firstBracket = resultText.indexOf('[');
-        const lastBracket = resultText.lastIndexOf(']');
-        
-        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
-          resultText = resultText.substring(firstBracket, lastBracket + 1);
-        } else {
-           console.error("Failed to find JSON array. Raw output after cleaning:", resultText);
-           throw new Error("No JSON array structure found in model response.");
+        if (!parsedQuiz) {
+          console.error("Indestructible parser failed. Raw text:", resultText);
+          throw new Error("No valid JSON array could be extracted from model response.");
         }
-        
-        const parsedQuiz = JSON.parse(resultText);
-        
-        if (!Array.isArray(parsedQuiz) || parsedQuiz.length === 0) {
-          throw new Error("Parsed quiz is not a valid array.");
-        }
-        
+
         console.log("✅ [Step 5] Quiz successfully generated and parsed!", parsedQuiz);
 
         return parsedQuiz.map((q: any) => {
