@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: TRACER + TIMEOUT FAILSAFE LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 90s TIMEOUT + MARKDOWN EXTRACTOR LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -291,14 +291,19 @@ export const geminiService = {
         contents: [{
           role: "user",
           parts: [{
-            text: `TASK: Extract a 5-question multiple-choice quiz from the content.
-FORMAT: JSON Array of Objects ONLY.
-RULES: No preamble. No markdown formatting. No thinking steps. Just raw JSON.
+            text: `Generate a 5-question multiple-choice quiz based on the content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
 
-OUTPUT SCHEMA:
+RULES:
+1. You may write a brief preamble, but you MUST place the final JSON array inside a markdown block (\`\`\`json ... \`\`\`).
+2. Exactly 4 options per question.
+3. 'correctAnswer' must be the zero-based integer index (0-3).
+4. Include a brief 'explanation'.
+
+REQUIRED STRUCTURE:
+\`\`\`json
 [
   {
     "question": "...",
@@ -306,21 +311,22 @@ OUTPUT SCHEMA:
     "correctAnswer": 0,
     "explanation": "..."
   }
-]`
+]
+\`\`\``
           }]
         }],
         generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 2000 // Lowered to prevent runaway generation stalls
+          temperature: 0.7,
+          maxOutputTokens: 2500
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting 90s max)`);
 
-        // IMPLEMENTING A HARD 45-SECOND TIMEOUT
+        // INCREASED TIMEOUT TO 90 SECONDS
         const timeoutPromise = new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error("API Timeout: Gemma took longer than 45 seconds to respond.")), 45000)
+          setTimeout(() => reject(new Error("API Timeout: Model took longer than 90 seconds.")), 90000)
         );
 
         const data = await Promise.race([
@@ -328,19 +334,24 @@ OUTPUT SCHEMA:
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Extracting JSON array...");
+        console.log("▶️ [Step 4] API responded! Extracting JSON...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
-
-        // SMART REGEX: Looks specifically for an array containing objects
-        const jsonMatch = resultText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        // MARKDOWN EXTRACTION REGEX: Grabs everything inside ```json and ```
+        const markdownMatch = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/i);
         
-        if (jsonMatch) {
-          resultText = jsonMatch[0];
+        if (markdownMatch && markdownMatch[1]) {
+          resultText = markdownMatch[1].trim();
         } else {
-          console.error("Failed to find JSON array. Raw output was:", resultText);
-          throw new Error("No JSON array structure found in model response.");
+          // Fallback if it forgot the markdown blocks: find first [ and last ]
+          const firstBracket = resultText.indexOf('[');
+          const lastBracket = resultText.lastIndexOf(']');
+          if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+            resultText = resultText.substring(firstBracket, lastBracket + 1);
+          } else {
+             console.error("Failed to find JSON array. Raw output:", resultText);
+             throw new Error("No JSON array structure found in model response.");
+          }
         }
         
         const parsedQuiz = JSON.parse(resultText);
@@ -349,7 +360,7 @@ OUTPUT SCHEMA:
           throw new Error("Parsed quiz is not a valid array.");
         }
         
-        console.log("✅ [Step 5] Quiz successfully generated and parsed!", parsedQuiz);
+        console.log("✅ [Step 5] Quiz successfully generated!", parsedQuiz);
 
         return parsedQuiz.map((q: any) => {
           const options = Array.isArray(q.options) 
