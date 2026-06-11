@@ -316,20 +316,21 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
   }
 ]`
           }]
-        }],
-        generationConfig: {
-          responseMimeType: "application/json"
-        }
+        }]
       };
 
       const attemptGeneration = async (modelName: string) => {
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Bulletproof Regex: Extract only the JSON array structure
-        const jsonMatch = resultText.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-          resultText = jsonMatch[0];
+        // Aggressive Regex: Find the first '[' and the last ']'
+        const firstBracket = resultText.indexOf('[');
+        const lastBracket = resultText.lastIndexOf(']');
+        
+        if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+          resultText = resultText.substring(firstBracket, lastBracket + 1);
+        } else {
+            throw new Error("No JSON array found in model response.");
         }
         
         const parsedQuiz = JSON.parse(resultText);
@@ -360,7 +361,6 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         });
       };
 
-      // Exclusively route to Gemma 4 31B
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
