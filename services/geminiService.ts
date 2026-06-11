@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: SMART VALIDATOR + NATIVE JSON MODE LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: NATIVE 'RESPONSE SCHEMA' ENFORCER LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,33 +288,53 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        systemInstruction: "You are a strict JSON data API. You must generate a 5-question multiple choice quiz. Output ONLY a valid JSON array of objects. No markdown. No conversational text.",
+        systemInstruction: "You are a rigid data pipeline. Output nothing but the requested JSON array.",
         contents: [{
           role: "user",
           parts: [{
             text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
-CONTENT: ${title} - ${content}
-
-OUTPUT FORMAT:
-You must return a valid JSON array containing exactly 5 objects. Do not use markdown wrappers.
-Each object must have exactly these four keys populated with generated content:
-- "question": The actual text of the question
-- "options": An array containing exactly 4 possible answer strings
-- "correctAnswer": The integer index (0, 1, 2, or 3) of the correct option
-- "explanation": A brief explanation of why the answer is correct`
+CONTENT: ${title} - ${content}`
           }]
         }],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.1,
           maxOutputTokens: 4096,
-          responseMimeType: "application/json"
+          responseMimeType: "application/json",
+          // THE ULTIMATE FIX: Physically enforcing the JSON shape at the API level
+          responseSchema: {
+            type: "ARRAY",
+            description: "A list of 5 multiple choice questions.",
+            items: {
+              type: "OBJECT",
+              properties: {
+                question: { 
+                  type: "STRING", 
+                  description: "The text of the quiz question" 
+                },
+                options: { 
+                  type: "ARRAY", 
+                  items: { type: "STRING" }, 
+                  description: "Exactly 4 possible answer strings" 
+                },
+                correctAnswer: { 
+                  type: "INTEGER", 
+                  description: "The zero-based index (0, 1, 2, or 3) of the correct option" 
+                },
+                explanation: { 
+                  type: "STRING", 
+                  description: "A brief explanation of why the answer is correct" 
+                }
+              },
+              required: ["question", "options", "correctAnswer", "explanation"]
+            }
+          }
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Schema Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
@@ -325,38 +345,47 @@ Each object must have exactly these four keys populated with generated content:
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Running Smart Validator Scanner...");
+        console.log("▶️ [Step 4] API responded! Running Validator...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-        
         let parsedQuiz = null;
-        let firstBracket = resultText.indexOf('[');
-        
-        while (firstBracket !== -1 && !parsedQuiz) {
-            let lastBracket = resultText.lastIndexOf(']');
-            while (lastBracket > firstBracket && !parsedQuiz) {
-                try {
-                    const slice = resultText.substring(firstBracket, lastBracket + 1);
-                    const attempt = JSON.parse(slice);
-                    
-                    // SMART VALIDATION: Must be an array, not empty, AND contain a 'question' key
-                    if (Array.isArray(attempt) && attempt.length > 0 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0]) {
-                        parsedQuiz = attempt; // Success! Found the actual quiz.
-                    }
-                } catch (e) {
-                    // Not valid JSON, shrink the window
-                    lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
-                }
-            }
-            // Move to the next potential opening bracket
-            firstBracket = resultText.indexOf('[', firstBracket + 1);
+
+        // 1. First, try to parse it raw (Schema enforcement should make this work perfectly)
+        try {
+          const rawParse = JSON.parse(resultText);
+          if (Array.isArray(rawParse) && rawParse.length > 0 && rawParse[0].question) {
+            parsedQuiz = rawParse;
+            console.log("✅ [Step 5] Native Schema Parse Successful!");
+          }
+        } catch (e) {
+          console.log("⚠️ Native parse failed, falling back to Smart Scanner...");
+        }
+
+        // 2. Fallback Indestructible Scanner (just in case)
+        if (!parsedQuiz) {
+          let firstBracket = resultText.indexOf('[');
+          while (firstBracket !== -1 && !parsedQuiz) {
+              let lastBracket = resultText.lastIndexOf(']');
+              while (lastBracket > firstBracket && !parsedQuiz) {
+                  try {
+                      const slice = resultText.substring(firstBracket, lastBracket + 1);
+                      const attempt = JSON.parse(slice);
+                      if (Array.isArray(attempt) && attempt.length > 0 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0]) {
+                          parsedQuiz = attempt;
+                      }
+                  } catch (e) {
+                      lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+                  }
+              }
+              firstBracket = resultText.indexOf('[', firstBracket + 1);
+          }
         }
 
         if (!parsedQuiz) {
-          console.error("Smart scanner failed. Raw text:", resultText);
-          throw new Error("No valid Quiz JSON array could be extracted from model response.");
+          console.error("Schema and scanner both failed. Raw text:", resultText);
+          throw new Error("No Quiz JSON array could be extracted from model response.");
         }
 
-        console.log("✅ [Step 5] Quiz successfully generated and validated!", parsedQuiz);
+        console.log("✅ [Step 6] Quiz successfully generated and validated!", parsedQuiz);
 
         return parsedQuiz.map((q: any) => {
           const options = Array.isArray(q.options) 
