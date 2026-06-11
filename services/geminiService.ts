@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: FEW-SHOT 'NO-COT' PROMPT LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'CONTAINMENT PROTOCOL' + 8192 TOKENS LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,36 +288,39 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        contents: [
-          // FEW-SHOT TURN 1: Teach the model exactly how to behave
-          {
-            role: "user",
-            parts: [{ text: "Generate a 1-question multiple-choice quiz about the Sun. Output EXACTLY a raw JSON array. NO PREAMBLE. NO THINKING. NO MARKDOWN." }]
-          },
-          {
-            role: "model",
-            parts: [{ text: "[\n  {\n    \"question\": \"What is the center of our solar system?\",\n    \"options\": [\"Earth\", \"Mars\", \"The Sun\", \"Jupiter\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"The Sun is the star at the center of the solar system.\"\n  }\n]" }]
-          },
-          // REAL TURN: The actual request
-          {
-            role: "user",
-            parts: [{
-              text: `Generate a 5-question multiple-choice quiz based ONLY on the following content.
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `TASK: Create a 5-question multiple-choice quiz based ONLY on the provided content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
 
-RULES:
-1. Exactly 4 options per question.
-2. 'correctAnswer' must be the zero-based integer index (0-3).
-3. Include a brief 'explanation'.
-4. MIMIC THE PREVIOUS RESPONSE. Output EXACTLY a JSON array starting with '[' and ending with ']'. NO SCRATCHPAD. NO TEXT.`
-            }]
-          }
-        ],
+INSTRUCTIONS:
+1. You MUST plan your questions first. Write your thought process, draft questions, and verify rules inside <thinking> ... </thinking> XML tags.
+2. After your thinking is complete, you MUST output the final quiz as a JSON array inside a \`\`\`json ... \`\`\` markdown block.
+3. The JSON array must contain exactly 5 objects.
+4. Each object must have: "question", "options" (array of 4 strings), "correctAnswer" (0-3 index), and "explanation".
+
+EXAMPLE STRUCTURE:
+<thinking>
+Analyzing content... drafting questions... checking difficulty...
+</thinking>
+\`\`\`json
+[
+  {
+    "question": "...",
+    "options": ["A", "B", "C", "D"],
+    "correctAnswer": 0,
+    "explanation": "..."
+  }
+]
+\`\`\``
+          }]
+        }],
         generationConfig: {
-          temperature: 0.2, // Low temperature to force deterministic pattern matching
-          maxOutputTokens: 3000
+          temperature: 0.4, // Optimal for Gemma reasoning + formatting
+          maxOutputTokens: 8192 // Massive runway so it never gets cut off
         }
       };
 
@@ -333,21 +336,20 @@ RULES:
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Extracting JSON...");
+        console.log("▶️ [Step 4] API responded! Extracting JSON via Containment Regex...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Clean markdown wrappers just in case it disobeys slightly
-        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
-
-        // SMART REGEX: Looks specifically for an array containing objects
-        const jsonMatch = resultText.match(/\[\s*\{[\s\S]*\}\s*\]/);
+        // 1. Try to extract strictly from the markdown block
+        const markdownMatch = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/i);
         
-        if (jsonMatch) {
-          resultText = jsonMatch[0];
+        if (markdownMatch && markdownMatch[1]) {
+          resultText = markdownMatch[1].trim();
         } else {
-          // Fallback literal extraction
+          // 2. Fallback: Strip the <thinking> tag completely and hunt for the brackets
+          resultText = resultText.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "").trim();
           const firstBracket = resultText.indexOf('[');
           const lastBracket = resultText.lastIndexOf(']');
+          
           if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
             resultText = resultText.substring(firstBracket, lastBracket + 1);
           } else {
@@ -386,6 +388,7 @@ RULES:
         });
       };
 
+      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
