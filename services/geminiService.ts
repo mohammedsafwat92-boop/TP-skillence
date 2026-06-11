@@ -279,9 +279,12 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: SMART REGEX EXTRACTOR LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: TRACER + TIMEOUT FAILSAFE LOADED!");
     try {
+      console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
+
+      console.log("▶️ [Step 2] Condensing content...");
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
@@ -308,15 +311,26 @@ OUTPUT SCHEMA:
         }],
         generationConfig: {
           temperature: 0.1,
-          maxOutputTokens: 4096
+          maxOutputTokens: 2000 // Lowered to prevent runaway generation stalls
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        const data = await proxyGeminiSafe(modelName, payload);
+        console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting API)`);
+
+        // IMPLEMENTING A HARD 45-SECOND TIMEOUT
+        const timeoutPromise = new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error("API Timeout: Gemma took longer than 45 seconds to respond.")), 45000)
+        );
+
+        const data = await Promise.race([
+          proxyGeminiSafe(modelName, payload),
+          timeoutPromise
+        ]);
+
+        console.log("▶️ [Step 4] API responded! Extracting JSON array...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Clean markdown wrappers just in case
         resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
         // SMART REGEX: Looks specifically for an array containing objects
@@ -335,6 +349,8 @@ OUTPUT SCHEMA:
           throw new Error("Parsed quiz is not a valid array.");
         }
         
+        console.log("✅ [Step 5] Quiz successfully generated and parsed!", parsedQuiz);
+
         return parsedQuiz.map((q: any) => {
           const options = Array.isArray(q.options) 
             ? q.options.map((o: any) => typeof o === 'string' ? o : (o.text || String(o)))
@@ -357,16 +373,15 @@ OUTPUT SCHEMA:
         });
       };
 
-      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
-      console.error("Gemma Quiz Gen Error:", error);
+      console.error("❌ Gemma Quiz Gen Error:", error);
       return [{
-        question: "The AI encountered an error formatting this quiz. The content may have been too complex.",
+        question: "The AI encountered an error formatting this quiz. The connection timed out or the content was too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "JSON parsing failed due to model token limit or hallucination."
+        explanation: "API Timeout or Parsing Failure."
       }];
     }
   },
