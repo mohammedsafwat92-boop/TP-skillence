@@ -279,37 +279,37 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: FLATTENED PAYLOAD LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: ANTI-SCRATCHPAD PROMPT LOADED!");
     try {
-      const randomSeed = `${Date.now()}-${Math.random()}`;
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
 
-      // Provide the system instruction as a simple string - the proxy in Code.gs will format it correctly
       const payload = {
-        systemInstruction: "You are a headless JSON API. You do not converse. You do not use a scratchpad. You do not think out loud. You respond ONLY with a raw JSON array. No markdown formatting.",
         contents: [{
           role: "user",
           parts: [{
-            text: `Generate a rigorous 5-question multiple-choice quiz based ONLY on the provided content summary.
+            text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content summary.
 
-CRITICAL PARAMETERS:
+CRITICAL INSTRUCTIONS:
+You are a headless JSON generator. You MUST NOT output any conversational text, thinking process, checklists, or markdown blocks. Do not explain your steps. 
+Your entire response MUST consist solely of a valid JSON array starting with '[' and ending with ']'.
+
+PARAMETERS:
 - Difficulty: ${level || 'Intermediate'} CEFR level.
 - Format: Exactly 4 options per question.
 - 'correctAnswer': An integer representing the zero-based index of the correct option (0, 1, 2, or 3).
 - 'explanation': A brief rationale for the correct answer.
-- Seed: ${randomSeed}
 
 CONTENT TITLE: ${title}
 CONTENT SUMMARY: ${content || "No content extracted. Rely on title."}
 
-REQUIRED JSON SCHEMA:
+Return EXACTLY this JSON structure and nothing else:
 [
   {
-    "question": "Example Question?",
-    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "question": "Question text here?",
+    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
     "correctAnswer": 1,
-    "explanation": "Because..."
+    "explanation": "Explanation here."
   }
 ]`
           }]
@@ -320,6 +320,9 @@ REQUIRED JSON SCHEMA:
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
+        // Clean up markdown if the model still disobeys
+        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
         // AGGRESSIVE EXTRACTION
         const firstBracket = resultText.indexOf('[');
         const lastBracket = resultText.lastIndexOf(']');
@@ -359,6 +362,7 @@ REQUIRED JSON SCHEMA:
         });
       };
 
+      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
