@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 90s TIMEOUT + MARKDOWN EXTRACTOR LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: FEW-SHOT 'NO-COT' PROMPT LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,43 +288,42 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        contents: [{
-          role: "user",
-          parts: [{
-            text: `Generate a 5-question multiple-choice quiz based on the content.
+        contents: [
+          // FEW-SHOT TURN 1: Teach the model exactly how to behave
+          {
+            role: "user",
+            parts: [{ text: "Generate a 1-question multiple-choice quiz about the Sun. Output EXACTLY a raw JSON array. NO PREAMBLE. NO THINKING. NO MARKDOWN." }]
+          },
+          {
+            role: "model",
+            parts: [{ text: "[\n  {\n    \"question\": \"What is the center of our solar system?\",\n    \"options\": [\"Earth\", \"Mars\", \"The Sun\", \"Jupiter\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"The Sun is the star at the center of the solar system.\"\n  }\n]" }]
+          },
+          // REAL TURN: The actual request
+          {
+            role: "user",
+            parts: [{
+              text: `Generate a 5-question multiple-choice quiz based ONLY on the following content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
 
 RULES:
-1. You may write a brief preamble, but you MUST place the final JSON array inside a markdown block (\`\`\`json ... \`\`\`).
-2. Exactly 4 options per question.
-3. 'correctAnswer' must be the zero-based integer index (0-3).
-4. Include a brief 'explanation'.
-
-REQUIRED STRUCTURE:
-\`\`\`json
-[
-  {
-    "question": "...",
-    "options": ["...", "...", "...", "..."],
-    "correctAnswer": 0,
-    "explanation": "..."
-  }
-]
-\`\`\``
-          }]
-        }],
+1. Exactly 4 options per question.
+2. 'correctAnswer' must be the zero-based integer index (0-3).
+3. Include a brief 'explanation'.
+4. MIMIC THE PREVIOUS RESPONSE. Output EXACTLY a JSON array starting with '[' and ending with ']'. NO SCRATCHPAD. NO TEXT.`
+            }]
+          }
+        ],
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2500
+          temperature: 0.2, // Low temperature to force deterministic pattern matching
+          maxOutputTokens: 3000
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
         console.log(`▶️ [Step 3] Sending payload to ${modelName}... (Awaiting 90s max)`);
 
-        // INCREASED TIMEOUT TO 90 SECONDS
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout: Model took longer than 90 seconds.")), 90000)
         );
@@ -337,13 +336,16 @@ REQUIRED STRUCTURE:
         console.log("▶️ [Step 4] API responded! Extracting JSON...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // MARKDOWN EXTRACTION REGEX: Grabs everything inside ```json and ```
-        const markdownMatch = resultText.match(/\`\`\`(?:json)?\s*([\s\S]*?)\s*\`\`\`/i);
+        // Clean markdown wrappers just in case it disobeys slightly
+        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+        // SMART REGEX: Looks specifically for an array containing objects
+        const jsonMatch = resultText.match(/\[\s*\{[\s\S]*\}\s*\]/);
         
-        if (markdownMatch && markdownMatch[1]) {
-          resultText = markdownMatch[1].trim();
+        if (jsonMatch) {
+          resultText = jsonMatch[0];
         } else {
-          // Fallback if it forgot the markdown blocks: find first [ and last ]
+          // Fallback literal extraction
           const firstBracket = resultText.indexOf('[');
           const lastBracket = resultText.lastIndexOf(']');
           if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
