@@ -316,14 +316,22 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
   }
 ]`
           }]
-        }]
+        }],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
       };
 
       const attemptGeneration = async (modelName: string) => {
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        // Bulletproof Regex: Extract only the JSON array structure
+        const jsonMatch = resultText.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          resultText = jsonMatch[0];
+        }
+        
         const parsedQuiz = JSON.parse(resultText);
         
         if (!Array.isArray(parsedQuiz) || parsedQuiz.length === 0) {
@@ -358,10 +366,10 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
     } catch (error) {
       console.error("Gemma Quiz Gen Error:", error);
       return [{
-        question: "The AI encountered an error generating this quiz. Please try again later.",
+        question: "The AI encountered an error generating this quiz. The content may have been too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "Gemma model execution failed. Check console for details."
+        explanation: "JSON parsing failed or model timeout."
       }];
     }
   },
