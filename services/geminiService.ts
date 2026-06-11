@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT ACTIVE: ANTI-SCRATCHPAD PROMPT LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: MACHINE PROMPT + TOKEN LIMIT INCREASE LOADED!");
     try {
       const rawContent = scrapedText || await scrapeUrl(url);
       const content = await condenseLargeContent(rawContent || "");
@@ -288,39 +288,28 @@ export const geminiService = {
         contents: [{
           role: "user",
           parts: [{
-            text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content summary.
+            text: `TASK: Extract multiple-choice quiz from content.
+FORMAT: JSON Array ONLY.
+RULES: No scratchpad. No thoughts. No preamble. No markdown. Output must start immediately with '[' and end with ']'.
 
-CRITICAL INSTRUCTIONS:
-You are a headless JSON generator. You MUST NOT output any conversational text, thinking process, checklists, or markdown blocks. Do not explain your steps. 
-Your entire response MUST consist solely of a valid JSON array starting with '[' and ending with ']'.
+DIFFICULTY: ${level || 'Intermediate'} CEFR.
+CONTENT: ${title} - ${content}
 
-PARAMETERS:
-- Difficulty: ${level || 'Intermediate'} CEFR level.
-- Format: Exactly 4 options per question.
-- 'correctAnswer': An integer representing the zero-based index of the correct option (0, 1, 2, or 3).
-- 'explanation': A brief rationale for the correct answer.
-
-CONTENT TITLE: ${title}
-CONTENT SUMMARY: ${content || "No content extracted. Rely on title."}
-
-Return EXACTLY this JSON structure and nothing else:
-[
-  {
-    "question": "Question text here?",
-    "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
-    "correctAnswer": 1,
-    "explanation": "Explanation here."
-  }
-]`
+OUTPUT SCHEMA:
+[{"question":"...","options":["...","...","...","..."],"correctAnswer":0,"explanation":"..."}]`
           }]
-        }]
+        }],
+        generationConfig: {
+          temperature: 0.1,
+          maxOutputTokens: 4096
+        }
       };
 
       const attemptGeneration = async (modelName: string) => {
         const data = await proxyGeminiSafe(modelName, payload);
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         
-        // Clean up markdown if the model still disobeys
+        // Clean up markdown if the model disobeys
         resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
         // AGGRESSIVE EXTRACTION
@@ -371,7 +360,7 @@ Return EXACTLY this JSON structure and nothing else:
         question: "The AI encountered an error formatting this quiz. The content may have been too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "JSON parsing failed due to model hallucination."
+        explanation: "JSON parsing failed due to model token limit or hallucination."
       }];
     }
   },
