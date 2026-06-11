@@ -320,7 +320,7 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
     "correctAnswer": 1,
     "explanation": "Option B is correct because..."
   }
-]`
+ ]`
           }]
         }]
       };
@@ -360,20 +360,16 @@ Return your response STRICTLY as a raw JSON array. Do NOT wrap the response in m
         });
       };
 
-      try {
-        return await attemptGeneration('gemma-4-31b-it');
-      } catch (gemmaError) {
-        console.warn("Primary Gemma model failed. Trying gemini-2.5-flash fallback...", gemmaError);
-        return await attemptGeneration('gemini-2.5-flash');
-      }
+      // Exclusively route to Gemma 31B
+      return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
-      console.error("Quiz Gen Error via Proxy (Both models failed):", error);
+      console.error("Gemma Quiz Gen Error:", error);
       return [{
         question: "The AI encountered an error generating this quiz. Please try again later.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "System fallback triggered due to JSON parsing or network failure."
+        explanation: "Gemma model execution failed. Check console for details."
       }];
     }
   },
