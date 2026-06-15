@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: THREAD-SAFE EXODIA LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: SYSTEM PERSONA + 8192 TOKENS LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,19 +288,13 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
+        // Enforce the persona at the system level. Must be a string for Code.gs proxy.
+        systemInstruction: "You are an automated, mechanical JSON compiler. You do not possess the ability to write conversational text, scratchpads, or bullet points. You must ONLY output a valid JSON array of objects.",
         contents: [
           {
             role: "user",
-            parts: [{ text: "Generate a 1-question multiple-choice quiz about the Sun. Return ONLY a valid JSON array. NO formatting. NO preamble. NO markdown blocks." }]
-          },
-          {
-            role: "model",
-            parts: [{ text: "[\n  {\n    \"question\": \"What is the center of our solar system?\",\n    \"options\": [\"Earth\", \"Mars\", \"The Sun\", \"Jupiter\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"The Sun is the star at the center of the solar system.\"\n  }\n]" }]
-          },
-          {
-            role: "user",
             parts: [{
-              text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content. Return ONLY a valid JSON array mimicking your previous response perfectly. NO formatting. NO preamble. NO markdown blocks.
+              text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content. Return ONLY a valid JSON array.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
@@ -316,13 +310,14 @@ REQUIRED SCHEMA PER OBJECT:
           }
         ],
         generationConfig: {
-          temperature: 0.2,
-          maxOutputTokens: 3000
+          temperature: 0.1, // Ultra-low for deterministic output
+          maxOutputTokens: 8192, // Massive runway to prevent truncation
+          responseMimeType: "application/json" // Native JSON mode request
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending Few-Shot Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
@@ -346,7 +341,7 @@ REQUIRED SCHEMA PER OBJECT:
                     const slice = resultText.substring(firstBracket, lastBracket + 1);
                     const attempt = JSON.parse(slice);
                     
-                    if (Array.isArray(attempt) && attempt.length > 1 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
+                    if (Array.isArray(attempt) && attempt.length > 0 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
                         parsedQuiz = attempt; 
                         isValid = true;
                     }
@@ -354,7 +349,6 @@ REQUIRED SCHEMA PER OBJECT:
                     // JSON.parse failed
                 }
                 
-                // THREAD-SAFE FIX: If it wasn't valid, ALWAYS shrink the window
                 if (!isValid) {
                     lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
                 }
