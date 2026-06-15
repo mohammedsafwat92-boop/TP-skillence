@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'INVERSION STRATEGY' LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'MINIMALIST COMPLETION' LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -291,36 +291,25 @@ export const geminiService = {
         contents: [
           {
             role: "user",
-            parts: [{
-              text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content.
-
-DIFFICULTY: ${level || 'Intermediate'} CEFR.
-CONTENT: ${title} - ${content}
-
-CRITICAL INSTRUCTION - THE INVERSION RULE:
-You are an AI that loves to explain its reasoning. You may write as much analysis, scratchpad, and explanation as you want, BUT YOU MUST OUTPUT THE JSON ARRAY FIRST.
-Your response MUST begin exactly with the '[' character. 
-Write the complete JSON array of the 5 questions immediately.
-After you type the closing ']' character of the array, you are free to write your notes, checklists, or explanations below it.
-
-REQUIRED SCHEMA PER OBJECT:
-{
-  "question": "string",
-  "options": ["string", "string", "string", "string"],
-  "correctAnswer": integer (0 to 3),
-  "explanation": "string"
-}`
-            }]
+            parts: [{ text: "Create a B1 CEFR level multiple-choice quiz with 1 question from this text.\n\nText: The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma.\n\nQuiz JSON:" }]
+          },
+          {
+            role: "model",
+            parts: [{ text: "[\n  {\n    \"question\": \"What is the Sun?\",\n    \"options\": [\"A planet\", \"A star\", \"A comet\", \"A meteor\"],\n    \"correctAnswer\": 1,\n    \"explanation\": \"The text explicitly states that the Sun is a star.\"\n  }\n]" }]
+          },
+          {
+            role: "user",
+            parts: [{ text: `Create a ${level || 'Intermediate'} CEFR level multiple-choice quiz with exactly 5 questions from this text.\n\nText: ${title} - ${content}\n\nQuiz JSON:` }]
           }
         ],
         generationConfig: {
-          temperature: 0.4, // Standard reasoning temperature
-          maxOutputTokens: 4096 // Enough space for JSON + Scratchpad
+          temperature: 0.1, // Keep it cold so it doesn't get creative
+          maxOutputTokens: 3000
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending Inverted Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Minimalist Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
@@ -335,8 +324,6 @@ REQUIRED SCHEMA PER OBJECT:
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         let parsedQuiz = null;
 
-        // The model should put the JSON at the top. The scanner will grab the first [ 
-        // and work backward from the end of the string to find the matching closing ].
         let firstBracket = resultText.indexOf('[');
         while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
@@ -346,12 +333,12 @@ REQUIRED SCHEMA PER OBJECT:
                     const slice = resultText.substring(firstBracket, lastBracket + 1);
                     const attempt = JSON.parse(slice);
                     
-                    if (Array.isArray(attempt) && attempt.length > 0 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
+                    if (Array.isArray(attempt) && attempt.length > 1 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
                         parsedQuiz = attempt; 
                         isValid = true;
                     }
                 } catch (e) {
-                    // JSON.parse failed, shrink the window inward
+                    // JSON.parse failed
                 }
                 
                 if (!isValid) {
@@ -392,6 +379,7 @@ REQUIRED SCHEMA PER OBJECT:
         });
       };
 
+      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
