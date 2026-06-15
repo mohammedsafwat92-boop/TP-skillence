@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'MD-PARSER WITH COGNITIVE SWEEP' LOADED FOR GEMMA 4!");
+    console.log("🚨 VERCEL DEPLOYMENT: STRICT CONSTRAINED PROTOCOL ACTIVE FOR GEMMA 4!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -287,54 +287,53 @@ export const geminiService = {
       console.log("▶️ [Step 2] Condensing content...");
       const content = await condenseLargeContent(rawContent || "");
 
+      const systemInstruction = `You are a rigid language assessment developer. Your ONLY permitted output is a raw, valid JSON array of exactly 5 multiple-choice questions. No thoughts, no explanations, no text before or after the JSON.`;
+
       const payload = {
+        systemInstruction: systemInstruction,
         contents: [
           {
             role: "user",
             parts: [{
-              text: `Generate a CEFR B1 level multiple-choice quiz with 1 question based on the content.
-CONTENT: The Sun - The Sun is the star at the center of the Solar System.`
-            }]
-          },
-          {
-            role: "model",
-            parts: [{
-              text: `<thought>
-I need to generate a 1-question B1 multiple-choice quiz about the Sun.
-Content: "The Sun is the star at the center of the Solar System."
-Question concept: Identify what the Sun is.
-Answer: "A star" (index 1).
-Explanations: The text explicitly states it's a star.
-</thought>
-
-JSON:
+              text: `Convert this educational text into a CEFR ${level || 'Intermediate'} level 5-question multiple-choice quiz.
+You MUST output exactly 5 question objects inside a single JSON array, conforming strictly to this format:
 [
   {
     "question": "What is the Sun?",
     "options": ["A planet", "A star", "A comet", "A meteor"],
     "correctAnswer": 1,
-    "explanation": "The text explicitly states that the Sun is a star."
-  }
- ]`
-            }]
-          },
-          {
-            role: "user",
-            parts: [{
-              text: `Generate a CEFR ${level || 'Intermediate'} level multiple-choice quiz with exactly 5 questions based on the content.
-
-You MUST wrap your planning/scratchpad inside "<thought>...</thought>" tags first to think step-by-step.
-Then, you MUST output standard, clean, active JSON inside a \`\`\`json markdown block containing an array of exactly 5 questions. Do not truncate. Do not include javascript comments.
-
-REQUIRED JSON FORMAT SCHEMA:
-[
+    "explanation": "The text states that the Sun is the star at the center of the Solar System."
+  },
   {
-    "question": "string",
-    "options": ["string", "string", "string", "string"],
-    "correctAnswer": number (between 0 and 3),
-    "explanation": "string"
+    "question": "Where is the Sun located in the Solar System?",
+    "options": ["At the edge", "At the center", "Near Earth", "Outside it"],
+    "correctAnswer": 1,
+    "explanation": "According to the text, the Sun is at the center of the Solar System."
+  },
+  {
+    "question": "Which of these best describes the Sun?",
+    "options": ["It is a moon", "It is a galaxy", "It is a star", "It is an asteroid"],
+    "correctAnswer": 2,
+    "explanation": "The text explicitly defines the Sun as a star."
+  },
+  {
+    "question": "The Sun can be defined as what type of celestial body?",
+    "options": ["A star", "A gas giant", "A rocky planet", "A black hole"],
+    "correctAnswer": 0,
+    "explanation": "The provided text defines the Sun as a star at the center of the Solar System."
+  },
+  {
+    "question": "Which system is the Sun at the center of?",
+    "options": ["Solar System", "Milky Way", "Andromeda", "Alpha Centauri"],
+    "correctAnswer": 0,
+    "explanation": "The text specifies that the Sun is at the center of the Solar System."
   }
 ]
+
+CRITICAL CONSTRAINTS:
+- Do not write comments, thoughts, markdown blocks, bullet lists, or extra explanation outside of the JSON array.
+- Start your response directly with the opening square bracket '[' and end with the closing square bracket ']'.
+- Do not wrap the JSON in markdown code blocks like \`\`\`json. Return only the raw JSON text.
 
 CONTENT:
 ${title} - ${content}`
@@ -342,282 +341,171 @@ ${title} - ${content}`
           }
         ],
         generationConfig: {
-          temperature: 0.4,
-          maxOutputTokens: 4096
+          temperature: 0.1,
+          maxOutputTokens: 3000
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Command Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
         );
 
-        const data = await Promise.race([
-          proxyGeminiSafe(modelName, payload),
-          timeoutPromise
-        ]);
+        let data: any;
+        try {
+          if (modelName === 'gemma-4-31b-it') {
+            throw new Error("Gemma does not support responseMimeType config on this endpoint");
+          }
+          // Attempt 1: Strict JSON mode for other models
+          const jsonModePayload = {
+            ...payload,
+            generationConfig: {
+              ...payload.generationConfig,
+              responseMimeType: "application/json"
+            }
+          };
+          console.log(`▶️ Trying strict JSON Mode with ${modelName}...`);
+          data = await Promise.race([
+            proxyGeminiSafe(modelName, jsonModePayload),
+            timeoutPromise
+          ]);
+        } catch (jsonModeErr: any) {
+          console.warn(`⚠️ Strict JSON mode failed or skipped for ${modelName}. Falling back to standard text mode...`);
+          // Attempt 2: Text mode
+          data = await Promise.race([
+            proxyGeminiSafe(modelName, payload),
+            timeoutPromise
+          ]);
+        }
 
-        console.log("▶️ [Step 4] API responded! Running Thread-Safe Smart Cleaners and Scanners...");
+        console.log(`▶️ [Step 4] API responded from ${modelName}! Running Reader and Scanner...`);
         
         const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        let resultText = rawResponse.trim();
+        const resultText = rawResponse.trim();
+        
+        // Robust parser helper
+        const robustParseJSON = (text: string): any => {
+          let cleaned = text.trim();
+          
+          // 1. Remove markdown backticks if present
+          cleaned = cleaned.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-        // Strip potential markdown code fences if outputted
-        resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
+          // 2. Remove JavaScript-style comments (single line // and multi-line /* */)
+          cleaned = cleaned.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
 
-        let parsedQuiz: any[] | null = null;
+          // 3. Fix trailing commas before closing braces/brackets
+          cleaned = cleaned.replace(/,(\s*[\]}])/g, '$1');
 
-        // Try direct JSON parsing
-        try {
-          const parsed = JSON.parse(resultText);
-          if (Array.isArray(parsed)) {
-            parsedQuiz = parsed;
-          } else if (parsed && typeof parsed === 'object') {
-            if (Array.isArray(parsed.quiz)) {
-              parsedQuiz = parsed.quiz;
-            } else if (Array.isArray(parsed.questions)) {
-              parsedQuiz = parsed.questions;
-            } else {
-              // Try to find any array key
-              for (const key of Object.keys(parsed)) {
-                if (Array.isArray(parsed[key])) {
-                  parsedQuiz = parsed[key];
-                  break;
-                }
-              }
-            }
-          }
-        } catch (e) {
-          // direct parsing failed, fall back to sliding window
-        }
-
-        // Sliding window array extractor fallback
-        if (!parsedQuiz) {
-          let firstBracket = resultText.indexOf('[');
-          while (firstBracket !== -1 && !parsedQuiz) {
-            let lastBracket = resultText.lastIndexOf(']');
-            while (lastBracket > firstBracket && !parsedQuiz) {
-              try {
-                const slice = resultText.substring(firstBracket, lastBracket + 1);
-                const attempt = JSON.parse(slice);
-                if (Array.isArray(attempt) && attempt.length > 0 && attempt[0] && typeof attempt[0] === 'object') {
-                  parsedQuiz = attempt;
-                }
-              } catch (err) {
-                // Shrink window
-              }
-              lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
-            }
-            firstBracket = resultText.indexOf('[', firstBracket + 1);
-          }
-        }
-
-        // Sliding window nested-object extractor fallback
-        if (!parsedQuiz) {
-          let firstBrace = resultText.indexOf('{');
-          while (firstBrace !== -1 && !parsedQuiz) {
-            let lastBrace = resultText.lastIndexOf('}');
-            while (lastBrace > firstBrace && !parsedQuiz) {
-              try {
-                const slice = resultText.substring(firstBrace, lastBrace + 1);
-                const attempt = JSON.parse(slice);
-                if (attempt && typeof attempt === 'object') {
-                  if (Array.isArray(attempt.quiz)) {
-                    parsedQuiz = attempt.quiz;
-                  } else if (Array.isArray(attempt.questions)) {
-                    parsedQuiz = attempt.questions;
-                  } else {
-                    for (const key of Object.keys(attempt)) {
-                      if (Array.isArray(attempt[key])) {
-                        parsedQuiz = attempt[key];
-                        break;
-                      }
-                    }
-                  }
-                }
-              } catch (err) {
-                // Shrink window
-              }
-              lastBrace = resultText.lastIndexOf('}', lastBrace - 1);
-            }
-            firstBrace = resultText.indexOf('{', firstBrace + 1);
-          }
-        }
-
-        // Advanced Fallback: Smart line-by-line markdown and text draft extractor
-        if (!parsedQuiz) {
-          console.log("▶️ [Fallback] Smart JSON solvers failed. Trying advanced raw markdown/draft scraper...");
+          // 4. Try standard JSON.parse first
           try {
-            const lines = resultText.split("\n");
-            const questions: any[] = [];
-            
-            let currentQuestion = "";
-            let currentOptions: string[] = [];
-            let correctAnswer = 0;
-            let explanation = "";
-            
-            const fillOptions = (opts: string[]): string[] => {
-              const res = [...opts];
-              while (res.length < 4) {
-                res.push(`Option ${String.fromCharCode(65 + res.length)}`);
-              }
-              return res.slice(0, 4);
-            };
-
-            for (let i = 0; i < lines.length; i++) {
-              const line = lines[i].trim();
-              if (!line) continue;
-              
-              // Check if line defines/overwrites a question
-              if (/^(?:Draft|Question|Q)\s*:\s*/i.test(line)) {
-                if (currentQuestion && currentOptions.length >= 2) {
-                  questions.push({
-                    question: currentQuestion,
-                    options: fillOptions(currentOptions),
-                    correctAnswer: correctAnswer,
-                    explanation: explanation || "Explanation based on provided text."
-                  });
+            return JSON.parse(cleaned);
+          } catch (e) {
+            // Sliding window array search
+            let firstBracket = cleaned.indexOf('[');
+            while (firstBracket !== -1) {
+              let lastBracket = cleaned.lastIndexOf(']');
+              while (lastBracket > firstBracket) {
+                try {
+                  const slice = cleaned.substring(firstBracket, lastBracket + 1);
+                  let repairedSlice = slice.replace(/,(\s*[\]}])/g, '$1');
+                  return JSON.parse(repairedSlice);
+                } catch (err) {
+                  // shrink window
                 }
-                currentQuestion = line.replace(/^(?:Draft|Question|Q)\s*:\s*/i, "").trim();
-                currentOptions = [];
-                correctAnswer = 0;
-                explanation = "";
-                continue;
+                lastBracket = cleaned.lastIndexOf(']', lastBracket - 1);
               }
-
-              const isQuestionLine = 
-                /^\*?\s*\**(?:Q\d+|Question\s*\d+)\**[:.)\s]/i.test(line) ||
-                (line.endsWith("?") && /^(What|Why|How|Which|Who|Where|When|Is|Are|Does|Do|Can|Could|Should)\b/i.test(line));
-                
-              if (isQuestionLine) {
-                if (currentQuestion && currentOptions.length >= 2) {
-                  questions.push({
-                    question: currentQuestion,
-                    options: fillOptions(currentOptions),
-                    correctAnswer: correctAnswer,
-                    explanation: explanation || "Explanation based on provided text."
-                  });
-                }
-                currentQuestion = line.replace(/^\*?\s*\**(?:Q\d+|Question\s*\d+)\**[:.)\s]*/i, "").trim();
-                currentOptions = [];
-                correctAnswer = 0;
-                explanation = "";
-                continue;
-              }
-              
-              // Inline options: "Options: A) ..., B) ..., C) ..., D) ..."
-              if (/options\s*:/i.test(line)) {
-                const parts = line.split(/[A-D]\s*[-).]/i);
-                if (parts.length > 2) {
-                  for (let j = 1; j < parts.length; j++) {
-                    const opt = parts[j].replace(/[,;]\s*$/, "").replace(/\*+$/, "").trim();
-                    if (opt) currentOptions.push(opt);
-                  }
-                  continue;
-                }
-              }
-              
-              // Line options: "A) Option text" or "* A) ..."
-              const isOptionLine = /^[-\*\s]*([A-D])\s*[-).:]\s*(.+)/i.test(line);
-              if (isOptionLine) {
-                const match = line.match(/^[-\*\s]*([A-D])\s*[-).:]\s*(.+)/i);
-                if (match) {
-                  const optionText = match[2].trim().replace(/\*+$/, "").trim();
-                  currentOptions.push(optionText);
-                }
-                continue;
-              }
-              
-              // Correct solver
-              const isCorrectLine = /correct\s*answer\s*:\s*([A-D\d])|correct\s*:\s*([A-D\d])/i.test(line);
-              if (isCorrectLine) {
-                const match = line.match(/(?:correct\s*answer|correct)\s*:\s*\**([A-D\d])/i);
-                if (match) {
-                  const val = match[1].trim().toUpperCase();
-                  if (val === 'A' || val === '0') correctAnswer = 0;
-                  else if (val === 'B' || val === '1') correctAnswer = 1;
-                  else if (val === 'C' || val === '2') correctAnswer = 2;
-                  else if (val === 'D' || val === '3') correctAnswer = 3;
-                }
-                continue;
-              }
-              
-              // Explanation collector
-              if (currentQuestion) {
-                if (/explanation\s*:/i.test(line)) {
-                  explanation = line.replace(/explanation\s*:\s*/i, "").trim();
-                } else if (line.startsWith("*") || line.startsWith("-")) {
-                  // Skip general headers/lists
-                } else if (currentOptions.length === 0) {
-                  currentQuestion += " " + line;
-                } else {
-                  if (!explanation) {
-                    explanation = line;
-                  } else {
-                    explanation += " " + line;
-                  }
-                }
-              }
-            }
-            
-            if (currentQuestion && currentOptions.length >= 2) {
-              questions.push({
-                question: currentQuestion,
-                options: fillOptions(currentOptions),
-                correctAnswer: correctAnswer,
-                explanation: explanation || "Explanation based on provided text."
-              });
+              firstBracket = cleaned.indexOf('[', firstBracket + 1);
             }
 
-            if (questions.length > 0) {
-              parsedQuiz = questions;
+            // Sliding window object search
+            let firstBrace = cleaned.indexOf('{');
+            while (firstBrace !== -1) {
+              let lastBrace = cleaned.lastIndexOf('}');
+              while (lastBrace > firstBrace) {
+                try {
+                  const slice = cleaned.substring(firstBrace, lastBrace + 1);
+                  let repairedSlice = slice.replace(/,(\s*[\]}])/g, '$1');
+                  return JSON.parse(repairedSlice);
+                } catch (err) {
+                  // shrink window
+                }
+                lastBrace = cleaned.lastIndexOf('}', lastBrace - 1);
+              }
+              firstBrace = cleaned.indexOf('{', firstBrace + 1);
             }
-          } catch (pe) {
-            console.error("Markdown Parser Error:", pe);
+          }
+          return null;
+        };
+
+        const parsed = robustParseJSON(resultText);
+        let parsedQuiz = null;
+
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          parsedQuiz = parsed;
+        } else if (parsed && typeof parsed === 'object') {
+          if (Array.isArray(parsed.quiz)) {
+            parsedQuiz = parsed.quiz;
+          } else if (Array.isArray(parsed.questions)) {
+            parsedQuiz = parsed.questions;
+          } else {
+            for (const key of Object.keys(parsed)) {
+              if (Array.isArray(parsed[key])) {
+                parsedQuiz = parsed[key];
+                break;
+              }
+            }
           }
         }
 
         if (!parsedQuiz) {
-          console.error("Smart scanner failed. Re-assembled raw text:", resultText);
-          throw new Error("No valid Quiz JSON array could be extracted from model response.");
+          console.error(`Strict scanner failed on model ${modelName}. Response length: ${resultText.length}. Sample output:`, resultText.substring(0, 500));
+          throw new Error(`No valid Quiz JSON array could be extracted from '${modelName}' response.`);
         }
 
-        console.log("✅ [Step 5] Quiz successfully generated and validated!", parsedQuiz);
+        console.log(`✅ [Step 5] Quiz successfully generated and strictly validated via ${modelName}!`, parsedQuiz);
 
         return parsedQuiz.map((q: any) => {
           const options = Array.isArray(q.options) 
             ? q.options.map((o: any) => typeof o === 'string' ? o : (o.text || String(o)))
             : ["Option A", "Option B", "Option C", "Option D"];
           
-          let correctIdx = Number(q.correctAnswer);
+          let correctIdx = NaN;
+          if (typeof q.correctAnswer !== 'undefined') {
+            correctIdx = Number(q.correctAnswer);
+          } else if (typeof q.correctIndex !== 'undefined') {
+            correctIdx = Number(q.correctIndex);
+          } else if (typeof q.correctAnswerIndex !== 'undefined') {
+            correctIdx = Number(q.correctAnswerIndex);
+          }
+
           if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
              if (q.correctOptionId && Array.isArray(q.options)) {
-                  correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
+                 correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
              }
              if (correctIdx === -1 || isNaN(correctIdx)) correctIdx = 0;
           }
 
           return {
             question: q.question || q.text || "Unknown Question",
-            options: options,
+            options: options.slice(0, 4),
             correctAnswer: correctIdx,
             explanation: q.explanation || "No explanation provided."
           };
         });
       };
 
-      // Exclusively route to Gemma 4 without fallback as requested
+      // Exclusively route to Gemma as requested
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
       console.error("❌ Gemma Quiz Gen Error:", error);
       return [{
-        question: "The AI encountered an error formatting this quiz. The connection timed out, the server was overloaded (503), or the content was too complex.",
+        question: "The AI encountered an error generating this quiz. The server may be overloaded or the content was too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "API Timeout, Server Error, or Parsing Failure."
+        explanation: "API Timeout, Server Overload (503), or strict formatting failure."
       }];
     }
   },
