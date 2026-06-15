@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: THE 'EXODIA' COMBINATION LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: THREAD-SAFE EXODIA LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -289,17 +289,14 @@ export const geminiService = {
 
       const payload = {
         contents: [
-          // FEW-SHOT 1: The user asks for a simple quiz
           {
             role: "user",
             parts: [{ text: "Generate a 1-question multiple-choice quiz about the Sun. Return ONLY a valid JSON array. NO formatting. NO preamble. NO markdown blocks." }]
           },
-          // FEW-SHOT 2: The model replies INSTANTLY with pure JSON
           {
             role: "model",
             parts: [{ text: "[\n  {\n    \"question\": \"What is the center of our solar system?\",\n    \"options\": [\"Earth\", \"Mars\", \"The Sun\", \"Jupiter\"],\n    \"correctAnswer\": 2,\n    \"explanation\": \"The Sun is the star at the center of the solar system.\"\n  }\n]" }]
           },
-          // REAL TURN: Your actual dynamic request
           {
             role: "user",
             parts: [{
@@ -319,8 +316,8 @@ REQUIRED SCHEMA PER OBJECT:
           }
         ],
         generationConfig: {
-          temperature: 0.2, // Low temp for strict pattern matching
-          maxOutputTokens: 3000 // Fast generation
+          temperature: 0.2,
+          maxOutputTokens: 3000
         }
       };
 
@@ -336,28 +333,35 @@ REQUIRED SCHEMA PER OBJECT:
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Running Smart Validator Scanner...");
+        console.log("▶️ [Step 4] API responded! Running Thread-Safe Smart Scanner...");
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         let parsedQuiz = null;
 
-        // SMART VALIDATOR SCANNER: Brute-force hunts for the valid JSON array
         let firstBracket = resultText.indexOf('[');
         while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
             while (lastBracket > firstBracket && !parsedQuiz) {
+                let isValid = false;
                 try {
                     const slice = resultText.substring(firstBracket, lastBracket + 1);
                     const attempt = JSON.parse(slice);
                     
-                    // VALIDATION: Must be array, > 1 item (to ignore the 1-question few-shot if echoed), and have 'question'
-                    if (Array.isArray(attempt) && attempt.length > 1 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0]) {
+                    if (Array.isArray(attempt) && attempt.length > 1 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
                         parsedQuiz = attempt; 
+                        isValid = true;
                     }
                 } catch (e) {
+                    // JSON.parse failed
+                }
+                
+                // THREAD-SAFE FIX: If it wasn't valid, ALWAYS shrink the window
+                if (!isValid) {
                     lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
                 }
             }
-            firstBracket = resultText.indexOf('[', firstBracket + 1);
+            if (!parsedQuiz) {
+                firstBracket = resultText.indexOf('[', firstBracket + 1);
+            }
         }
 
         if (!parsedQuiz) {
@@ -395,10 +399,10 @@ REQUIRED SCHEMA PER OBJECT:
     } catch (error) {
       console.error("❌ Gemma Quiz Gen Error:", error);
       return [{
-        question: "The AI encountered an error formatting this quiz. The connection timed out or the content was too complex.",
+        question: "The AI encountered an error formatting this quiz. The connection timed out, the server was overloaded (503), or the content was too complex.",
         options: ["Acknowledge", "Retry", "Skip", "Exit"],
         correctAnswer: 0,
-        explanation: "API Timeout or Parsing Failure."
+        explanation: "API Timeout, Server Error, or Parsing Failure."
       }];
     }
   },
