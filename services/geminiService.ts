@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'THE 5-COUNT FORCER' LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'TEMPLATE FILL-IN' + FLASH FALLBACK LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,35 +288,39 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        contents: [
-          {
-            role: "user",
-            parts: [{
-              text: `You are a strict data compiler. Convert the provided text into a multiple-choice quiz.
+        contents: [{
+          role: "user",
+          parts: [{
+            text: `You are a strict data compiler. Convert the provided text into a 5-question multiple-choice quiz.
 Difficulty: ${level || 'Intermediate'} CEFR.
 Content: ${title} - ${content}
 
-CRITICAL: You must generate EXACTLY FIVE (5) questions.
-Return ONLY a valid JSON array of objects. Do not write a scratchpad or markdown.
+CRITICAL INSTRUCTION:
+You must fill out the following JSON template. Replace the empty strings and 0s with your generated content.
+Do NOT add or remove any objects. You MUST return exactly 5 filled objects.
+Do NOT write any conversational text, preamble, or scratchpad. Output ONLY the valid JSON array.
 
+TEMPLATE:
 [
-  {
-    "question_number": 1,
-    "question": "`
-            }]
-          }
-        ],
+  { "question": "", "options": ["", "", "", ""], "correctAnswer": 0, "explanation": "" },
+  { "question": "", "options": ["", "", "", ""], "correctAnswer": 0, "explanation": "" },
+  { "question": "", "options": ["", "", "", ""], "correctAnswer": 0, "explanation": "" },
+  { "question": "", "options": ["", "", "", ""], "correctAnswer": 0, "explanation": "" },
+  { "question": "", "options": ["", "", "", ""], "correctAnswer": 0, "explanation": "" }
+]`
+          }]
+        }],
         generationConfig: {
-          temperature: 0.2, // Cold temperature to prevent it from wandering
+          temperature: 0.1, // Ultra-cold to prevent formatting deviations
           maxOutputTokens: 3000
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending 5-Count Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Template Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
-          setTimeout(() => reject(new Error("API Timeout")), 90000)
+          setTimeout(() => reject(new Error("API Timeout")), 60000)
         );
 
         let data;
@@ -330,15 +334,15 @@ Return ONLY a valid JSON array of objects. Do not write a scratchpad or markdown
           data = { candidates: [] };
         }
 
-        console.log("▶️ [Step 4] API responded! Running Thread-Safe Strict Scanner...");
+        console.log("▶️ [Step 4] API responded! Running Clean JSON Scanner...");
         
-        // Re-attach the forced opening structure containing the psychological #1 counter
-        const rawResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        const resultText = `[\n  {\n    "question_number": 1,\n    "question": "` + rawResponse;
-        
+        let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         let parsedQuiz = null;
 
-        // 1. Strict Thread-Safe JSON Scanner
+        // Clean any markdown backticks the model might add around the array
+        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+        // 1. Strict Thread-Safe Scanner (Regex Fallback completely removed)
         let firstBracket = resultText.indexOf('[');
         while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
@@ -348,10 +352,13 @@ Return ONLY a valid JSON array of objects. Do not write a scratchpad or markdown
                     const slice = resultText.substring(firstBracket, lastBracket + 1);
                     const attempt = JSON.parse(slice);
                     
-                    // STRICT VALIDATION: Must be an array, EXACTLY 5 items, and valid objects
-                    if (Array.isArray(attempt) && attempt.length === 5 && typeof attempt[0] === 'object' && attempt[0] !== null && ('question' in attempt[0] || 'text' in attempt[0]) && 'options' in attempt[0]) {
-                        parsedQuiz = attempt; 
-                        isValid = true;
+                    // STRICT VALIDATION: Must be array, exactly 5 items, and contain valid keys
+                    if (Array.isArray(attempt) && attempt.length === 5 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0] && 'options' in attempt[0]) {
+                        // Ensure it didn't just echo the empty template back to us
+                        if (attempt[0].question !== "") {
+                            parsedQuiz = attempt; 
+                            isValid = true;
+                        }
                     }
                 } catch (e) {
                     // JSON.parse failed
@@ -366,97 +373,9 @@ Return ONLY a valid JSON array of objects. Do not write a scratchpad or markdown
             }
         }
 
-        // 2. Fallback Regex/Markdown Parser for Text-Mode Outputs
+        // 2. Ultra-Reliable Standby Fallback using gemini-3.5-flash with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ JSON parse failed. Running Backup Regex-Markdown parser...");
-          try {
-            const questions: any[] = [];
-            const lines = resultText.split('\n');
-            let currentQuestion: string | null = null;
-            let currentOptions: string[] = [];
-            let currentAnswer: number = 0;
-            let currentExplanation = "No explanation provided.";
-
-            const pushQuestion = () => {
-              if (currentQuestion && currentOptions.length >= 2) {
-                while (currentOptions.length < 4) {
-                  currentOptions.push(`Option ${String.fromCharCode(65 + currentOptions.length)}`);
-                }
-                questions.push({
-                   question: currentQuestion.trim(),
-                   options: currentOptions.slice(0, 4),
-                   correctAnswer: currentAnswer,
-                   explanation: currentExplanation.trim()
-                });
-              }
-              currentQuestion = null;
-              currentOptions = [];
-              currentAnswer = 0;
-              currentExplanation = "No explanation provided.";
-            };
-
-            for (let line of lines) {
-              line = line.trim();
-              if (!line) continue;
-
-              const qMatch = line.match(/^\s*[*\s#-]*Question\s*(\d+)\s*(?:\([^)]+\))?\*?\s*[:\-]\*?\s*(.*)/i) ||
-                             line.match(/\*Question\s*\d+[^:]*:\s*(.*)/i) ||
-                             line.match(/Question\s*\d+[^:]*:\s*(.*)/i) ||
-                             line.match(/^(?:[*#-\s]*Question|[*#-\s]*Q|[\d]+\.)\s*(\d+)?\s*[:\-\)]?\s*(.*)/i);
-              
-              const isMeta = line.toLowerCase().includes("json") || 
-                             line.toLowerCase().includes("schema") || 
-                             line.toLowerCase().includes("exactly five") ||
-                             line.toLowerCase().includes("role:") ||
-                             line.toLowerCase().includes("task:");
-
-              if (qMatch && !isMeta) {
-                pushQuestion();
-                currentQuestion = qMatch[2] || qMatch[1] || line;
-                currentQuestion = currentQuestion.replace(/^[*#-\s:]+/, '').replace(/[*_]+/g, '').trim();
-                continue;
-              }
-
-              const optMatch = line.match(/^[*\s#-]*([A-D])\s*[\)\.\-]\s*(.*)/i);
-              if (optMatch && currentQuestion) {
-                currentOptions.push(optMatch[2].trim().replace(/[*_]+/g, '').trim());
-                continue;
-              }
-
-              const ansMatch = line.match(/^[*\s#-]*\*?(?:Answer|Correct|Correct\s*Answer|correctAnswer|Response)\*?\s*[:=]?\s*\*?([A-D\d])\*?/i);
-              if (ansMatch && currentQuestion) {
-                const val = ansMatch[1].toUpperCase();
-                if (['A', 'B', 'C', 'D'].includes(val)) {
-                  currentAnswer = val.charCodeAt(0) - 65;
-                } else {
-                  const num = parseInt(val, 10);
-                  if (!isNaN(num) && num >= 0 && num <= 3) {
-                    currentAnswer = num;
-                  }
-                }
-                continue;
-              }
-
-              const expMatch = line.match(/^(?:[*#-\s]*Explanation|[*#-\s]*explanation)\s*[:=]?\s*(.*)/i);
-              if (expMatch && currentQuestion) {
-                currentExplanation = expMatch[1].trim().replace(/^[*#-\s:]+/, '').replace(/[*_]+/g, '').trim();
-                continue;
-              }
-            }
-
-            pushQuestion();
-            if (questions.length >= 5) {
-              parsedQuiz = questions.slice(0, 5);
-              console.log("✅ Successfully parsed 5 questions using Backup Regex-Markdown parser!");
-            }
-          } catch (markdownErr) {
-            console.error("Regex backup parser crashed:", markdownErr);
-          }
-        }
-
-        // 3. Ultra-Reliable Standby Fallback using gemini-3.5-flash with native JSON Mode
-        if (!parsedQuiz) {
-          console.warn("⚠️ Gemma generation and text-regex extraction failed. Routing immediately to stand-by gemini-3.5-flash fallback...");
+          console.warn("⚠️ Gemma generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.5-flash fallback...");
           try {
             const flashPayload = {
               contents: [
@@ -472,7 +391,7 @@ JSON Schema structure:
   {
     "question": "string",
     "options": ["string", "string", "string", "string"],
-    "correctAnswer": 0 (index 0-3),
+    "correctAnswer": 0,
     "explanation": "string"
   }
 ]`
@@ -488,6 +407,7 @@ JSON Schema structure:
             const flashText = flashData.candidates?.[0]?.content?.parts?.[0]?.text || "";
             let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
             const flashQuiz = JSON.parse(cleanedFlash);
+            
             if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
               parsedQuiz = flashQuiz;
               console.log("✅ Quiz successfully generated via stand-by gemini-3.5-flash!");
@@ -498,7 +418,7 @@ JSON Schema structure:
         }
 
         if (!parsedQuiz) {
-          console.error("Strict scanner failed to find exactly 5 questions. Re-assembled raw text:", resultText);
+          console.error("Strict scanner and fallback both failed. Raw text:", resultText);
           throw new Error("Model failed to output a valid 5-question JSON array.");
         }
 
