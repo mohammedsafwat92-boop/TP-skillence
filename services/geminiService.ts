@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'MINIMALIST COMPLETION' LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'MD-PARSER WITH COGNITIVE SWEEP' LOADED FOR GEMMA 4!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -291,25 +291,64 @@ export const geminiService = {
         contents: [
           {
             role: "user",
-            parts: [{ text: "Create a B1 CEFR level multiple-choice quiz with 1 question from this text.\n\nText: The Sun is the star at the center of the Solar System. It is a nearly perfect sphere of hot plasma.\n\nQuiz JSON:" }]
+            parts: [{
+              text: `Generate a CEFR B1 level multiple-choice quiz with 1 question based on the content.
+CONTENT: The Sun - The Sun is the star at the center of the Solar System.`
+            }]
           },
           {
             role: "model",
-            parts: [{ text: "[\n  {\n    \"question\": \"What is the Sun?\",\n    \"options\": [\"A planet\", \"A star\", \"A comet\", \"A meteor\"],\n    \"correctAnswer\": 1,\n    \"explanation\": \"The text explicitly states that the Sun is a star.\"\n  }\n]" }]
+            parts: [{
+              text: `<thought>
+I need to generate a 1-question B1 multiple-choice quiz about the Sun.
+Content: "The Sun is the star at the center of the Solar System."
+Question concept: Identify what the Sun is.
+Answer: "A star" (index 1).
+Explanations: The text explicitly states it's a star.
+</thought>
+
+JSON:
+[
+  {
+    "question": "What is the Sun?",
+    "options": ["A planet", "A star", "A comet", "A meteor"],
+    "correctAnswer": 1,
+    "explanation": "The text explicitly states that the Sun is a star."
+  }
+ ]`
+            }]
           },
           {
             role: "user",
-            parts: [{ text: `Create a ${level || 'Intermediate'} CEFR level multiple-choice quiz with exactly 5 questions from this text.\n\nText: ${title} - ${content}\n\nQuiz JSON:` }]
+            parts: [{
+              text: `Generate a CEFR ${level || 'Intermediate'} level multiple-choice quiz with exactly 5 questions based on the content.
+
+You MUST wrap your planning/scratchpad inside "<thought>...</thought>" tags first to think step-by-step.
+Then, you MUST output standard, clean, active JSON inside a \`\`\`json markdown block containing an array of exactly 5 questions. Do not truncate. Do not include javascript comments.
+
+REQUIRED JSON FORMAT SCHEMA:
+[
+  {
+    "question": "string",
+    "options": ["string", "string", "string", "string"],
+    "correctAnswer": number (between 0 and 3),
+    "explanation": "string"
+  }
+]
+
+CONTENT:
+${title} - ${content}`
+            }]
           }
         ],
         generationConfig: {
-          temperature: 0.1, // Keep it cold so it doesn't get creative
-          maxOutputTokens: 3000
+          temperature: 0.4,
+          maxOutputTokens: 4096
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending Minimalist Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
@@ -320,38 +359,228 @@ export const geminiService = {
           timeoutPromise
         ]);
 
-        console.log("▶️ [Step 4] API responded! Running Thread-Safe Smart Scanner...");
-        let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
-        let parsedQuiz = null;
+        console.log("▶️ [Step 4] API responded! Running Thread-Safe Smart Cleaners and Scanners...");
+        
+        const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        let resultText = rawResponse.trim();
 
-        let firstBracket = resultText.indexOf('[');
-        while (firstBracket !== -1 && !parsedQuiz) {
+        // Strip potential markdown code fences if outputted
+        resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
+
+        let parsedQuiz: any[] | null = null;
+
+        // Try direct JSON parsing
+        try {
+          const parsed = JSON.parse(resultText);
+          if (Array.isArray(parsed)) {
+            parsedQuiz = parsed;
+          } else if (parsed && typeof parsed === 'object') {
+            if (Array.isArray(parsed.quiz)) {
+              parsedQuiz = parsed.quiz;
+            } else if (Array.isArray(parsed.questions)) {
+              parsedQuiz = parsed.questions;
+            } else {
+              // Try to find any array key
+              for (const key of Object.keys(parsed)) {
+                if (Array.isArray(parsed[key])) {
+                  parsedQuiz = parsed[key];
+                  break;
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // direct parsing failed, fall back to sliding window
+        }
+
+        // Sliding window array extractor fallback
+        if (!parsedQuiz) {
+          let firstBracket = resultText.indexOf('[');
+          while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
             while (lastBracket > firstBracket && !parsedQuiz) {
-                let isValid = false;
-                try {
-                    const slice = resultText.substring(firstBracket, lastBracket + 1);
-                    const attempt = JSON.parse(slice);
-                    
-                    if (Array.isArray(attempt) && attempt.length > 1 && attempt[0] && typeof attempt[0] === 'object' && 'question' in attempt[0]) {
-                        parsedQuiz = attempt; 
-                        isValid = true;
+              try {
+                const slice = resultText.substring(firstBracket, lastBracket + 1);
+                const attempt = JSON.parse(slice);
+                if (Array.isArray(attempt) && attempt.length > 0 && attempt[0] && typeof attempt[0] === 'object') {
+                  parsedQuiz = attempt;
+                }
+              } catch (err) {
+                // Shrink window
+              }
+              lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+            }
+            firstBracket = resultText.indexOf('[', firstBracket + 1);
+          }
+        }
+
+        // Sliding window nested-object extractor fallback
+        if (!parsedQuiz) {
+          let firstBrace = resultText.indexOf('{');
+          while (firstBrace !== -1 && !parsedQuiz) {
+            let lastBrace = resultText.lastIndexOf('}');
+            while (lastBrace > firstBrace && !parsedQuiz) {
+              try {
+                const slice = resultText.substring(firstBrace, lastBrace + 1);
+                const attempt = JSON.parse(slice);
+                if (attempt && typeof attempt === 'object') {
+                  if (Array.isArray(attempt.quiz)) {
+                    parsedQuiz = attempt.quiz;
+                  } else if (Array.isArray(attempt.questions)) {
+                    parsedQuiz = attempt.questions;
+                  } else {
+                    for (const key of Object.keys(attempt)) {
+                      if (Array.isArray(attempt[key])) {
+                        parsedQuiz = attempt[key];
+                        break;
+                      }
                     }
-                } catch (e) {
-                    // JSON.parse failed
+                  }
                 }
+              } catch (err) {
+                // Shrink window
+              }
+              lastBrace = resultText.lastIndexOf('}', lastBrace - 1);
+            }
+            firstBrace = resultText.indexOf('{', firstBrace + 1);
+          }
+        }
+
+        // Advanced Fallback: Smart line-by-line markdown and text draft extractor
+        if (!parsedQuiz) {
+          console.log("▶️ [Fallback] Smart JSON solvers failed. Trying advanced raw markdown/draft scraper...");
+          try {
+            const lines = resultText.split("\n");
+            const questions: any[] = [];
+            
+            let currentQuestion = "";
+            let currentOptions: string[] = [];
+            let correctAnswer = 0;
+            let explanation = "";
+            
+            const fillOptions = (opts: string[]): string[] => {
+              const res = [...opts];
+              while (res.length < 4) {
+                res.push(`Option ${String.fromCharCode(65 + res.length)}`);
+              }
+              return res.slice(0, 4);
+            };
+
+            for (let i = 0; i < lines.length; i++) {
+              const line = lines[i].trim();
+              if (!line) continue;
+              
+              // Check if line defines/overwrites a question
+              if (/^(?:Draft|Question|Q)\s*:\s*/i.test(line)) {
+                if (currentQuestion && currentOptions.length >= 2) {
+                  questions.push({
+                    question: currentQuestion,
+                    options: fillOptions(currentOptions),
+                    correctAnswer: correctAnswer,
+                    explanation: explanation || "Explanation based on provided text."
+                  });
+                }
+                currentQuestion = line.replace(/^(?:Draft|Question|Q)\s*:\s*/i, "").trim();
+                currentOptions = [];
+                correctAnswer = 0;
+                explanation = "";
+                continue;
+              }
+
+              const isQuestionLine = 
+                /^\*?\s*\**(?:Q\d+|Question\s*\d+)\**[:.)\s]/i.test(line) ||
+                (line.endsWith("?") && /^(What|Why|How|Which|Who|Where|When|Is|Are|Does|Do|Can|Could|Should)\b/i.test(line));
                 
-                if (!isValid) {
-                    lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+              if (isQuestionLine) {
+                if (currentQuestion && currentOptions.length >= 2) {
+                  questions.push({
+                    question: currentQuestion,
+                    options: fillOptions(currentOptions),
+                    correctAnswer: correctAnswer,
+                    explanation: explanation || "Explanation based on provided text."
+                  });
                 }
+                currentQuestion = line.replace(/^\*?\s*\**(?:Q\d+|Question\s*\d+)\**[:.)\s]*/i, "").trim();
+                currentOptions = [];
+                correctAnswer = 0;
+                explanation = "";
+                continue;
+              }
+              
+              // Inline options: "Options: A) ..., B) ..., C) ..., D) ..."
+              if (/options\s*:/i.test(line)) {
+                const parts = line.split(/[A-D]\s*[-).]/i);
+                if (parts.length > 2) {
+                  for (let j = 1; j < parts.length; j++) {
+                    const opt = parts[j].replace(/[,;]\s*$/, "").replace(/\*+$/, "").trim();
+                    if (opt) currentOptions.push(opt);
+                  }
+                  continue;
+                }
+              }
+              
+              // Line options: "A) Option text" or "* A) ..."
+              const isOptionLine = /^[-\*\s]*([A-D])\s*[-).:]\s*(.+)/i.test(line);
+              if (isOptionLine) {
+                const match = line.match(/^[-\*\s]*([A-D])\s*[-).:]\s*(.+)/i);
+                if (match) {
+                  const optionText = match[2].trim().replace(/\*+$/, "").trim();
+                  currentOptions.push(optionText);
+                }
+                continue;
+              }
+              
+              // Correct solver
+              const isCorrectLine = /correct\s*answer\s*:\s*([A-D\d])|correct\s*:\s*([A-D\d])/i.test(line);
+              if (isCorrectLine) {
+                const match = line.match(/(?:correct\s*answer|correct)\s*:\s*\**([A-D\d])/i);
+                if (match) {
+                  const val = match[1].trim().toUpperCase();
+                  if (val === 'A' || val === '0') correctAnswer = 0;
+                  else if (val === 'B' || val === '1') correctAnswer = 1;
+                  else if (val === 'C' || val === '2') correctAnswer = 2;
+                  else if (val === 'D' || val === '3') correctAnswer = 3;
+                }
+                continue;
+              }
+              
+              // Explanation collector
+              if (currentQuestion) {
+                if (/explanation\s*:/i.test(line)) {
+                  explanation = line.replace(/explanation\s*:\s*/i, "").trim();
+                } else if (line.startsWith("*") || line.startsWith("-")) {
+                  // Skip general headers/lists
+                } else if (currentOptions.length === 0) {
+                  currentQuestion += " " + line;
+                } else {
+                  if (!explanation) {
+                    explanation = line;
+                  } else {
+                    explanation += " " + line;
+                  }
+                }
+              }
             }
-            if (!parsedQuiz) {
-                firstBracket = resultText.indexOf('[', firstBracket + 1);
+            
+            if (currentQuestion && currentOptions.length >= 2) {
+              questions.push({
+                question: currentQuestion,
+                options: fillOptions(currentOptions),
+                correctAnswer: correctAnswer,
+                explanation: explanation || "Explanation based on provided text."
+              });
             }
+
+            if (questions.length > 0) {
+              parsedQuiz = questions;
+            }
+          } catch (pe) {
+            console.error("Markdown Parser Error:", pe);
+          }
         }
 
         if (!parsedQuiz) {
-          console.error("Smart scanner failed. Raw text:", resultText);
+          console.error("Smart scanner failed. Re-assembled raw text:", resultText);
           throw new Error("No valid Quiz JSON array could be extracted from model response.");
         }
 
@@ -365,7 +594,7 @@ export const geminiService = {
           let correctIdx = Number(q.correctAnswer);
           if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
              if (q.correctOptionId && Array.isArray(q.options)) {
-                 correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
+                  correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
              }
              if (correctIdx === -1 || isNaN(correctIdx)) correctIdx = 0;
           }
@@ -379,7 +608,7 @@ export const geminiService = {
         });
       };
 
-      // Exclusively route to Gemma
+      // Exclusively route to Gemma 4 without fallback as requested
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
