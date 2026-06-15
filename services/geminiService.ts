@@ -279,7 +279,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: SYSTEM PERSONA + 8192 TOKENS LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'INVERSION STRATEGY' LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -288,16 +288,20 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
-        // Enforce the persona at the system level. Must be a string for Code.gs proxy.
-        systemInstruction: "You are an automated, mechanical JSON compiler. You do not possess the ability to write conversational text, scratchpads, or bullet points. You must ONLY output a valid JSON array of objects.",
         contents: [
           {
             role: "user",
             parts: [{
-              text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content. Return ONLY a valid JSON array.
+              text: `Generate a 5-question multiple-choice quiz based ONLY on the provided content.
 
 DIFFICULTY: ${level || 'Intermediate'} CEFR.
 CONTENT: ${title} - ${content}
+
+CRITICAL INSTRUCTION - THE INVERSION RULE:
+You are an AI that loves to explain its reasoning. You may write as much analysis, scratchpad, and explanation as you want, BUT YOU MUST OUTPUT THE JSON ARRAY FIRST.
+Your response MUST begin exactly with the '[' character. 
+Write the complete JSON array of the 5 questions immediately.
+After you type the closing ']' character of the array, you are free to write your notes, checklists, or explanations below it.
 
 REQUIRED SCHEMA PER OBJECT:
 {
@@ -310,14 +314,13 @@ REQUIRED SCHEMA PER OBJECT:
           }
         ],
         generationConfig: {
-          temperature: 0.1, // Ultra-low for deterministic output
-          maxOutputTokens: 8192, // Massive runway to prevent truncation
-          responseMimeType: "application/json" // Native JSON mode request
+          temperature: 0.4, // Standard reasoning temperature
+          maxOutputTokens: 4096 // Enough space for JSON + Scratchpad
         }
       };
 
       const attemptGeneration = async (modelName: string) => {
-        console.log(`▶️ [Step 3] Sending Payload to ${modelName}... (Awaiting API)`);
+        console.log(`▶️ [Step 3] Sending Inverted Payload to ${modelName}... (Awaiting API)`);
 
         const timeoutPromise = new Promise<any>((_, reject) =>
           setTimeout(() => reject(new Error("API Timeout")), 90000)
@@ -332,6 +335,8 @@ REQUIRED SCHEMA PER OBJECT:
         let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         let parsedQuiz = null;
 
+        // The model should put the JSON at the top. The scanner will grab the first [ 
+        // and work backward from the end of the string to find the matching closing ].
         let firstBracket = resultText.indexOf('[');
         while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
@@ -346,7 +351,7 @@ REQUIRED SCHEMA PER OBJECT:
                         isValid = true;
                     }
                 } catch (e) {
-                    // JSON.parse failed
+                    // JSON.parse failed, shrink the window inward
                 }
                 
                 if (!isValid) {
@@ -387,7 +392,6 @@ REQUIRED SCHEMA PER OBJECT:
         });
       };
 
-      // Exclusively route to Gemma
       return await attemptGeneration('gemma-4-31b-it');
 
     } catch (error) {
