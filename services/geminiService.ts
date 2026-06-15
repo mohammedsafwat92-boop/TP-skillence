@@ -292,13 +292,13 @@ export const geminiService = {
           {
             role: "user",
             parts: [{
-              text: `Translate this educational content into 5 multiple-choice questions for CEFR level ${level || 'Intermediate'}.
+              text: `You are a strict data compiler. Convert the provided text into a multiple-choice quiz.
+Difficulty: ${level || 'Intermediate'} CEFR.
 Content: ${title} - ${content}
 
-Format your output ONLY as a raw, single JSON array containing exactly 5 question objects.
-Do not write thoughts, markdown block delimiters, or any extra text.
+CRITICAL: You must generate EXACTLY FIVE (5) questions.
+Return ONLY a valid JSON array of objects. Do not write a scratchpad or markdown.
 
-I have started the JSON output for you. Continue compiling the JSON array from this exact starting point:
 [
   {
     "question_number": 1,
@@ -319,20 +319,26 @@ I have started the JSON output for you. Continue compiling the JSON array from t
           setTimeout(() => reject(new Error("API Timeout")), 90000)
         );
 
-        const data = await Promise.race([
-          proxyGeminiSafe(modelName, payload),
-          timeoutPromise
-        ]);
+        let data;
+        try {
+          data = await Promise.race([
+            proxyGeminiSafe(modelName, payload),
+            timeoutPromise
+          ]);
+        } catch (apiErr: any) {
+          console.warn(`⚠️ Primary API generation failed for ${modelName}:`, apiErr.message || apiErr);
+          data = { candidates: [] };
+        }
 
         console.log("▶️ [Step 4] API responded! Running Thread-Safe Strict Scanner...");
         
         // Re-attach the forced opening structure containing the psychological #1 counter
-        const rawResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        const rawResponse = data?.candidates?.[0]?.content?.parts?.[0]?.text || "";
         const resultText = `[\n  {\n    "question_number": 1,\n    "question": "` + rawResponse;
         
         let parsedQuiz = null;
 
-        // 1. Standard Thread-Safe JSON Scanner
+        // 1. Strict Thread-Safe JSON Scanner
         let firstBracket = resultText.indexOf('[');
         while (firstBracket !== -1 && !parsedQuiz) {
             let lastBracket = resultText.lastIndexOf(']');
@@ -343,7 +349,7 @@ I have started the JSON output for you. Continue compiling the JSON array from t
                     const attempt = JSON.parse(slice);
                     
                     // STRICT VALIDATION: Must be an array, EXACTLY 5 items, and valid objects
-                    if (Array.isArray(attempt) && attempt.length === 5 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0] && 'options' in attempt[0]) {
+                    if (Array.isArray(attempt) && attempt.length === 5 && typeof attempt[0] === 'object' && attempt[0] !== null && ('question' in attempt[0] || 'text' in attempt[0]) && 'options' in attempt[0]) {
                         parsedQuiz = attempt; 
                         isValid = true;
                     }
@@ -377,10 +383,10 @@ I have started the JSON output for you. Continue compiling the JSON array from t
                   currentOptions.push(`Option ${String.fromCharCode(65 + currentOptions.length)}`);
                 }
                 questions.push({
-                  question: currentQuestion.trim(),
-                  options: currentOptions.slice(0, 4),
-                  correctAnswer: currentAnswer,
-                  explanation: currentExplanation.trim()
+                   question: currentQuestion.trim(),
+                   options: currentOptions.slice(0, 4),
+                   correctAnswer: currentAnswer,
+                   explanation: currentExplanation.trim()
                 });
               }
               currentQuestion = null;
@@ -393,26 +399,31 @@ I have started the JSON output for you. Continue compiling the JSON array from t
               line = line.trim();
               if (!line) continue;
 
-              const qMatch = line.match(/^(?:[*#-\s]*Question|[*#-\s]*Q|[\d]+\.)\s*(\d+)?\s*[:\-\)]?\s*(.*)/i) || 
+              const qMatch = line.match(/^\s*[*\s#-]*Question\s*(\d+)\s*(?:\([^)]+\))?\*?\s*[:\-]\*?\s*(.*)/i) ||
                              line.match(/\*Question\s*\d+[^:]*:\s*(.*)/i) ||
-                             line.match(/Question\s*\d+[^:]*:\s*(.*)/i);
+                             line.match(/Question\s*\d+[^:]*:\s*(.*)/i) ||
+                             line.match(/^(?:[*#-\s]*Question|[*#-\s]*Q|[\d]+\.)\s*(\d+)?\s*[:\-\)]?\s*(.*)/i);
               
-              const isMeta = line.toLowerCase().includes("json") || line.toLowerCase().includes("schema") || line.toLowerCase().includes("exactly five");
+              const isMeta = line.toLowerCase().includes("json") || 
+                             line.toLowerCase().includes("schema") || 
+                             line.toLowerCase().includes("exactly five") ||
+                             line.toLowerCase().includes("role:") ||
+                             line.toLowerCase().includes("task:");
 
               if (qMatch && !isMeta) {
                 pushQuestion();
-                currentQuestion = qMatch[1] || qMatch[2] || line;
+                currentQuestion = qMatch[2] || qMatch[1] || line;
                 currentQuestion = currentQuestion.replace(/^[*#-\s:]+/, '').replace(/[*_]+/g, '').trim();
                 continue;
               }
 
-              const optMatch = line.match(/^[*-\s]*([A-D])\s*[\)\.]\s*(.*)/i);
+              const optMatch = line.match(/^[*\s#-]*([A-D])\s*[\)\.\-]\s*(.*)/i);
               if (optMatch && currentQuestion) {
                 currentOptions.push(optMatch[2].trim().replace(/[*_]+/g, '').trim());
                 continue;
               }
 
-              const ansMatch = line.match(/^(?:[*#-\s]*Answer|[*#-\s]*Correct\s*Answer|[*#-\s]*correctAnswer|[*#-\s]*\*Answer\*)\s*[:=]?\s*([A-D\d])/i);
+              const ansMatch = line.match(/^[*\s#-]*\*?(?:Answer|Correct|Correct\s*Answer|correctAnswer|Response)\*?\s*[:=]?\s*\*?([A-D\d])\*?/i);
               if (ansMatch && currentQuestion) {
                 const val = ansMatch[1].toUpperCase();
                 if (['A', 'B', 'C', 'D'].includes(val)) {
@@ -434,8 +445,8 @@ I have started the JSON output for you. Continue compiling the JSON array from t
             }
 
             pushQuestion();
-            if (questions.length === 5) {
-              parsedQuiz = questions;
+            if (questions.length >= 5) {
+              parsedQuiz = questions.slice(0, 5);
               console.log("✅ Successfully parsed 5 questions using Backup Regex-Markdown parser!");
             }
           } catch (markdownErr) {
