@@ -52,13 +52,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [drilldownUser, setDrilldownUser] = useState<UserProfile | null>(null);
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
 
-  const wavesList = useMemo(() => {
+  const availableWaves = useMemo(() => {
     if (!userList) return [];
-    const extracted = new Set<string>();
-    userList.forEach(u => {
-      if (u.wave) extracted.add(u.wave);
-    });
-    return Array.from(extracted).filter(Boolean).sort();
+    return Array.from(new Set(userList.map(u => u.waveNumber).filter(Boolean))).sort();
   }, [userList]);
 
   const availableWeeks = useMemo(() => {
@@ -75,7 +71,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     
     let activeUsers = userList.filter(u => u.role === 'agent');
     if (activeWave !== 'all') {
-      activeUsers = activeUsers.filter(u => u.wave === activeWave);
+      activeUsers = activeUsers.filter(u => u.wave === activeWave || u.waveNumber === activeWave);
     }
     
     return activeUsers
@@ -303,7 +299,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               className="bg-white text-tp-purple font-black text-[10px] uppercase tracking-widest px-3 py-1.5 rounded-xl border border-tp-purple/10 focus:outline-none focus:ring-2 focus:ring-tp-purple/20 cursor-pointer"
             >
               <option value="all">🌐 All Waves</option>
-              {wavesList.map(wave => (
+              {availableWaves.map(wave => (
                 <option key={wave} value={wave}>🌊 {wave}</option>
               ))}
             </select>
