@@ -112,6 +112,14 @@ export const googleSheetService = {
     }
   },
 
+  getWaveConfigs: async () => {
+    return await callApi('get_wave_configs');
+  },
+
+  setWaveConfig: async (waveNumber: string, goalType: 'default' | 'weekly', goalMinutes: number) => {
+    return await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
+  },
+
   assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> => {
     try {
       return await callApi('assign_to_week', { weekNumber, resourceIds, adminId });

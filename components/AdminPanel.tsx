@@ -51,6 +51,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [activeWave, setActiveWave] = useState<string>('all');
   const [drilldownUser, setDrilldownUser] = useState<UserProfile | null>(null);
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
+  const [waveConfigs, setWaveConfigs] = useState<Record<string, any>>({});
+  const [isSavingGoal, setIsSavingGoal] = useState(false);
+  const [defaultGoalInput, setDefaultGoalInput] = useState<string>('');
+  const [weeklyOverrideInput, setWeeklyOverrideInput] = useState<string>('');
+
+  useEffect(() => {
+    if (activeWave !== 'all') {
+      const config = waveConfigs[activeWave] || {};
+      setDefaultGoalInput(String(config.defaultGoal ?? 180));
+      setWeeklyOverrideInput(String(config.currentWeekGoal ?? ''));
+    }
+  }, [activeWave, waveConfigs]);
 
   const availableWaves = useMemo(() => {
     if (!userList) return [];
@@ -113,7 +125,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const metrics = useMemo(() => {
     const totalAgents = combinedStats.length;
-    // Recalculate average progress dynamically based on filtered agents
     const totalProgress = combinedStats.reduce((acc, u) => acc + (u.overallProgress || 0), 0);
     const avgProgress = totalAgents > 0 ? Math.round(totalProgress / totalAgents) : 0;
     
@@ -138,7 +149,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      // Fix Admin Library Visibility: Fetch full library using role 'admin'
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
       setGlobalResources(Array.isArray(res) ? res : []);
     } catch (e) {
@@ -153,6 +163,23 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     } catch (err) {
       console.error('Error fetching admin stats:', err);
     }
+  };
+
+  const loadWaveConfigs = async () => {
+    try {
+      const configs = await googleSheetService.getWaveConfigs();
+      setWaveConfigs(configs || {});
+    } catch (err) {
+      console.error('Error fetching wave configs:', err);
+    }
+  };
+
+  const loadData = async () => {
+    await Promise.all([
+      fetchUsers(),
+      loadAdminStats(),
+      loadWaveConfigs()
+    ]);
   };
 
   const fetchWeeklyAssignments = async () => {
@@ -171,21 +198,71 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
     setIsBulkAssigning(true);
     try {
-      const response = await googleSheetService.bulkAssignRoster(currentUser.id, activeWave === 'all' ? undefined : activeWave);
-      alert(`Success! Bulk roster assignment initiated for ${activeWave === 'all' ? 'all trainees' : activeWave}.`);
-      loadAdminStats();
-    } catch (error) {
-      console.error('Error in bulk assign:', error);
-      alert('An error occurred during bulk assignment: ' + (error as Error).message);
+      const filteredAgents = userList.filter(u => u.role === 'agent' && (activeWave === 'all' || u.wave === activeWave || u.waveNumber === activeWave));
+      const agentIds = filteredAgents.map(a => a.id);
+      
+      await googleSheetService.bulkAssignRoster(currentUser.id, activeWave === 'all' ? undefined : activeWave);
+      setAssignmentSuccess(`Successfully bulk-assigned system modules to trainees inside ${activeWave === 'all' ? 'all waves' : 'wave ' + activeWave}!`);
+      setTimeout(() => setAssignmentSuccess(null), 8000);
+      await loadData();
+    } catch (err) {
+      alert("Error during bulk curriculum assignment: " + (err as Error).message);
     } finally {
       setIsBulkAssigning(false);
     }
   };
 
+  const handleManualAssign = async (resourceId: string) => {
+    if (!selectedTargetUserId) return;
+    setIsProcessing(true);
+    try {
+      await googleSheetService.assignToWeek(targetWeek, [resourceId], selectedTargetUserId);
+      setAssignmentSuccess("Module assigned successfully to student!");
+      setTimeout(() => setAssignmentSuccess(null), 5000);
+      fetchWeeklyAssignments();
+    } catch (err) {
+      alert("Failed to manual assign module: " + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAssignToWeek = async () => {
+    if (!selectedTargetUserId || selectedResourceIds.length === 0) return;
+    setIsProcessing(true);
+    try {
+      await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, selectedTargetUserId);
+      setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} modules to Week ${targetWeek}!`);
+      setSelectedResourceIds([]);
+      setTimeout(() => setAssignmentSuccess(null), 5000);
+      fetchWeeklyAssignments();
+    } catch (err) {
+      alert("Failed to complete assignment batch: " + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const filteredResources = useMemo(() => {
+    return globalResources.filter(res => {
+      const matchSearch = res.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          res.level.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (res.objective && res.objective.toLowerCase().includes(searchTerm.toLowerCase())) ||
+                          (res.type && res.type.toLowerCase().includes(searchTerm.toLowerCase()));
+      return matchSearch;
+    });
+  }, [globalResources, searchTerm]);
+
+  const getAssignedWeek = (resourceId: string) => {
+    for (const [weekNum, ids] of Object.entries(weeklyAssignments)) {
+      if (Array.isArray(ids) && ids.includes(resourceId)) return weekNum;
+    }
+    return null;
+  };
+
   useEffect(() => {
     if (activeTab === 'users' || activeTab === 'library') {
-      fetchUsers();
-      loadAdminStats();
+      loadData();
     }
     if (activeTab === 'library') {
       fetchResources();
@@ -193,74 +270,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     }
   }, [activeTab]);
 
-  const handleManualAssign = async (resourceId: string) => {
-    // Step 2: Crucial validation check for selected user
-    if (!selectedTargetUserId) {
-      return alert('Please select a target user from the dropdown first');
-    }
-    
-    setIsProcessing(true);
-    setAssignmentSuccess(null);
-    try {
-      // Step 2: Call with correct payload targetUid, resourceId, adminId
-      await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
-      
-      const studentName = userList.find(u => u.id === selectedTargetUserId)?.name || 'Student';
-      // Step 2 & 4: Visual Feedback
-      setAssignmentSuccess(`Assignment Saved: Module synced for ${studentName}`);
-      
-      setTimeout(() => setAssignmentSuccess(null), 4000);
-      onUpdateContent();
-    } catch (e) {
-      alert("Manual assignment failed. Please check registry connection.");
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleAssignToWeek = async () => {
-    if (selectedResourceIds.length === 0) return;
-    setIsProcessing(true);
-    try {
-      const updated = await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, currentUser.id);
-      setWeeklyAssignments(updated);
-      setSelectedResourceIds([]);
-      setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} resources to Week ${targetWeek}`);
-      setTimeout(() => setAssignmentSuccess(null), 4000);
-    } catch (err) {
-      alert('Failed to assign resources to week: ' + (err as Error).message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const getAssignedWeek = (resourceId: string): string | null => {
-    if (!weeklyAssignments) return null;
-    for (const [weekNum, ids] of Object.entries(weeklyAssignments)) {
-      if ((ids as string[]).includes(resourceId)) return weekNum;
-    }
-    return null;
-  };
-
-  const filteredResources = useMemo(() => {
-    if (!searchTerm) return globalResources;
-    const low = searchTerm.toLowerCase();
-    return globalResources.filter(r => 
-      r.title.toLowerCase().includes(low) || 
-      r.tags.some(t => t.toLowerCase().includes(low)) ||
-      r.level.toLowerCase().includes(low)
-    );
-  }, [globalResources, searchTerm]);
-
   const exportToCsv = () => {
-    if (userList.length === 0) return;
-    const headers = ['UID', 'Name', 'Email', 'Role', 'Level', 'Fluency', 'Vocabulary', 'Grammar', 'Pronunciation', 'Coherence', 'Assigned Coach'].join(',');
-    const rows = userList.map(u => {
+    if (!filteredStats.length) return;
+    const headers = [
+      'Name',
+      'Email',
+      'Role',
+      'CEFR Level',
+      'Fluency',
+      'Vocabulary',
+      'Grammar',
+      'Pronunciation',
+      'Coherence',
+      'Assigned Coach'
+    ].join(',');
+
+    const rows = filteredStats.map(u => {
       const m = u.metrics || {};
       return [
-        u.id, 
-        `"${u.name}"`, 
-        u.email || 'N/A', 
+        `"${u.name}"`,
+        `"${u.email}"`,
         u.role, 
         u.languageLevel || 'N/A', 
         m.fluency || 0, 
@@ -281,7 +310,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   };
 
   return (
-    <div className="bg-white rounded-[48px] shadow-2xl p-8 md:p-12 max-w-7xl mx-auto border border-gray-100 animate-fadeIn mt-8 mb-20 shadow-tp-purple/5">
+    <div id="admin-panel-container" className="bg-white rounded-[48px] shadow-2xl p-8 md:p-12 max-w-7xl mx-auto border border-gray-100 animate-fadeIn mt-8 mb-20 shadow-tp-purple/5">
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-8">
         <div>
           <h1 className="text-4xl font-black text-tp-purple flex items-center tracking-tight uppercase">
@@ -320,12 +349,133 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               {tab.label}
             </button>
           ))}
+          </div>
         </div>
       </div>
-    </div>
+
+      {/* Dual-Mode Target Goal Settings Manager */}
+      {activeWave !== 'all' && (
+        <div id="goal-settings-card" className="w-full bg-slate-800 text-white rounded-3xl p-6 border border-slate-700 shadow-xl mb-10 animate-fadeIn">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-slate-700/50 pb-4 mb-4">
+            <div>
+              <h3 className="text-sm font-black uppercase tracking-wider text-indigo-400 flex items-center gap-2">
+                🎯 Target Goal Settings : Wave {activeWave}
+              </h3>
+              <p className="text-[10px] text-slate-400 font-medium uppercase tracking-widest mt-1">
+                Manage target parameters for this wave group
+              </p>
+            </div>
+            <div className="flex items-center gap-2 bg-slate-900 border border-slate-700 px-3.5 py-1.5 rounded-xl shrink-0">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Currently Active Goal:</span>
+              <span className="text-xs font-black text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">
+                {waveConfigs[activeWave]?.activeGoal || 180} mins / week
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Permanent Default Goal */}
+            <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 flex flex-col justify-between gap-4">
+              <div>
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Permanent Default Goal</h4>
+                <p className="text-[10px] text-slate-500 font-medium tracking-normal mt-1 leading-relaxed">
+                  This is the lifetime baseline target parameter for this group. It applies automatically to subsequent weeks.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={defaultGoalInput}
+                  onChange={(e) => setDefaultGoalInput(e.target.value)}
+                  placeholder="180"
+                  className="w-[100px] bg-slate-900 text-white font-black text-xs text-center px-3 py-2.5 rounded-xl border border-slate-750 outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  disabled={isSavingGoal}
+                  min="0"
+                />
+                <button
+                  onClick={async () => {
+                    if (!defaultGoalInput || isNaN(Number(defaultGoalInput))) return;
+                    setIsSavingGoal(true);
+                    try {
+                      const goalNum = Number(defaultGoalInput);
+                      const updated = await googleSheetService.setWaveConfig(activeWave, 'default', goalNum);
+                      setWaveConfigs(prev => ({
+                        ...prev,
+                        [activeWave]: updated?.[activeWave] || {
+                          ...prev[activeWave],
+                          defaultGoal: goalNum,
+                          activeGoal: updated?.[activeWave]?.activeGoal || goalNum
+                        }
+                      }));
+                      await loadData();
+                    } catch (err) {
+                      console.error("Failed to save default wave goal config:", err);
+                      alert("Failed to save default goal: " + (err as Error).message);
+                    } finally {
+                      setIsSavingGoal(false);
+                    }
+                  }}
+                  disabled={isSavingGoal}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest py-2.5 px-4 rounded-xl transition-all disabled:opacity-50 cursor-pointer text-center"
+                >
+                  {isSavingGoal ? 'Saving...' : 'Set for Good'}
+                </button>
+              </div>
+            </div>
+
+            {/* This Week's Override */}
+            <div className="bg-slate-900/50 p-4 rounded-2xl border border-slate-700/50 flex flex-col justify-between gap-4">
+              <div>
+                <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">This Week's Override</h4>
+                <p className="text-[10px] text-slate-500 font-medium tracking-normal mt-1 leading-relaxed">
+                  Temporary target that expires on Monday. Enter a custom value or leave empty to clear individual temporary target.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={weeklyOverrideInput}
+                  onChange={(e) => setWeeklyOverrideInput(e.target.value)}
+                  placeholder="e.g. 240"
+                  className="w-[100px] bg-slate-900 text-white font-black text-xs text-center px-3 py-2.5 rounded-xl border border-slate-750 outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  disabled={isSavingGoal}
+                  min="0"
+                />
+                <button
+                  onClick={async () => {
+                    setIsSavingGoal(true);
+                    try {
+                      const goalNum = weeklyOverrideInput ? Number(weeklyOverrideInput) : 0;
+                      const updated = await googleSheetService.setWaveConfig(activeWave, 'weekly', goalNum);
+                      setWaveConfigs(prev => ({
+                        ...prev,
+                        [activeWave]: updated?.[activeWave] || {
+                          ...prev[activeWave],
+                          currentWeekGoal: goalNum || null,
+                          activeGoal: updated?.[activeWave]?.activeGoal || prev[activeWave]?.defaultGoal || 180
+                        }
+                      }));
+                      await loadData();
+                    } catch (err) {
+                      console.error("Failed to save weekly override config:", err);
+                      alert("Failed to save override: " + (err as Error).message);
+                    } finally {
+                      setIsSavingGoal(false);
+                    }
+                  }}
+                  disabled={isSavingGoal}
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-black text-[10px] uppercase tracking-widest py-2.5 px-4 rounded-xl transition-all disabled:opacity-50 cursor-pointer text-center"
+                >
+                  {isSavingGoal ? 'Saving...' : 'Set for This Week'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {assignmentSuccess && (
-        <div className="mb-10 bg-green-50 border border-green-200 text-green-700 p-6 rounded-[32px] flex items-center gap-5 animate-fadeIn shadow-xl shadow-green-100/50">
+        <div id="assignment-success-banner" className="mb-10 bg-green-50 border border-green-200 text-green-700 p-6 rounded-[32px] flex items-center gap-5 animate-fadeIn shadow-xl shadow-green-100/50">
           <div className="bg-green-100 p-2.5 rounded-xl">
             <CheckCircle className="w-6 h-6 text-green-600" />
           </div>
@@ -337,7 +487,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         <div className="space-y-8 animate-fadeIn">
           {/* Stat Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div id="stat-total-agents" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-indigo-50 rounded-lg text-indigo-600">
                   <Users className="w-6 h-6" />
@@ -350,7 +500,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div id="stat-avg-progress" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-emerald-50 rounded-lg text-emerald-600">
                   <TrendingUp className="w-6 h-6" />
@@ -363,7 +513,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div id="stat-weekly-overview" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-tp-purple/10 rounded-lg text-tp-purple">
                   <ClipboardList className="w-6 h-6" />
@@ -376,7 +526,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               </div>
             </div>
 
-            <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
+            <div id="stat-agents-risk" className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="p-2 bg-rose-50 rounded-lg text-rose-600">
                   <AlertTriangle className="w-6 h-6" />
@@ -395,6 +545,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             <div className="relative flex-1 w-full">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
               <input 
+                id="search-agent-input"
                 type="text" 
                 placeholder="Search by agent name or email..."
                 className="w-full pl-12 pr-4 py-3.5 bg-white border border-gray-200 rounded-2xl outline-none focus:ring-2 focus:ring-tp-purple/20 focus:border-tp-purple transition-all text-sm"
@@ -405,6 +556,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
               <select 
+                id="week-select-filter"
                 value={selectedWeek}
                 onChange={(e) => setSelectedWeek(e.target.value)}
                 className="px-4 py-2 bg-white text-tp-purple rounded-lg text-[9px] font-black uppercase tracking-widest outline-none border-none focus:ring-0 cursor-pointer"
@@ -418,12 +570,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
             <div className="flex items-center gap-2 bg-white p-1 rounded-xl border border-gray-200 shadow-sm">
               <button 
+                id="filter-show-all-btn"
                 onClick={() => setShowStagnant(false)}
                 className={`px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!showStagnant ? 'bg-tp-purple text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
               >
                 Show All
               </button>
               <button 
+                id="filter-show-stagnant-btn"
                 onClick={() => setShowStagnant(true)}
                 className={`px-6 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${showStagnant ? 'bg-tp-red text-white shadow-md' : 'text-gray-500 hover:bg-gray-50'}`}
               >
@@ -431,6 +585,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
               </button>
             </div>
             <button 
+              id="export-csv-btn"
               onClick={exportToCsv}
               className="flex items-center gap-2 bg-tp-navy text-white px-8 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-purple transition-all shadow-lg"
             >
@@ -540,6 +695,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
           <div className="flex justify-center pt-8">
             <button
+              id="bulk-assign-roster-btn"
               onClick={handleBulkAssignRoster}
               disabled={isBulkAssigning}
               className="bg-indigo-600 text-white px-10 py-5 rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-xl font-black uppercase text-xs tracking-widest flex items-center gap-3"
@@ -569,6 +725,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 </div>
               </div>
               <select 
+                id="target-student-dropdown"
                 value={selectedTargetUserId}
                 onChange={(e) => setSelectedTargetUserId(e.target.value)}
                 className="w-full lg:w-auto lg:min-w-[400px] bg-white text-tp-purple font-black text-[12px] uppercase tracking-widest px-8 py-5 rounded-2xl outline-none border-2 border-transparent focus:border-tp-red transition-all shadow-xl"
@@ -591,6 +748,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                   <div className="flex items-center gap-2">
                     <label className="text-white text-[10px] font-black uppercase tracking-widest">Target Week:</label>
                     <input 
+                      id="target-week-input"
                       type="number" 
                       min="1"
                       value={targetWeek}
@@ -599,6 +757,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                     />
                   </div>
                   <button 
+                    id="batch-assign-to-week-btn"
                     onClick={handleAssignToWeek}
                     disabled={isProcessing}
                     className="bg-tp-red text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-tp-navy transition-all shadow-lg flex-1 md:flex-none"
@@ -614,6 +773,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                  <Search className="w-6 h-6" />
                </div>
                <input 
+                 id="search-resources-input"
                  type="text"
                  placeholder="Search by module title, tag, or CEFR level..."
                  className="w-full bg-white/10 border border-white/20 rounded-2xl px-14 py-5 text-white text-base outline-none focus:bg-white/20 transition-all placeholder:text-white/30"
