@@ -7,6 +7,7 @@ export enum ResourceType {
   Listen = 'Listen',
   Hyperlink = 'Hyperlink',
   Practice = 'Practice',
+  Simulation = 'Simulation'
 }
 
 export type SkillCategory = 'All' | 'Listening' | 'Speaking' | 'Reading' | 'Writing';

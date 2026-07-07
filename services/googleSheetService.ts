@@ -68,6 +68,10 @@ export const googleSheetService = {
   fetchGlobalResources: async () => {
     return await callApi('get_all_resources');
   },
+
+  getAllResources: async () => {
+    return await callApi('get_all_resources');
+  },
     
   createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
     callApi('register_shl_user', userData),
@@ -76,6 +80,9 @@ export const googleSheetService = {
     callApi('admin_get_users', { requesterEmail, requesterRole }),
     
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
+    callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
+
+  submitProgress: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
     callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
 
   importResource: (resourceData: any) => 
@@ -113,11 +120,51 @@ export const googleSheetService = {
   },
 
   getWaveConfigs: async () => {
-    return await callApi('get_wave_configs');
+    try {
+      return await callApi('get_wave_configs');
+    } catch (e: any) {
+      console.warn("[googleSheetService] getWaveConfigs Web App failed, utilizing localStorage fallback. Error:", e?.message);
+      try {
+        const stored = localStorage.getItem("local_wave_configs");
+        return stored ? JSON.parse(stored) : {};
+      } catch (parseErr) {
+        return {};
+      }
+    }
   },
 
   setWaveConfig: async (waveNumber: string, goalType: 'default' | 'weekly', goalMinutes: number) => {
-    return await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
+    try {
+      return await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
+    } catch (e: any) {
+      console.warn("[googleSheetService] setWaveConfig Web App failed, utilizing localStorage fallback. Error:", e?.message);
+      let local: Record<string, any> = {};
+      try {
+        const stored = localStorage.getItem("local_wave_configs");
+        local = stored ? JSON.parse(stored) : {};
+      } catch (parseErr) {
+        local = {};
+      }
+      
+      if (!local[waveNumber]) {
+        local[waveNumber] = {
+          defaultGoal: 180,
+          currentWeekGoal: null,
+          activeGoal: 180
+        };
+      }
+      
+      if (goalType === 'default') {
+        local[waveNumber].defaultGoal = goalMinutes;
+      } else {
+        local[waveNumber].currentWeekGoal = goalMinutes || null;
+      }
+      
+      local[waveNumber].activeGoal = local[waveNumber].currentWeekGoal || local[waveNumber].defaultGoal || 180;
+      
+      localStorage.setItem("local_wave_configs", JSON.stringify(local));
+      return local;
+    }
   },
 
   assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> => {

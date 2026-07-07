@@ -30,9 +30,11 @@ interface LiveCoachProps {
   currentUser: UserProfile;
   onImpersonate: (user: UserProfile) => void;
   initialScenario?: string;
+  scenarioId?: string;
+  onComplete?: (score: number, timeTakenSecs: number) => void;
 }
 
-const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate, initialScenario }) => {
+const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate, initialScenario, scenarioId, onComplete }) => {
   // Hard Failsafe: Only Coaches, Admins, or Agents can access this view
   if (currentUser.role !== 'coach' && currentUser.role !== 'admin' && currentUser.role !== 'agent') return null;
 
@@ -46,8 +48,9 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   
   // Custom states for Etihad Roleplay Bank selection
   const [selectedScenario, setSelectedScenario] = useState<RoleplayScenario>(() => {
-    if (initialScenario) {
-      const match = ETIHAD_ROLEPLAY_BANK.find(s => s.id === initialScenario);
+    const targetId = initialScenario || scenarioId;
+    if (targetId) {
+      const match = ETIHAD_ROLEPLAY_BANK.find(s => s.id === targetId);
       if (match) return match;
     }
     return ETIHAD_ROLEPLAY_BANK[0];
@@ -60,17 +63,18 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
   // Agent Auto-Binding Mission Brief check
   useEffect(() => {
     if (currentUser.role === 'agent') {
-      const targetId = currentUser.assignedScenarioId || 'NB001';
+      const targetId = initialScenario || scenarioId || currentUser.assignedScenarioId || 'NB001';
       const assigned = ETIHAD_ROLEPLAY_BANK.find(s => s.id === targetId);
       if (assigned) {
         setSelectedScenario(assigned);
       }
     }
-  }, [currentUser]);
+  }, [currentUser, initialScenario, scenarioId]);
 
   const [evaluationReport, setEvaluationReport] = useState<string | null>(null);
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [sessionStartTime, setSessionStartTime] = useState<number | null>(null);
 
   // Robust session state machine for connection tracking and crash management
   const [sessionStatus, setSessionStatus] = useState<'idle' | 'connecting' | 'active' | 'evaluating' | 'completed' | 'crashed'>('idle');
@@ -250,6 +254,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     setTranscription([]);
     transcriptionRef.current = [];
     lastSavedLengthRef.current = 0;
+    setSessionStartTime(Date.now());
     updateSessionStatus('connecting');
 
     try {
@@ -471,7 +476,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
       const ai = new GoogleGenAI({ apiKey: API_KEY });
       const response = await ai.models.generateContent({
-        model: 'gemma-4-31b-it',
+        model: 'gemini-3.1-flash-lite',
         contents: prompt
       });
       
@@ -492,6 +497,28 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
         overallScore: parsedScore,
         messages: structuredMessages
       });
+
+      // Parse score from the evaluation report or map from CEFR Level
+      let numericScore = 85;
+      const scoreMatch = reportText.match(/(?:Satisfaction|Score|Saved Index|Index|Rating)[\s:]*(\d{1,3})/i);
+      if (scoreMatch) {
+        const potentialScore = parseInt(scoreMatch[1]);
+        if (potentialScore >= 0 && potentialScore <= 100) {
+          numericScore = potentialScore;
+        }
+      } else {
+        if (parsedScore.includes('C2')) numericScore = 95;
+        else if (parsedScore.includes('C1')) numericScore = 90;
+        else if (parsedScore.includes('B2')) numericScore = 80;
+        else if (parsedScore.includes('B1')) numericScore = 70;
+        else if (parsedScore.includes('A2')) numericScore = 60;
+      }
+
+      const elapsedSecs = sessionStartTime ? Math.round((Date.now() - sessionStartTime) / 1000) : 300;
+
+      if (onComplete) {
+        onComplete(numericScore, elapsedSecs);
+      }
 
       updateSessionStatus('completed');
     } catch (err) {

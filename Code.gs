@@ -68,6 +68,12 @@ function doPost(e) {
     } else if (action === 'addSingleUser') {
       res.data = addSingleUser(ss, json);
       res.success = true;
+    } else if (action === 'get_wave_configs') {
+      res.data = getWaveConfigs(ss);
+      res.success = true;
+    } else if (action === 'set_wave_config') {
+      res.data = setWaveConfig(ss, json.waveNumber, json.goalType, json.goalMinutes);
+      res.success = true;
     }
 
   } catch (err) {
@@ -506,7 +512,7 @@ function proxyGeminiCall(ss, modelName, payload) {
   
   // Use a hardcoded project fallback placeholder if none is registered in standard properties
   const targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-2.5-flash') + ':generateContent?key=' + targetKey;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-3.1-flash-lite') + ':generateContent?key=' + targetKey;
   
   const options = {
     method: 'post',
@@ -541,7 +547,7 @@ function proxyGeminiRequest(payload) {
   }
   
   var targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  var modelName = payload.model || 'gemini-3.5-flash';
+  var modelName = payload.model || 'gemini-3.1-flash-lite';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + targetKey;
   
   // Build standard Gemini request from the prompt and systemInstruction
@@ -707,4 +713,61 @@ function addSingleUser(ss, data) {
   sheet.appendRow(newRow);
   SpreadsheetApp.flush();
   return { id: newUid, name: data.name, email: data.email };
+}
+
+function getWaveConfigs(ss) {
+  var sheet = ss.getSheetByName('WaveConfig');
+  if (!sheet) {
+    sheet = ss.insertSheet('WaveConfig');
+    sheet.appendRow(['WaveNumber', 'DefaultGoal', 'CurrentWeekGoal']);
+    return {};
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var configs = {};
+  for (var i = 1; i < data.length; i++) {
+    var waveNum = String(data[i][0]).trim();
+    if (!waveNum) continue;
+    var defaultGoal = Number(data[i][1]) || 180;
+    var currentWeekGoal = data[i][2] !== '' ? Number(data[i][2]) : null;
+    var activeGoal = currentWeekGoal !== null && currentWeekGoal > 0 ? currentWeekGoal : defaultGoal;
+    
+    configs[waveNum] = {
+      defaultGoal: defaultGoal,
+      currentWeekGoal: currentWeekGoal,
+      activeGoal: activeGoal
+    };
+  }
+  return configs;
+}
+
+function setWaveConfig(ss, waveNumber, goalType, goalMinutes) {
+  var sheet = ss.getSheetByName('WaveConfig');
+  if (!sheet) {
+    sheet = ss.insertSheet('WaveConfig');
+    sheet.appendRow(['WaveNumber', 'DefaultGoal', 'CurrentWeekGoal']);
+  }
+  
+  var data = sheet.getDataRange().getValues();
+  var foundRow = -1;
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]).trim() === String(waveNumber).trim()) {
+      foundRow = i + 1;
+      break;
+    }
+  }
+  
+  var colIndex = (goalType === 'default') ? 2 : 3; // DefaultGoal is column 2, CurrentWeekGoal is column 3
+  var valToSet = (goalMinutes !== null && goalMinutes !== undefined && goalMinutes !== '') ? Number(goalMinutes) : '';
+  
+  if (foundRow !== -1) {
+    sheet.getRange(foundRow, colIndex).setValue(valToSet);
+  } else {
+    var defaultVal = (goalType === 'default') ? Number(goalMinutes) : 180;
+    var weeklyVal = (goalType === 'weekly') ? Number(goalMinutes) : '';
+    sheet.appendRow([waveNumber, defaultVal, weeklyVal]);
+  }
+  
+  SpreadsheetApp.flush();
+  return getWaveConfigs(ss);
 }

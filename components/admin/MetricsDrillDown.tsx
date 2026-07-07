@@ -20,6 +20,8 @@ interface MetricsDrillDownProps {
   onClose: () => void;
   user: UserProfile | null;
   adminStats: any;
+  currentUser?: UserProfile;
+  onRefresh?: () => Promise<void> | void;
 }
 
 const getMockTranscripts = (level: string) => {
@@ -58,12 +60,79 @@ const getMockTranscripts = (level: string) => {
   ];
 };
 
-export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onClose, user, adminStats }) => {
+export const LIVE_COACH_SCENARIOS = [
+  { id: 'sim-NB001', title: 'Simulation: First-Time Traveler', type: 'Simulation', url: 'NB001', duration: 15 },
+  { id: 'sim-NC001', title: 'Simulation: Minor Name Spelling Update', type: 'Simulation', url: 'NC001', duration: 15 },
+  { id: 'sim-FC003', title: 'Simulation: Fare Difference Explanation', type: 'Simulation', url: 'FC003', duration: 15 },
+  { id: 'sim-TA003', title: 'Simulation: Agency vs Airline Responsibility Clarification', type: 'Simulation', url: 'TA003', duration: 15 },
+  { id: 'sim-AS008', title: 'Simulation: Bassinet Availability Limitation', type: 'Simulation', url: 'AS008', duration: 15 }
+];
+
+export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ 
+  isOpen, 
+  onClose, 
+  user, 
+  adminStats,
+  currentUser,
+  onRefresh
+}) => {
   const [activeSubTab, setActiveSubTab] = useState<'metrics' | 'transcripts' | 'json'>('metrics');
   const [jsonExpanded, setJsonExpanded] = useState<boolean>(false);
   const [selectedTranscriptIndex, setSelectedTranscriptIndex] = useState<number>(0);
   const [liveTranscripts, setLiveTranscripts] = useState<any[]>([]);
   const [isLoadingTranscripts, setIsLoadingTranscripts] = useState<boolean>(false);
+
+  // States for Assigning AI Simulations
+  const [allResources, setAllResources] = useState<any[]>([]);
+  const [selectedSimulation, setSelectedSimulation] = useState<string>('');
+  const [isAssigningSim, setIsAssigningSim] = useState<boolean>(false);
+
+  // Filter core simulation resources
+  const simulations = useMemo(() => {
+    return allResources.filter((r: any) => r.type === 'Simulation');
+  }, [allResources]);
+
+  // Fetch all resources when drill down opens
+  useEffect(() => {
+    if (isOpen) {
+      googleSheetService.getAllResources()
+        .then((res: any) => {
+          if (Array.isArray(res)) {
+            setAllResources(res);
+          }
+        })
+        .catch((err) => {
+          console.error("[MetricsDrillDown] Error fetching global resources:", err);
+        });
+    }
+  }, [isOpen]);
+
+  const handleAssignSimulation = async (agentId: string) => {
+    if (!selectedSimulation || !agentId) return;
+    setIsAssigningSim(true);
+    try {
+      const scenario = LIVE_COACH_SCENARIOS.find(s => s.id === selectedSimulation);
+      if (!scenario) throw new Error("Scenario not found");
+      
+      // 1. Silently ensure the scenario exists in the Resources database (Bulk Import handles upserts gracefully)
+      await googleSheetService.bulkImportResources([scenario]);
+      
+      // 2. Assign it to the agent
+      await googleSheetService.assignManualResource(agentId, selectedSimulation, currentUser?.id || 'System');
+      
+      alert("AI Simulation successfully assigned!");
+      setSelectedSimulation("");
+      // Call loadData() or your refresh function here to update the UI
+      if (onRefresh) {
+        await onRefresh();
+      }
+    } catch (error) {
+      console.error("Failed to assign simulation:", error);
+      alert("Failed to assign simulation.");
+    } finally {
+      setIsAssigningSim(false);
+    }
+  };
 
   // Robust JSON decompression and unpacking utility for compressed spreadsheet columns
   const safeParseJson = (data: any, fallback: any = null) => {
@@ -375,6 +444,52 @@ export const MetricsDrillDown: React.FC<MetricsDrillDownProps> = ({ isOpen, onCl
                     this agent has borderline syntax stability under rapid billing scenarios. It is recommended to assign active conversational de-escalation 
                     modules and monitor recent dialogue transcripts.
                   </p>
+                </div>
+              </div>
+
+              {/* Assign AI Voice Simulation Section */}
+              <div id="assign_simulation_section" className="bg-slate-800 text-white border border-slate-700 rounded-3xl p-6 shadow-md mt-6 animate-fadeIn">
+                <div className="flex items-center gap-3 mb-4">
+                  <Brain className="text-blue-400 w-5 h-5 animate-pulse" />
+                  <h3 className="font-black text-xs uppercase tracking-wider">Assign AI Voice Simulation</h3>
+                </div>
+                
+                <p className="text-slate-300 text-xs mb-4 leading-relaxed">
+                  Assign a customized conversational voice roleplay exercise to this agent. It will be added directly to their learning curriculum and unexpired plan.
+                </p>
+
+                <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                  <div className="flex-1 w-full">
+                    <label htmlFor="simulation-select" className="block text-[10px] font-bold uppercase text-slate-400 tracking-wider mb-1.5">
+                      Choose Active Roleplay Scenario
+                    </label>
+                    <select
+                      id="simulation-select"
+                      value={selectedSimulation}
+                      onChange={(e) => setSelectedSimulation(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 text-white rounded-xl py-2.5 px-4 text-xs focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                    >
+                      <option value="" className="bg-slate-900 text-slate-400 text-xs">Select scenario...</option>
+                      {LIVE_COACH_SCENARIOS.map((sim) => (
+                        <option key={sim.id} value={sim.id} className="bg-slate-900 text-white text-xs">
+                          {sim.title} (ID: {sim.url})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <button
+                    id="btn-assign-simulation"
+                    onClick={() => {
+                      if (user) {
+                        handleAssignSimulation(user.id);
+                      }
+                    }}
+                    disabled={isAssigningSim || !selectedSimulation}
+                    className="w-full sm:w-auto bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white py-2.5 px-6 rounded-xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 whitespace-nowrap shadow-md"
+                  >
+                    {isAssigningSim ? 'Assigning...' : 'Assign Simulation'}
+                  </button>
                 </div>
               </div>
 

@@ -31,6 +31,14 @@ interface AdminPanelProps {
   onImpersonate: (user: UserProfile) => void;
 }
 
+export const LIVE_COACH_SCENARIOS = [
+  { id: 'sim-NB001', title: 'Simulation: First-Time Traveler', type: 'Simulation', url: 'NB001', duration: 15 },
+  { id: 'sim-NC001', title: 'Simulation: Minor Name Spelling Update', type: 'Simulation', url: 'NC001', duration: 15 },
+  { id: 'sim-FC003', title: 'Simulation: Fare Difference Explanation', type: 'Simulation', url: 'FC003', duration: 15 },
+  { id: 'sim-TA003', title: 'Simulation: Agency vs Airline Responsibility Clarification', type: 'Simulation', url: 'TA003', duration: 15 },
+  { id: 'sim-AS008', title: 'Simulation: Bassinet Availability Limitation', type: 'Simulation', url: 'AS008', duration: 15 }
+];
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
   if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return null;
 
@@ -880,6 +888,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         onClose={() => { setIsDrilldownOpen(false); setDrilldownUser(null); }}
         user={drilldownUser}
         adminStats={adminStats}
+        currentUser={currentUser}
+        onRefresh={loadData}
       />
     </div>
   );

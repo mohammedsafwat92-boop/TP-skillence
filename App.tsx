@@ -193,6 +193,7 @@ const App: React.FC = () => {
       <LessonViewer 
         resource={view.resource} 
         uid={currentUser.id} 
+        currentUser={currentUser}
         onClose={() => setView({ type: 'dashboard' })} 
         onMasteryAchieved={() => refreshPlan(currentUser.id, currentUser.role)} 
       />

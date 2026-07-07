@@ -75,7 +75,7 @@ const callGemini = async (prompt: string) => {
   };
 
   try {
-    const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
+    const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textResponse) throw new Error("Empty response from AI");
     
@@ -100,7 +100,7 @@ async function scrapeUrl(url: string) {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
+      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
       return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     }
 
@@ -138,7 +138,7 @@ async function condenseLargeContent(rawText: string) {
       }]
     };
     try {
-      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
+      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
       masterSummary += (data.candidates?.[0]?.content?.parts?.[0]?.text || "") + "\n\n";
     } catch (e) {
       console.error("Chunk processing failed via proxy:", e);
@@ -186,7 +186,7 @@ export const geminiService = {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
+      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
       let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
       
@@ -373,9 +373,9 @@ TEMPLATE:
             }
         }
 
-        // 2. Ultra-Reliable Standby Fallback using gemini-3.5-flash with native JSON Mode
+        // 2. Ultra-Reliable Standby Fallback using gemini-3.1-flash-lite with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ Gemma generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.5-flash fallback...");
+          console.warn("⚠️ Gemma generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.1-flash-lite fallback...");
           try {
             const flashPayload = {
               contents: [
@@ -403,17 +403,17 @@ JSON Schema structure:
                 responseMimeType: "application/json"
               }
             };
-            const flashData = await proxyGeminiSafe('gemini-3.5-flash', flashPayload);
+            const flashData = await proxyGeminiSafe('gemini-3.1-flash-lite', flashPayload);
             const flashText = flashData.candidates?.[0]?.content?.parts?.[0]?.text || "";
             let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
             const flashQuiz = JSON.parse(cleanedFlash);
             
             if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
               parsedQuiz = flashQuiz;
-              console.log("✅ Quiz successfully generated via stand-by gemini-3.5-flash!");
+              console.log("✅ Quiz successfully generated via stand-by gemini-3.1-flash-lite!");
             }
           } catch (flashErr) {
-            console.error("Stand-by gemini-3.5-flash fallback also failed:", flashErr);
+            console.error("Stand-by gemini-3.1-flash-lite fallback also failed:", flashErr);
           }
         }
 
@@ -446,8 +446,8 @@ JSON Schema structure:
         });
       };
 
-      // Exclusively route to Gemma
-      return await attemptGeneration('gemma-4-31b-it');
+      // Exclusively route to gemini-3.1-flash-lite
+      return await attemptGeneration('gemini-3.1-flash-lite');
 
     } catch (error) {
       console.error("❌ Gemma Quiz Gen Error:", error);

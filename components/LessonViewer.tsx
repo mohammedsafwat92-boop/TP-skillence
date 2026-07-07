@@ -1,18 +1,20 @@
 
 import React, { useState } from 'react';
-import type { Resource, QuizQuestion } from '../types';
+import type { Resource, QuizQuestion, UserProfile } from '../types';
 import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon, BrainIcon, LinkIcon } from './Icons';
+import LiveCoach from './LiveCoach';
 
 interface LessonViewerProps {
   resource: Resource;
   uid: string;
+  currentUser?: UserProfile;
   onClose: () => void;
   onMasteryAchieved: () => void;
 }
 
-const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onMasteryAchieved }) => {
+const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser, onClose, onMasteryAchieved }) => {
   const [view, setView] = useState<'content' | 'quiz' | 'result'>('content');
   const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([]);
   const [answers, setAnswers] = useState<number[]>([]);
@@ -89,6 +91,37 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, onClose, onM
       setIsGenerating(false);
     }
   };
+
+  if (resource.type === 'Simulation') {
+    const activeUserProfile: UserProfile = currentUser || {
+      id: uid,
+      name: 'Agent Training Node',
+      role: 'agent',
+      languageLevel: 'B2',
+      rosterId: ''
+    };
+
+    const handleSimulationComplete = async (score: number, timeTaken: number) => {
+      try {
+        const passed = score >= 60;
+        await googleSheetService.submitProgress(uid, resource.id, passed, score, timeTaken);
+        onMasteryAchieved();
+      } catch (err) {
+        console.error("Failed to submit simulation progress:", err);
+      }
+    };
+
+    return (
+      <LiveCoach 
+        currentUser={activeUserProfile}
+        initialScenario={resource.url}
+        scenarioId={resource.url}
+        onClose={onClose}
+        onImpersonate={() => {}}
+        onComplete={handleSimulationComplete}
+      />
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-tp-navy/95 backdrop-blur-xl flex flex-col animate-fadeIn">

@@ -7,9 +7,9 @@ import { googleSheetService } from './googleSheetService';
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
 if (!API_KEY) console.error("[shlService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
 
-// Use gemma-3-27b-it as primary for high-quota, fallback to gemini-2.5-flash for PDF native support
-const MODEL_NAME = 'gemma-3-27b-it';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
+// Use gemini-3.1-flash-lite as primary and fallback
+const MODEL_NAME = 'gemini-3.1-flash-lite';
+const FALLBACK_MODEL = 'gemini-3.1-flash-lite';
 
 export const shlService = {
   /**
