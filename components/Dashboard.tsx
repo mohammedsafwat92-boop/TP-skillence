@@ -304,9 +304,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
             </div>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {activeCourses.map((res) => (
+              {activeCourses.map((res, idx) => (
                 <div 
-                  key={res.id} 
+                  key={`active-course-${res.id || idx}`} 
                   onClick={() => onOpenResource(res)} 
                   className="bg-white p-10 rounded-[40px] border border-gray-100 shadow-md hover:shadow-2xl transition-all cursor-pointer group flex flex-col justify-between min-h-[240px]"
                 >
@@ -347,9 +347,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {completedCourses.map((res) => (
+              {completedCourses.map((res, idx) => (
                 <div 
-                  key={res.id} 
+                  key={`completed-course-${res.id || idx}`} 
                   onClick={() => onOpenResource(res)} 
                   className="bg-white p-10 rounded-[40px] border-2 border-green-500/20 shadow-md hover:shadow-xl transition-all cursor-pointer flex flex-col justify-between group grayscale hover:grayscale-0"
                 >

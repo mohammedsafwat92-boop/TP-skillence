@@ -131,7 +131,7 @@ export const googleSheetService = {
       );
       
       if (targetAgents.length === 0) {
-        return { success: true, count: 0, message: "No agents found for wave: " + wave };
+        return { success: true, count: 0, newAssignments: 0, updatedAssignments: 0, message: "No agents found for wave: " + wave };
       }
       
       const resResponse = await googleSheetService.getAllResources();
@@ -175,7 +175,7 @@ export const googleSheetService = {
         );
       }
       
-      return { success: true, count: assignments.length };
+      return { success: true, count: assignments.length, newAssignments: assignments.length, updatedAssignments: 0 };
     }
   },
 

@@ -643,8 +643,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredStats.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50/50 transition-colors group">
+                  {filteredStats.map((user, idx) => (
+                    <tr key={`user-row-${user.id || idx}`} className="hover:bg-gray-50/50 transition-colors group">
                       <td className="px-8 py-6">
                         <div className="flex items-center gap-4">
                           <div className="w-10 h-10 bg-tp-purple/10 rounded-xl flex items-center justify-center text-tp-purple font-black text-xs">
@@ -760,8 +760,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 className="w-full lg:w-auto lg:min-w-[400px] bg-white text-tp-purple font-black text-[12px] uppercase tracking-widest px-8 py-5 rounded-2xl outline-none border-2 border-transparent focus:border-tp-red transition-all shadow-xl"
               >
                 <option value="">Select an agent from the roster...</option>
-                {userList.filter(u => u.role === 'agent').map(u => (
-                  <option key={u.id} value={u.id}>{u.name} — {u.languageLevel}</option>
+                {userList.filter(u => u.role === 'agent').map((u, idx) => (
+                  <option key={`student-opt-${u.id || idx}`} value={u.id}>{u.name} — {u.languageLevel}</option>
                 ))}
               </select>
             </div>
@@ -826,10 +826,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {filteredResources.map((res) => {
+                  {filteredResources.map((res, idx) => {
                     const assignedWeek = getAssignedWeek(res.id);
                     return (
-                      <tr key={res.id} className="hover:bg-gray-50/50 transition-colors group">
+                      <tr key={`resource-row-${res.id || idx}`} className="hover:bg-gray-50/50 transition-colors group">
                         <td className="px-8 py-6">
                           <input 
                             type="checkbox"
