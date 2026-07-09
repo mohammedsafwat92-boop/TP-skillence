@@ -353,51 +353,53 @@ TEMPLATE:
           rawText = data.text;
         }
 
-        if (rawText) {
-          try {
-            // Strip markdown formatting that breaks JSON.parse
-            const cleanJsonText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
-            parsedQuiz = JSON.parse(cleanJsonText);
-            console.log("✅ Bulletproof parser successfully parsed JSON directly.");
-          } catch (e) {
-            console.warn("⚠️ Direct JSON.parse failed, running scanner fallback...", e);
-            
-            // Clean any markdown backticks first
-            let resultText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        if (!rawText) {
+          rawText = "[]";
+        }
 
-            // Strict Thread-Safe Scanner fallback
-            let firstBracket = resultText.indexOf('[');
-            while (firstBracket !== -1 && !parsedQuiz) {
-                let lastBracket = resultText.lastIndexOf(']');
-                while (lastBracket > firstBracket && !parsedQuiz) {
-                    let isValid = false;
-                    try {
-                        const slice = resultText.substring(firstBracket, lastBracket + 1);
-                        const attempt = JSON.parse(slice);
-                        
-                        // STRICT VALIDATION: Must be array
-                        if (Array.isArray(attempt) && attempt.length > 0) {
-                            parsedQuiz = attempt; 
-                            isValid = true;
-                        }
-                    } catch (err) {
-                        // JSON.parse failed
-                    }
-                    
-                    if (!isValid) {
-                        lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
-                    }
-                }
-                if (!parsedQuiz) {
-                    firstBracket = resultText.indexOf('[', firstBracket + 1);
-                }
-            }
+        try {
+          // Strip markdown code blocks to prevent JSON.parse crashes
+          let cleanJsonText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+          parsedQuiz = JSON.parse(cleanJsonText);
+          console.log("✅ Bulletproof parser successfully parsed JSON directly.");
+        } catch (e) {
+          console.warn("⚠️ Direct JSON.parse failed, running scanner fallback...", e);
+          
+          // Clean any markdown backticks first
+          let resultText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+          // Strict Thread-Safe Scanner fallback
+          let firstBracket = resultText.indexOf('[');
+          while (firstBracket !== -1 && !parsedQuiz) {
+              let lastBracket = resultText.lastIndexOf(']');
+              while (lastBracket > firstBracket && !parsedQuiz) {
+                  let isValid = false;
+                  try {
+                      const slice = resultText.substring(firstBracket, lastBracket + 1);
+                      const attempt = JSON.parse(slice);
+                      
+                      // STRICT VALIDATION: Must be array
+                      if (Array.isArray(attempt) && attempt.length > 0) {
+                          parsedQuiz = attempt; 
+                          isValid = true;
+                      }
+                  } catch (err) {
+                      // JSON.parse failed
+                  }
+                  
+                  if (!isValid) {
+                      lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+                  }
+              }
+              if (!parsedQuiz) {
+                  firstBracket = resultText.indexOf('[', firstBracket + 1);
+              }
           }
         }
 
-        // 2. Ultra-Reliable Standby Fallback using gemini-1.5-flash with native JSON Mode
+        // 2. Ultra-Reliable Standby Fallback using gemini-3.1-flash-lite with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-1.5-flash fallback...");
+          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.1-flash-lite fallback...");
           try {
             const flashPayload = {
               expectJson: true,
@@ -426,17 +428,17 @@ JSON Schema structure:
                 responseMimeType: "application/json"
               }
             };
-            const flashData = await proxyGeminiSafe('gemini-1.5-flash', flashPayload);
+            const flashData = await proxyGeminiSafe('gemini-3.1-flash-lite', flashPayload);
             const flashText = (flashData.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (flashData.candidates?.[0]?.content?.parts?.[0]?.text) || "";
             let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
             const flashQuiz = JSON.parse(cleanedFlash);
             
             if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
               parsedQuiz = flashQuiz;
-              console.log("✅ Quiz successfully generated via stand-by gemini-1.5-flash!");
+              console.log("✅ Quiz successfully generated via stand-by gemini-3.1-flash-lite!");
             }
           } catch (flashErr) {
-            console.error("Stand-by gemini-1.5-flash fallback also failed:", flashErr);
+            console.error("Stand-by gemini-3.1-flash-lite fallback also failed:", flashErr);
           }
         }
 
@@ -469,8 +471,8 @@ JSON Schema structure:
         });
       };
 
-      // Exclusively route to gemini-1.5-flash
-      return await attemptGeneration('gemini-1.5-flash');
+      // Exclusively route to gemini-3.1-flash-lite
+      return await attemptGeneration('gemini-3.1-flash-lite');
 
     } catch (error: any) {
       console.error("❌ Gemma Quiz Gen Error:", error);
