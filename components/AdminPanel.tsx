@@ -210,11 +210,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
     setIsBulkAssigning(true);
     try {
-      const filteredAgents = userList.filter(u => u.role === 'agent' && (activeWave === 'all' || u.wave === activeWave || u.waveNumber === activeWave));
-      const agentIds = filteredAgents.map(a => a.id);
+      const targetWaveParam = activeWave === 'all' ? undefined : activeWave;
+      const selectedWave = activeWave === 'all' ? 'all waves' : 'wave ' + activeWave;
       
-      await googleSheetService.bulkAssignRoster(currentUser.id, activeWave === 'all' ? undefined : activeWave);
-      setAssignmentSuccess(`Successfully bulk-assigned system modules to trainees inside ${activeWave === 'all' ? 'all waves' : 'wave ' + activeWave}!`);
+      const response = await googleSheetService.bulkAssignRoster(currentUser.id, targetWaveParam);
+      
+      let msg = "";
+      if (response && response.newAssignments !== undefined) {
+        if (response.newAssignments === 0 && response.updatedAssignments === 0) {
+          msg = `No new assignments were needed for ${selectedWave}. All agents already have matching resources.`;
+        } else {
+          msg = `Success! Created ${response.newAssignments} new assignments and updated ${response.updatedAssignments} existing ones for ${selectedWave}.`;
+        }
+      } else {
+        msg = `Successfully processed bulk assignment for ${selectedWave}.`;
+      }
+      
+      alert(msg);
+      setAssignmentSuccess(msg);
       setTimeout(() => setAssignmentSuccess(null), 8000);
       await loadData();
     } catch (err) {
