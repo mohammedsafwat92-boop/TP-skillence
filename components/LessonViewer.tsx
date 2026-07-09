@@ -64,8 +64,8 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser,
       setAnswers(new Array(questions.length).fill(-1));
       setQuizStartTime(Date.now());
       setView('quiz');
-    } catch (err) {
-      setQuizError("Assessment engine failed. Check connection.");
+    } catch (err: any) {
+      setQuizError(err?.message || "Assessment engine failed. Check connection.");
     } finally {
       setIsGeneratingQuiz(false);
     }

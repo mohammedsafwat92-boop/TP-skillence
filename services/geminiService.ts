@@ -13,7 +13,8 @@ const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> =>
       model: modelName,
       contents: payload.contents,
       systemInstruction: payload.systemInstruction || "",
-      config: payload.config || payload.generationConfig
+      config: payload.config || payload.generationConfig,
+      expectJson: payload.expectJson !== undefined ? payload.expectJson : false
     };
     return await googleSheetService.proxyGeminiRequest(fullPayload);
   } catch (proxyError: any) {
@@ -288,6 +289,7 @@ export const geminiService = {
       const content = await condenseLargeContent(rawContent || "");
 
       const payload = {
+        expectJson: true,
         contents: [{
           role: "user",
           parts: [{
@@ -336,48 +338,69 @@ TEMPLATE:
 
         console.log("▶️ [Step 4] API responded! Running Clean JSON Scanner...");
         
-        let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "[]";
         let parsedQuiz = null;
+        let rawText = "";
 
-        // Clean any markdown backticks the model might add around the array
-        resultText = resultText.replace(/```json/gi, "").replace(/```/g, "").trim();
+        try {
+          rawText = (data.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (data.candidates?.[0]?.content?.parts?.[0]?.text) || "";
+        } catch (e) {
+          console.warn("Could not find text in candidates standard path", e);
+        }
 
-        // 1. Strict Thread-Safe Scanner (Regex Fallback completely removed)
-        let firstBracket = resultText.indexOf('[');
-        while (firstBracket !== -1 && !parsedQuiz) {
-            let lastBracket = resultText.lastIndexOf(']');
-            while (lastBracket > firstBracket && !parsedQuiz) {
-                let isValid = false;
-                try {
-                    const slice = resultText.substring(firstBracket, lastBracket + 1);
-                    const attempt = JSON.parse(slice);
-                    
-                    // STRICT VALIDATION: Must be array, exactly 5 items, and contain valid keys
-                    if (Array.isArray(attempt) && attempt.length === 5 && typeof attempt[0] === 'object' && attempt[0] !== null && 'question' in attempt[0] && 'options' in attempt[0]) {
-                        // Ensure it didn't just echo the empty template back to us
-                        if (attempt[0].question !== "") {
+        if (!rawText && typeof data === 'string') {
+          rawText = data;
+        } else if (!rawText && data.text) {
+          rawText = data.text;
+        }
+
+        if (rawText) {
+          try {
+            // Strip markdown formatting that breaks JSON.parse
+            const cleanJsonText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+            parsedQuiz = JSON.parse(cleanJsonText);
+            console.log("✅ Bulletproof parser successfully parsed JSON directly.");
+          } catch (e) {
+            console.warn("⚠️ Direct JSON.parse failed, running scanner fallback...", e);
+            
+            // Clean any markdown backticks first
+            let resultText = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+            // Strict Thread-Safe Scanner fallback
+            let firstBracket = resultText.indexOf('[');
+            while (firstBracket !== -1 && !parsedQuiz) {
+                let lastBracket = resultText.lastIndexOf(']');
+                while (lastBracket > firstBracket && !parsedQuiz) {
+                    let isValid = false;
+                    try {
+                        const slice = resultText.substring(firstBracket, lastBracket + 1);
+                        const attempt = JSON.parse(slice);
+                        
+                        // STRICT VALIDATION: Must be array
+                        if (Array.isArray(attempt) && attempt.length > 0) {
                             parsedQuiz = attempt; 
                             isValid = true;
                         }
+                    } catch (err) {
+                        // JSON.parse failed
                     }
-                } catch (e) {
-                    // JSON.parse failed
+                    
+                    if (!isValid) {
+                        lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+                    }
                 }
-                
-                if (!isValid) {
-                    lastBracket = resultText.lastIndexOf(']', lastBracket - 1);
+                if (!parsedQuiz) {
+                    firstBracket = resultText.indexOf('[', firstBracket + 1);
                 }
             }
-            if (!parsedQuiz) {
-                firstBracket = resultText.indexOf('[', firstBracket + 1);
-            }
+          }
         }
 
-        // 2. Ultra-Reliable Standby Fallback using gemini-3.1-flash-lite with native JSON Mode
+        // 2. Ultra-Reliable Standby Fallback using gemini-1.5-flash with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ Gemma generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.1-flash-lite fallback...");
+          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-1.5-flash fallback...");
           try {
             const flashPayload = {
+              expectJson: true,
               contents: [
                 {
                   role: "user",
@@ -403,22 +426,22 @@ JSON Schema structure:
                 responseMimeType: "application/json"
               }
             };
-            const flashData = await proxyGeminiSafe('gemini-3.1-flash-lite', flashPayload);
-            const flashText = flashData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const flashData = await proxyGeminiSafe('gemini-1.5-flash', flashPayload);
+            const flashText = (flashData.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (flashData.candidates?.[0]?.content?.parts?.[0]?.text) || "";
             let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
             const flashQuiz = JSON.parse(cleanedFlash);
             
             if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
               parsedQuiz = flashQuiz;
-              console.log("✅ Quiz successfully generated via stand-by gemini-3.1-flash-lite!");
+              console.log("✅ Quiz successfully generated via stand-by gemini-1.5-flash!");
             }
           } catch (flashErr) {
-            console.error("Stand-by gemini-3.1-flash-lite fallback also failed:", flashErr);
+            console.error("Stand-by gemini-1.5-flash fallback also failed:", flashErr);
           }
         }
 
         if (!parsedQuiz) {
-          console.error("Strict scanner and fallback both failed. Raw text:", resultText);
+          console.error("Strict scanner and fallback both failed.");
           throw new Error("Model failed to output a valid 5-question JSON array.");
         }
 
@@ -432,7 +455,7 @@ JSON Schema structure:
           let correctIdx = Number(q.correctAnswer);
           if (isNaN(correctIdx) || correctIdx < 0 || correctIdx > 3) {
              if (q.correctOptionId && Array.isArray(q.options)) {
-                 correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
+                  correctIdx = q.options.findIndex((o:any) => o.id === q.correctOptionId);
              }
              if (correctIdx === -1 || isNaN(correctIdx)) correctIdx = 0;
           }
@@ -446,17 +469,12 @@ JSON Schema structure:
         });
       };
 
-      // Exclusively route to gemini-3.1-flash-lite
-      return await attemptGeneration('gemini-3.1-flash-lite');
+      // Exclusively route to gemini-1.5-flash
+      return await attemptGeneration('gemini-1.5-flash');
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("❌ Gemma Quiz Gen Error:", error);
-      return [{
-        question: "The AI encountered an error generating this quiz. The server may be overloaded or the content was too complex to generate exactly 5 questions.",
-        options: ["Acknowledge", "Retry", "Skip", "Exit"],
-        correctAnswer: 0,
-        explanation: "API Timeout, Server Overload (503), or strict formatting failure."
-      }];
+      throw error;
     }
   },
 
