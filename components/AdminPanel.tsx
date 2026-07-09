@@ -158,7 +158,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const fetchResources = async () => {
     try {
       const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
-      setGlobalResources(Array.isArray(res) ? res : []);
+      if (res && res.resources) {
+        setGlobalResources(res.resources);
+      } else {
+        setGlobalResources(Array.isArray(res) ? res : []);
+      }
     } catch (e) {
       setGlobalResources([]);
     }
@@ -224,7 +228,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     if (!selectedTargetUserId) return;
     setIsProcessing(true);
     try {
-      await googleSheetService.assignToWeek(targetWeek, [resourceId], selectedTargetUserId);
+      const selectedUser = userList.find(u => u.id === selectedTargetUserId);
+      const selectedWave = selectedUser?.wave || selectedUser?.waveNumber || 'All';
+      await googleSheetService.assignToWeek(targetWeek, [resourceId], selectedTargetUserId, selectedWave);
       setAssignmentSuccess("Module assigned successfully to student!");
       setTimeout(() => setAssignmentSuccess(null), 5000);
       fetchWeeklyAssignments();
@@ -239,7 +245,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     if (!selectedTargetUserId || selectedResourceIds.length === 0) return;
     setIsProcessing(true);
     try {
-      await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, selectedTargetUserId);
+      const selectedUser = userList.find(u => u.id === selectedTargetUserId);
+      const selectedWave = selectedUser?.wave || selectedUser?.waveNumber || 'All';
+      await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, selectedTargetUserId, selectedWave);
       setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} modules to Week ${targetWeek}!`);
       setSelectedResourceIds([]);
       setTimeout(() => setAssignmentSuccess(null), 5000);

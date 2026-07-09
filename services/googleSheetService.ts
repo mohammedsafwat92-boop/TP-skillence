@@ -102,8 +102,82 @@ export const googleSheetService = {
   getAdminStats: (requesterEmail?: string, requesterRole?: string) =>
     callApi('get_admin_stats', { requesterEmail, requesterRole }),
 
-  bulkAssignRoster: (adminId: string, wave?: string) =>
-    callApi('bulk_assign_roster', { adminId, wave }),
+  bulkAssignRoster: async (adminId: string, wave?: string) => {
+    try {
+      return await callApi('bulk_assign_roster', { adminId, wave });
+    } catch (apiError: any) {
+      console.warn("[googleSheetService] bulk_assign_roster backend action failed or is not deployed. Running client-side bulk assignment fallback...", apiError?.message);
+      
+      let adminEmail = undefined;
+      let adminRole = undefined;
+      try {
+        const cached = localStorage.getItem('tp_skillence_user_session');
+        if (cached) {
+          const u = JSON.parse(cached);
+          adminEmail = u.email;
+          adminRole = u.role;
+        }
+      } catch (e) {
+        console.warn("Failed to parse cached user session:", e);
+      }
+      
+      const users = await googleSheetService.fetchAllUsers(adminEmail, adminRole);
+      if (!Array.isArray(users)) {
+        throw new Error("Could not fetch user list for fallback bulk assignment");
+      }
+      
+      const targetAgents = users.filter((u: any) => 
+        u.role === 'agent' && (!wave || wave === 'all' || u.wave === wave || u.waveNumber === wave)
+      );
+      
+      if (targetAgents.length === 0) {
+        return { success: true, count: 0, message: "No agents found for wave: " + wave };
+      }
+      
+      const resResponse = await googleSheetService.getAllResources();
+      const resources = Array.isArray(resResponse) ? resResponse : [];
+      if (resources.length === 0) {
+        throw new Error("No resources found to assign");
+      }
+      
+      const isLevelMatchLocal = (resLevel: string, userLevel: string) => {
+        const r = String(resLevel || 'All').toUpperCase();
+        const u = String(userLevel || '').toUpperCase();
+        if (r === 'ALL') return true;
+        if (r === u) return true;
+        if (u && r.indexOf(u) !== -1) return true;
+        return false;
+      };
+      
+      const assignments: { targetUid: string; resourceId: string }[] = [];
+      for (const agent of targetAgents) {
+        const userLevel = agent.languageLevel || 'B1';
+        for (const res of resources) {
+          if (isLevelMatchLocal(res.level, userLevel)) {
+            assignments.push({
+              targetUid: agent.id,
+              resourceId: res.id
+            });
+          }
+        }
+      }
+      
+      console.log(`[googleSheetService] Fallback: Total of ${assignments.length} assignments to process...`);
+      
+      const chunkSize = 5;
+      for (let i = 0; i < assignments.length; i += chunkSize) {
+        const chunk = assignments.slice(i, i + chunkSize);
+        await Promise.all(
+          chunk.map(asg => 
+            googleSheetService.assignManualResource(asg.targetUid, asg.resourceId, adminId)
+              .catch(e => console.error(`Failed to assign ${asg.resourceId} to ${asg.targetUid}`, e))
+          )
+        );
+      }
+      
+      return { success: true, count: assignments.length };
+    }
+  },
 
   getWeeklyAssignments: async (): Promise<Record<number, string[]>> => {
     try {
@@ -167,9 +241,9 @@ export const googleSheetService = {
     }
   },
 
-  assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string): Promise<Record<number, string[]>> => {
+  assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string, targetWave?: string): Promise<Record<number, string[]>> => {
     try {
-      return await callApi('assign_to_week', { weekNumber, resourceIds, adminId });
+      return await callApi('assign_to_week', { weekNumber, resourceIds, adminId, targetWave: targetWave || 'All' });
     } catch (e: any) {
       console.warn("[googleSheetService] assignToWeek Web App failed, utilizing localStorage fallback. Error:", e?.message);
       let local: Record<number, string[]> = {};

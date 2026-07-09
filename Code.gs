@@ -74,6 +74,9 @@ function doPost(e) {
     } else if (action === 'set_wave_config') {
       res.data = setWaveConfig(ss, json.waveNumber, json.goalType, json.goalMinutes);
       res.success = true;
+    } else if (action === 'bulk_assign_roster') {
+      res.data = bulkAssignRoster(ss, json.adminId, json.wave);
+      res.success = true;
     }
 
   } catch (err) {
@@ -770,4 +773,102 @@ function setWaveConfig(ss, waveNumber, goalType, goalMinutes) {
   
   SpreadsheetApp.flush();
   return getWaveConfigs(ss);
+}
+
+function bulkAssignRoster(ss, adminId, wave) {
+  var userSheet = ss.getSheetByName('Users');
+  var resSheet = ss.getSheetByName('Resources');
+  var progSheet = ss.getSheetByName('Progress') || ss.insertSheet('Progress');
+  
+  if (!userSheet || !resSheet) return { success: false, message: 'Missing sheets' };
+  
+  if (progSheet.getLastRow() === 0) {
+    progSheet.appendRow(['UID', 'ResourceID', 'Status', 'Attempts', 'Score', 'LastAttempt', 'AssignedBy']);
+  }
+  
+  var userData = userSheet.getDataRange().getValues();
+  var userHeaders = userData[0];
+  var uidIdx = -1, cefrIdx = -1, waveIdx = -1, roleIdx = -1;
+  
+  for (var i = 0; i < userHeaders.length; i++) {
+    var h = userHeaders[i].toString().trim();
+    if (h === 'UID') uidIdx = i;
+    else if (h === 'CEFRLevel') cefrIdx = i;
+    else if (h === 'WaveNumber') waveIdx = i;
+    else if (h === 'Role') roleIdx = i;
+  }
+  
+  var resData = resSheet.getDataRange().getValues();
+  var resHeaders = resData[0].map(function(h) { return h.toString().toLowerCase(); });
+  var idIdx = resHeaders.indexOf('id');
+  var levelIdx = resHeaders.indexOf('level');
+  
+  var progData = progSheet.getDataRange().getValues();
+  var existingProgMap = {};
+  for (var j = 1; j < progData.length; j++) {
+    var key = String(progData[j][0]) + '_' + String(progData[j][1]);
+    existingProgMap[key] = {
+      row: j + 1,
+      status: progData[j][2]
+    };
+  }
+  
+  var usersToAssign = [];
+  for (var i = 1; i < userData.length; i++) {
+    var role = String(userData[i][roleIdx]).trim().toLowerCase();
+    if (role !== 'agent') continue;
+    
+    var userWave = String(userData[i][waveIdx]).trim();
+    if (wave && wave !== 'all' && userWave !== wave) continue;
+    
+    usersToAssign.push({
+      uid: String(userData[i][uidIdx]),
+      cefr: String(userData[i][cefrIdx])
+    });
+  }
+  
+  var resources = [];
+  for (var i = 1; i < resData.length; i++) {
+    resources.push({
+      id: String(resData[i][idIdx]),
+      level: String(resData[i][levelIdx])
+    });
+  }
+  
+  var newRowsCount = 0;
+  var updatedRowsCount = 0;
+  var rowsToAppend = [];
+  
+  for (var u = 0; u < usersToAssign.length; u++) {
+    var user = usersToAssign[u];
+    for (var r = 0; r < resources.length; r++) {
+      var res = resources[r];
+      if (isLevelMatch(res.level, user.cefr)) {
+        var key = user.uid + '_' + res.id;
+        if (!existingProgMap[key]) {
+          rowsToAppend.push([user.uid, res.id, 'assigned', 0, 0, new Date(), adminId || 'System']);
+          newRowsCount++;
+        } else {
+          var currentStatus = existingProgMap[key].status;
+          if (currentStatus === 'locked' || currentStatus === 'open' || !currentStatus) {
+            progSheet.getRange(existingProgMap[key].row, 3).setValue('assigned');
+            progSheet.getRange(existingProgMap[key].row, 7).setValue(adminId || 'System');
+            updatedRowsCount++;
+          }
+        }
+      }
+    }
+  }
+  
+  if (rowsToAppend.length > 0) {
+    var startRow = progSheet.getLastRow() + 1;
+    progSheet.getRange(startRow, 1, rowsToAppend.length, 7).setValues(rowsToAppend);
+  }
+  
+  SpreadsheetApp.flush();
+  return { 
+    success: true, 
+    newAssignments: newRowsCount, 
+    updatedAssignments: updatedRowsCount 
+  };
 }
