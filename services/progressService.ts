@@ -1,5 +1,6 @@
 
 import type { UserProgress } from '../types';
+import { googleSheetService } from './googleSheetService';
 
 const STORAGE_KEY = 'tp_skillence_progress_v3';
 
@@ -44,4 +45,8 @@ export const saveUserProgress = (userId: string, progress: UserProgress) => {
 
 export const getUserId = (): string => {
     return 'tp-agent-default'; 
+};
+
+export const getMyLessons = async (userId: string) => {
+  return googleSheetService.getMyLessons(userId);
 };

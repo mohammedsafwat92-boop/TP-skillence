@@ -89,6 +89,12 @@ function doPost(e) {
     } else if (action === 'getFreeTextAnswers') {
       res.data = getFreeTextAnswers(ss, json.lessonId, json.userId);
       res.success = true;
+    } else if (action === 'assignLesson') {
+      res.data = assignLesson(ss, json.userId, json.lessonId, json.adminId);
+      res.success = true;
+    } else if (action === 'getMyLessons') {
+      res.data = getMyLessons(ss, json.userId);
+      res.success = true;
     }
 
   } catch (err) {
@@ -968,5 +974,35 @@ function getFreeTextAnswers(ss, lessonId, userId) {
     });
   }
   return answersList;
+}
+
+function assignLesson(ss, userId, lessonId, adminId) {
+  const sheet = ss.getSheetByName('Brain_ManualAssignments') || ss.insertSheet('Brain_ManualAssignments');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['ID', 'UserID', 'LessonID', 'AdminID', 'AssignedAt']);
+  }
+  const id = 'asgn_' + Utilities.getUuid();
+  const assignedAt = new Date().toISOString();
+  sheet.appendRow([id, userId, lessonId, adminId || 'admin', assignedAt]);
+  return { id: id, userId: userId, lessonId: lessonId, assignedAt: assignedAt };
+}
+
+function getMyLessons(ss, userId) {
+  const asgnSheet = ss.getSheetByName('Brain_ManualAssignments');
+  const assignedLessonIds = new Set();
+  if (asgnSheet) {
+    const asgnData = asgnSheet.getDataRange().getValues();
+    for (let i = 1; i < asgnData.length; i++) {
+      if (String(asgnData[i][1]) === String(userId)) {
+        assignedLessonIds.add(String(asgnData[i][2]));
+      }
+    }
+  }
+
+  const allLessons = getInteractiveLessons(ss);
+  if (!asgnSheet || assignedLessonIds.size === 0) {
+    return [];
+  }
+  return allLessons.filter(lesson => assignedLessonIds.has(String(lesson.id)));
 }
 

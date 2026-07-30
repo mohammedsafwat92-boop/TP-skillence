@@ -6,6 +6,7 @@ import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
 import QuickAddAgent from './admin/QuickAddAgent';
 import InteractiveLessonUploader from './admin/InteractiveLessonUploader';
+import LessonAssigner from './admin/LessonAssigner';
 import { MetricsDrillDown } from './admin/MetricsDrillDown';
 import { 
   Users, 
@@ -43,7 +44,7 @@ export const LIVE_COACH_SCENARIOS = [
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
   if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return null;
 
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content' | 'interactive'>('users');
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content' | 'interactive' | 'assigner'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [userList, setUserList] = useState<UserProfile[]>([]);
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
@@ -369,6 +370,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             { id: 'users', label: 'Roster' },
             { id: 'library', label: 'Resource Library' },
             { id: 'interactive', label: 'Interactive .DOCX' },
+            { id: 'assigner', label: 'Assign Lessons' },
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'content', label: 'Import' }
           ].map((tab) => (
@@ -904,7 +906,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         </div>
       )}
 
-      {activeTab === 'interactive' && <InteractiveLessonUploader onSuccess={onUpdateContent} />}
+      {activeTab === 'interactive' && (
+        <div className="space-y-8">
+          <InteractiveLessonUploader onSuccess={onUpdateContent} />
+          <LessonAssigner currentAdminId={currentUser.id || currentUser.email} />
+        </div>
+      )}
+
+      {activeTab === 'assigner' && <LessonAssigner currentAdminId={currentUser.id || currentUser.email} />}
 
       {activeTab === 'content' && <ResourceUploader onUploadComplete={onUpdateContent} />}
       

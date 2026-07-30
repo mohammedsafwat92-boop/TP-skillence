@@ -1,5 +1,6 @@
 
 import type { UserProfile, Lesson, Roster } from '../types';
+import { googleSheetService } from './googleSheetService';
 
 const USERS_KEY = 'tp_skillence_users';
 const ROSTERS_KEY = 'tp_skillence_rosters';
@@ -71,4 +72,8 @@ export const removeCustomLesson = (moduleId: string, lessonTitle: string) => {
     if (allCustom[moduleId].length === 0) delete allCustom[moduleId];
     saveCustomLessons(allCustom);
   }
+};
+
+export const assignLesson = async (userId: string, lessonId: string, adminId: string) => {
+  return googleSheetService.assignLesson(userId, lessonId, adminId);
 };

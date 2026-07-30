@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { googleSheetService } from '../services/googleSheetService';
 import type { InteractiveLessonData } from '../types';
-import { Play, Volume2, Send, CheckCircle2, AlertCircle, Loader2, FileText, HelpCircle, User } from 'lucide-react';
+import { Play, Volume2, Send, CheckCircle2, AlertCircle, Loader2, FileText, HelpCircle, User, ShieldAlert } from 'lucide-react';
 
 interface InteractiveLessonViewerProps {
   lessonData: InteractiveLessonData;
-  currentUser?: { id: string; name: string };
+  currentUser?: { id: string; name: string; role?: string };
   onSubmitted?: (submissionId: string) => void;
 }
 
@@ -19,6 +19,48 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
   const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
+  const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+
+  useEffect(() => {
+    const verifyAccess = async () => {
+      // Admins and coaches bypass shielding for preview and management
+      if ((currentUser as any)?.role === 'admin' || (currentUser as any)?.role === 'coach') {
+        setIsAuthorized(true);
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      if (!currentUser?.id) {
+        setIsAuthorized(false);
+        setIsCheckingAuth(false);
+        return;
+      }
+
+      try {
+        const myLessons = await googleSheetService.getMyLessons(currentUser.id);
+        const currentLessonId = lessonData.id || `les_${lessonData.title.replace(/\s+/g, '_')}`;
+
+        const hasAccess = Array.isArray(myLessons) && myLessons.some((l: any) => {
+          const lId = l.id || l.lessonData?.id;
+          const lTitle = l.title || l.lessonData?.title;
+          return String(lId) === String(currentLessonId) ||
+                 String(lId) === String(lessonData.id) ||
+                 (lTitle && lTitle.trim().toLowerCase() === lessonData.title.trim().toLowerCase());
+        });
+
+        setIsAuthorized(hasAccess);
+      } catch (err) {
+        console.error("Failed to verify lesson authorization:", err);
+        setIsAuthorized(false);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    verifyAccess();
+  }, [lessonData, currentUser]);
 
   const handleTextChange = (questionId: string, text: string) => {
     setAnswers(prev => ({
@@ -59,6 +101,27 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
 
   const freeTextCount = lessonData.blocks.filter(b => b.type === 'freetext').length;
   const answeredCount = Object.keys(answers).filter(k => String(answers[k] || '').trim().length > 0).length;
+
+  if (isCheckingAuth) {
+    return (
+      <div className="p-12 text-center text-gray-500 font-bold flex flex-col items-center justify-center gap-3 bg-white rounded-3xl shadow-xl border border-gray-100 max-w-xl mx-auto my-12">
+        <Loader2 className="w-8 h-8 text-tp-purple animate-spin" />
+        <p className="text-xs uppercase tracking-widest">Verifying lesson authorization...</p>
+      </div>
+    );
+  }
+
+  if (!isAuthorized) {
+    return (
+      <div className="locked-screen p-8 bg-red-50 border-2 border-red-200 rounded-3xl text-center max-w-lg mx-auto my-12 space-y-4">
+        <div className="w-12 h-12 bg-red-100 text-red-600 rounded-2xl flex items-center justify-center mx-auto">
+          <ShieldAlert className="w-6 h-6" />
+        </div>
+        <h2 className="text-2xl font-black text-red-900">Unauthorized Access</h2>
+        <p className="text-sm font-semibold text-red-700">You have not been assigned this lesson. Please contact your administrator.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-white rounded-3xl p-6 sm:p-10 shadow-xl border border-gray-100 max-w-4xl mx-auto my-6 space-y-8">

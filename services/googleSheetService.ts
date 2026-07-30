@@ -364,6 +364,35 @@ export const googleSheetService = {
       const key = userId ? `local_freetext_answers_${userId}` : 'local_freetext_answers_all';
       return JSON.parse(localStorage.getItem(key) || '[]');
     }
+  },
+
+  assignLesson: async (userId: string, lessonId: string, adminId: string): Promise<{ id: string; userId: string; lessonId: string }> => {
+    try {
+      return await callApi('assignLesson', { userId, lessonId, adminId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] assignLesson Web App failed, saving to localStorage fallback:", e?.message);
+      const id = 'asgn_' + Date.now();
+      const existing = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
+      const newAsgn = { id, userId, lessonId, adminId, assignedAt: new Date().toISOString() };
+      existing.push(newAsgn);
+      localStorage.setItem('local_manual_assignments', JSON.stringify(existing));
+      return newAsgn;
+    }
+  },
+
+  getMyLessons: async (userId: string): Promise<any[]> => {
+    try {
+      return await callApi('getMyLessons', { userId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] getMyLessons Web App failed, fetching from localStorage fallback:", e?.message);
+      const localAssignments = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
+      const userLessonIds = localAssignments
+        .filter((a: any) => String(a.userId) === String(userId))
+        .map((a: any) => String(a.lessonId));
+      const allInteractive = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
+      if (userLessonIds.length === 0) return [];
+      return allInteractive.filter((l: any) => userLessonIds.includes(String(l.id)));
+    }
   }
 };
 
