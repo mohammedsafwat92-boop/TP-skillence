@@ -1,5 +1,4 @@
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export default async function handler(req: any, res: any) {
   // Set CORS headers
@@ -15,8 +14,8 @@ export default async function handler(req: any, res: any) {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed. Only POST requests with base64 fileData are supported.' });
   }
 
   try {
@@ -25,16 +24,29 @@ export default async function handler(req: any, res: any) {
       try {
         body = JSON.parse(body);
       } catch (e) {
-        // Body was string but not JSON
+        // Body was string
       }
     }
 
     const filename = body?.filename || req.query?.filename;
-    const fileType = body?.fileType || body?.contentType || req.query?.fileType || 'audio/mpeg';
+    const contentType = body?.contentType || body?.fileType || req.query?.fileType || 'audio/mpeg';
+    let fileData = body?.fileData;
 
     if (!filename) {
       return res.status(400).json({ error: 'Filename parameter is required.' });
     }
+
+    if (!fileData) {
+      return res.status(400).json({ error: 'fileData (base64 string) parameter is required.' });
+    }
+
+    // Strip Data URL prefix if present (e.g., "data:audio/mp3;base64,...")
+    if (fileData.includes('base64,')) {
+      fileData = fileData.split('base64,')[1];
+    }
+
+    // Convert base64 string to Node.js Buffer
+    const buffer = Buffer.from(fileData, 'base64');
 
     const accountId = process.env.R2_ACCOUNT_ID;
     const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -64,11 +76,11 @@ export default async function handler(req: any, res: any) {
     const command = new PutObjectCommand({
       Bucket: bucketName,
       Key: objectKey,
-      ContentType: fileType,
+      Body: buffer,
+      ContentType: contentType,
     });
 
-    // Generate Pre-Signed Upload URL (valid for 15 minutes)
-    const uploadUrl = await getSignedUrl(s3Client, command, { expiresIn: 900 });
+    await s3Client.send(command);
 
     const publicUrl = publicDomain 
       ? (publicDomain.endsWith('/') ? `${publicDomain}${objectKey}` : `${publicDomain}/${objectKey}`)
@@ -76,15 +88,15 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       success: true,
-      uploadUrl,
       publicUrl,
       key: objectKey,
       filename
     });
   } catch (err: any) {
-    console.error('Cloudflare R2 Presigned URL Generation Error:', err);
+    console.error('Cloudflare R2 Direct Buffer Upload Error:', err);
     return res.status(500).json({ 
-      error: err?.message || 'Failed to generate presigned upload URL for Cloudflare R2' 
+      error: err?.message || 'Failed to upload audio buffer to Cloudflare R2' 
     });
   }
 }
+

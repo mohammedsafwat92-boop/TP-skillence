@@ -287,32 +287,33 @@ async function parseDocxAndBuildLesson(
     
     let publicUrl = '';
     try {
+      onProgress(`2. Preparing audio (${i + 1}/${mp3Files.length}): Reading ${file.name} as base64 buffer...`);
+      const base64Data = await fileToBase64(file);
+
+      onProgress(`2. Uploading audio (${i + 1}/${mp3Files.length}): Sending ${file.name} to Cloudflare R2...`);
       const res = await fetch('/api/r2-upload', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename: file.name,
-          fileType: file.type || 'audio/mpeg'
+          contentType: file.type || 'audio/mpeg',
+          fileData: base64Data
         })
       });
 
       if (res.ok) {
         const data = await res.json();
-        if (data.uploadUrl && data.publicUrl) {
-          const uploadRes = await fetch(data.uploadUrl, {
-            method: 'PUT',
-            headers: { 'Content-Type': file.type || 'audio/mpeg' },
-            body: file
-          });
-          if (uploadRes.ok) {
-            publicUrl = data.publicUrl;
-          } else {
-            publicUrl = await fileToDataUrl(file);
-          }
+        if (data.success && data.publicUrl) {
+          publicUrl = data.publicUrl;
+        } else if (data.publicUrl) {
+          publicUrl = data.publicUrl;
         }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.warn(`R2 endpoint upload returned ${res.status} for ${file.name}:`, errorData?.error);
       }
     } catch (e) {
-      console.warn(`R2 endpoint failed for ${file.name}, using data URL fallback:`, e);
+      console.warn(`R2 serverless endpoint failed for ${file.name}, using base64 data URL fallback:`, e);
     }
 
     if (!publicUrl) {
@@ -394,6 +395,19 @@ async function parseDocxAndBuildLesson(
     blocks,
     audioFilesMapped: audioMap
   };
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      const base64 = result.includes('base64,') ? result.split('base64,')[1] : result;
+      resolve(base64);
+    };
+    reader.onerror = (error) => reject(error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function fileToDataUrl(file: File): Promise<string> {
