@@ -5,6 +5,7 @@ import { googleSheetService } from '../services/googleSheetService';
 import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
 import QuickAddAgent from './admin/QuickAddAgent';
+import InteractiveLessonUploader from './admin/InteractiveLessonUploader';
 import { MetricsDrillDown } from './admin/MetricsDrillDown';
 import { 
   Users, 
@@ -42,7 +43,7 @@ export const LIVE_COACH_SCENARIOS = [
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate }) => {
   if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return null;
 
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content'>('users');
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'library' | 'content' | 'interactive'>('users');
   const [isProcessing, setIsProcessing] = useState(false);
   const [userList, setUserList] = useState<UserProfile[]>([]);
   const [globalResources, setGlobalResources] = useState<Resource[]>([]);
@@ -367,6 +368,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           {[
             { id: 'users', label: 'Roster' },
             { id: 'library', label: 'Resource Library' },
+            { id: 'interactive', label: 'Interactive .DOCX' },
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'content', label: 'Import' }
           ].map((tab) => (
@@ -901,6 +903,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           <UserUploader currentUser={currentUser} onUserCreated={fetchUsers} />
         </div>
       )}
+
+      {activeTab === 'interactive' && <InteractiveLessonUploader onSuccess={onUpdateContent} />}
 
       {activeTab === 'content' && <ResourceUploader onUploadComplete={onUpdateContent} />}
       

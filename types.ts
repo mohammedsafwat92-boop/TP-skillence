@@ -153,3 +153,37 @@ export interface AdminStats {
   rosterAverage: number;
   userStats: UserStats[];
 }
+
+export interface LessonBlock {
+  id: string;
+  type: 'text' | 'audio' | 'freetext';
+  content?: string;
+  audioUrl?: string;
+  audioFilename?: string;
+  questionId?: string;
+  label?: string;
+}
+
+export interface InteractiveLessonData {
+  id?: string;
+  title: string;
+  docxFilename?: string;
+  createdAt?: string;
+  blocks: LessonBlock[];
+  audioFilesMapped?: Record<string, string>;
+}
+
+export interface StoredInteractiveLesson {
+  id: string;
+  title: string;
+  createdAt: string;
+  lessonData: InteractiveLessonData;
+}
+
+export interface FreeTextAnswerSubmission {
+  id?: string;
+  userId: string;
+  lessonId: string;
+  submittedAt?: string;
+  answers: Record<string, string>;
+}

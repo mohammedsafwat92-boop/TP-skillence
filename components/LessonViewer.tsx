@@ -5,6 +5,7 @@ import { geminiService } from '../services/geminiService';
 import { googleSheetService } from '../services/googleSheetService';
 import { ExitIcon, CheckCircleIcon, ExclamationCircleIcon, BrainIcon, LinkIcon } from './Icons';
 import LiveCoach from './LiveCoach';
+import InteractiveLessonViewer from './InteractiveLessonViewer';
 
 interface LessonViewerProps {
   resource: Resource;
@@ -141,16 +142,25 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser,
 
       <div className="flex-1 relative bg-white overflow-hidden">
         {view === 'content' && (
-          <div className="w-full h-full flex flex-col">
-            <div className="flex-1 w-full bg-black relative">
-              <iframe 
-                src={getEmbedUrl(resource.url)} 
-                className="w-full h-full border-none" 
-                title="Training Module Viewer" 
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
-            </div>
+          <div className="w-full h-full flex flex-col overflow-y-auto">
+            {(resource as any).interactiveLesson ? (
+              <div className="p-6">
+                <InteractiveLessonViewer 
+                  lessonData={(resource as any).interactiveLesson} 
+                  currentUser={currentUser || { id: uid, name: 'Agent', role: 'agent', languageLevel: 'B2', rosterId: '' }} 
+                />
+              </div>
+            ) : (
+              <div className="flex-1 w-full bg-black relative">
+                <iframe 
+                  src={getEmbedUrl(resource.url)} 
+                  className="w-full h-full border-none" 
+                  title="Training Module Viewer" 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              </div>
+            )}
             <div className="px-10 py-8 bg-tp-navy/5 border-t border-gray-100 flex justify-between items-center shadow-lg">
               <div className="max-w-2xl">
                 <p className="text-[10px] font-black text-tp-purple uppercase tracking-[0.3em] mb-1">Objective</p>

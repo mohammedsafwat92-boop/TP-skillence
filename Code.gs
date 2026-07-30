@@ -77,6 +77,18 @@ function doPost(e) {
     } else if (action === 'bulk_assign_roster') {
       res.data = bulkAssignRoster(ss, json.adminId, json.wave);
       res.success = true;
+    } else if (action === 'saveLesson') {
+      res.data = saveInteractiveLesson(ss, json.title, json.lessonData);
+      res.success = true;
+    } else if (action === 'saveAnswers') {
+      res.data = saveFreeTextAnswers(ss, json.userId, json.lessonId, json.answers);
+      res.success = true;
+    } else if (action === 'getInteractiveLessons') {
+      res.data = getInteractiveLessons(ss);
+      res.success = true;
+    } else if (action === 'getFreeTextAnswers') {
+      res.data = getFreeTextAnswers(ss, json.lessonId, json.userId);
+      res.success = true;
     }
 
   } catch (err) {
@@ -872,3 +884,89 @@ function bulkAssignRoster(ss, adminId, wave) {
     updatedAssignments: updatedRowsCount 
   };
 }
+
+function saveInteractiveLesson(ss, title, lessonData) {
+  const sheet = ss.getSheetByName('Brain_InteractiveLessons') || ss.insertSheet('Brain_InteractiveLessons');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['ID', 'Title', 'CreatedAt', 'LessonDataJSON']);
+  }
+  const id = 'les_' + Utilities.getUuid();
+  const createdAt = new Date().toISOString();
+  const jsonString = typeof lessonData === 'string' ? lessonData : JSON.stringify(lessonData);
+  
+  sheet.appendRow([id, title || 'Untitled Interactive Lesson', createdAt, jsonString]);
+  return { id: id, title: title, createdAt: createdAt };
+}
+
+function saveFreeTextAnswers(ss, userId, lessonId, answers) {
+  const sheet = ss.getSheetByName('Brain_FreeTextAnswers') || ss.insertSheet('Brain_FreeTextAnswers');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['ID', 'UserID', 'LessonID', 'SubmittedAt', 'AnswersJSON']);
+  }
+  const id = 'ans_' + Utilities.getUuid();
+  const submittedAt = new Date().toISOString();
+  const jsonString = typeof answers === 'string' ? answers : JSON.stringify(answers);
+  
+  sheet.appendRow([id, userId || 'Anonymous', lessonId || 'Unknown', submittedAt, jsonString]);
+  return { id: id, submittedAt: submittedAt };
+}
+
+function getInteractiveLessons(ss) {
+  const sheet = ss.getSheetByName('Brain_InteractiveLessons');
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  
+  const lessons = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue;
+    let parsedData = null;
+    try {
+      parsedData = typeof row[3] === 'string' ? JSON.parse(row[3]) : row[3];
+    } catch (e) {
+      parsedData = { raw: row[3] };
+    }
+    lessons.push({
+      id: String(row[0]),
+      title: String(row[1]),
+      createdAt: row[2],
+      lessonData: parsedData
+    });
+  }
+  return lessons;
+}
+
+function getFreeTextAnswers(ss, lessonId, userId) {
+  const sheet = ss.getSheetByName('Brain_FreeTextAnswers');
+  if (!sheet) return [];
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return [];
+  
+  const answersList = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    if (!row[0]) continue;
+    const rUserId = String(row[1]);
+    const rLessonId = String(row[2]);
+    if (lessonId && rLessonId !== String(lessonId)) continue;
+    if (userId && rUserId !== String(userId)) continue;
+    
+    let parsedAns = null;
+    try {
+      parsedAns = typeof row[4] === 'string' ? JSON.parse(row[4]) : row[4];
+    } catch (e) {
+      parsedAns = row[4];
+    }
+    
+    answersList.push({
+      id: String(row[0]),
+      userId: rUserId,
+      lessonId: rLessonId,
+      submittedAt: row[3],
+      answers: parsedAns
+    });
+  }
+  return answersList;
+}
+

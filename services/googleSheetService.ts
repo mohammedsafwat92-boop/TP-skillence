@@ -317,5 +317,53 @@ export const googleSheetService = {
       console.error("[googleSheetService] addSingleUser failed:", e);
       return false;
     }
+  },
+
+  saveLesson: async (title: string, lessonData: any): Promise<{ id: string; title: string }> => {
+    try {
+      return await callApi('saveLesson', { title, lessonData });
+    } catch (e: any) {
+      console.warn("[googleSheetService] saveLesson Web App failed, saving to localStorage fallback:", e?.message);
+      const id = 'les_' + Date.now();
+      const existing = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
+      const newLesson = { id, title, createdAt: new Date().toISOString(), lessonData };
+      existing.unshift(newLesson);
+      localStorage.setItem('local_interactive_lessons', JSON.stringify(existing));
+      return { id, title };
+    }
+  },
+
+  saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ id: string }> => {
+    try {
+      return await callApi('saveAnswers', { userId, lessonId, answers });
+    } catch (e: any) {
+      console.warn("[googleSheetService] saveAnswers Web App failed, saving to localStorage fallback:", e?.message);
+      const id = 'ans_' + Date.now();
+      const key = `local_freetext_answers_${userId}`;
+      const existing = JSON.parse(localStorage.getItem(key) || '[]');
+      existing.push({ id, userId, lessonId, submittedAt: new Date().toISOString(), answers });
+      localStorage.setItem(key, JSON.stringify(existing));
+      return { id };
+    }
+  },
+
+  getInteractiveLessons: async (): Promise<any[]> => {
+    try {
+      return await callApi('getInteractiveLessons');
+    } catch (e: any) {
+      console.warn("[googleSheetService] getInteractiveLessons Web App failed, fetching from localStorage fallback:", e?.message);
+      return JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
+    }
+  },
+
+  getFreeTextAnswers: async (lessonId?: string, userId?: string): Promise<any[]> => {
+    try {
+      return await callApi('getFreeTextAnswers', { lessonId, userId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] getFreeTextAnswers Web App failed, fetching from localStorage fallback:", e?.message);
+      const key = userId ? `local_freetext_answers_${userId}` : 'local_freetext_answers_all';
+      return JSON.parse(localStorage.getItem(key) || '[]');
+    }
   }
 };
+
