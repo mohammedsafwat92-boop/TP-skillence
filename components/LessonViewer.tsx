@@ -26,9 +26,25 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser,
   const [quizError, setQuizError] = useState<string | null>(null);
   const [quizStartTime, setQuizStartTime] = useState<number | null>(null);
 
-  /**
-   * Automatically converts YouTube URLs to embed format.
-   */
+  const isInteractive = Boolean(
+    (resource as any).interactiveLesson ||
+    (resource as any).lessonDataJSON ||
+    resource.type === 'interactive' ||
+    (resource.url && resource.url.startsWith('interactive:'))
+  );
+
+  const handleInteractiveSubmit = async (submissionId?: string) => {
+    try {
+      // Record 100% mastery / completion progress in backend
+      const response = await googleSheetService.submitProgress(uid, resource.id, true, 100, 0);
+      setBackendStatus('completed');
+      onMasteryAchieved();
+    } catch (err) {
+      console.error("Failed to submit interactive lesson completion progress:", err);
+      setBackendStatus('completed');
+      onMasteryAchieved();
+    }
+  };
   const getEmbedUrl = (url: string) => {
     if (!url) return '';
     if (url.includes('/embed/')) return url;
@@ -143,11 +159,13 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser,
       <div className="flex-1 relative bg-white overflow-hidden">
         {view === 'content' && (
           <div className="w-full h-full flex flex-col overflow-y-auto">
-            {(resource as any).interactiveLesson ? (
+            {isInteractive ? (
               <div className="p-6">
+                {/* 2. Wiring "Submit" to "Mastery Check" via onSubmitted callback */}
                 <InteractiveLessonViewer 
-                  lessonData={(resource as any).interactiveLesson} 
+                  lessonData={(resource as any).interactiveLesson || (resource as any).lessonDataJSON} 
                   currentUser={currentUser || { id: uid, name: 'Agent', role: 'agent', languageLevel: 'B2', rosterId: '' }} 
+                  onSubmitted={(submissionId) => handleInteractiveSubmit(submissionId)}
                 />
               </div>
             ) : (
@@ -174,25 +192,42 @@ const LessonViewer: React.FC<LessonViewerProps> = ({ resource, uid, currentUser,
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-4">
-                <a 
-                  href={resource.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="bg-white text-tp-purple border-2 border-tp-purple/20 font-black py-5 px-8 rounded-2xl hover:bg-tp-purple/5 transition-all shadow-lg uppercase tracking-widest text-[11px] flex items-center gap-3"
-                >
-                  <LinkIcon className="w-5 h-5" />
-                  Open in New Tab
-                </a>
-                <button 
-                  onClick={startQuiz}
-                  disabled={isGeneratingQuiz || backendStatus === 'completed'}
-                  className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50 flex items-center gap-3"
-                >
-                  {isGeneratingQuiz && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
-                  {backendStatus === 'completed' ? 'Certified Complete' : isGeneratingQuiz ? 'Generating Quiz...' : 'Mastery Check'}
-                </button>
-              </div>
+
+              {/* 1. CONDITIONAL BUTTON RENDERING:
+                  - Normal lesson (!isInteractive): Render 'Open in New Tab' and 'Mastery Check' buttons.
+                  - Interactive lesson (isInteractive): HIDE both buttons entirely.
+              */}
+              {!isInteractive ? (
+                <div className="flex items-center gap-4">
+                  <a 
+                    href={resource.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="bg-white text-tp-purple border-2 border-tp-purple/20 font-black py-5 px-8 rounded-2xl hover:bg-tp-purple/5 transition-all shadow-lg uppercase tracking-widest text-[11px] flex items-center gap-3"
+                  >
+                    <LinkIcon className="w-5 h-5" />
+                    Open in New Tab
+                  </a>
+                  <button 
+                    onClick={startQuiz}
+                    disabled={isGeneratingQuiz || backendStatus === 'completed'}
+                    className="bg-tp-red text-white font-black py-5 px-14 rounded-2xl hover:bg-red-700 transition-all shadow-xl uppercase tracking-widest text-[11px] disabled:opacity-50 flex items-center gap-3"
+                  >
+                    {isGeneratingQuiz && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>}
+                    {backendStatus === 'completed' ? 'Certified Complete' : isGeneratingQuiz ? 'Generating Quiz...' : 'Mastery Check'}
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className={`text-[11px] font-black uppercase tracking-widest px-5 py-3 rounded-2xl flex items-center gap-2 ${
+                    backendStatus === 'completed'
+                      ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                      : 'bg-tp-purple/10 text-tp-purple border border-tp-purple/20'
+                  }`}>
+                    {backendStatus === 'completed' ? '✓ Mastery Certified & Completed' : 'Interactive Lesson Mode — Complete & Submit Form Above'}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}
