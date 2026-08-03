@@ -99,8 +99,80 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
     }
   };
 
-  const freeTextCount = lessonData.blocks.filter(b => b.type === 'freetext').length;
+  const totalFreeTextCount = React.useMemo(() => {
+    let count = 0;
+    for (const block of lessonData.blocks || []) {
+      if (block.type === 'freetext') {
+        count++;
+      } else if (block.type === 'smallfreetext' || block.type === 'text') {
+        const matches = (block.content || '').match(/[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]/gi);
+        if (matches && matches.length > 0) {
+          count += matches.length;
+        } else if (block.type === 'smallfreetext') {
+          count++;
+        }
+      }
+    }
+    return count;
+  }, [lessonData.blocks]);
+
   const answeredCount = Object.keys(answers).filter(k => String(answers[k] || '').trim().length > 0).length;
+
+  const renderTextWithInlineInputs = (
+    content: string,
+    baseQuestionId: string,
+    blockIndex: number
+  ) => {
+    const SMALL_TAG_REGEX = /([\(\[]Entry:\s*Small\s*Free\s*Text[\)\]])/gi;
+    const cleanedContent = content.replace(
+      /<(strong|b|em|i|span)[^>]*>(\s*[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]\s*)<\/\1>/gi,
+      '$2'
+    );
+
+    const parts = cleanedContent.split(SMALL_TAG_REGEX);
+    let globalTagIndexInBlock = 0;
+
+    return (
+      <div className="text-gray-800 leading-relaxed text-sm sm:text-base font-normal bg-gray-50/50 p-6 rounded-2xl border border-gray-100 prose prose-purple max-w-none [&>p]:mb-2 [&>p]:last:mb-0 [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>h1]:text-xl [&>h1]:font-black [&>h2]:text-lg [&>h2]:font-bold font-sans">
+        {parts.map((part, partIdx) => {
+          if (/^[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]$/i.test(part)) {
+            const currentTagIdx = globalTagIndexInBlock;
+            globalTagIndexInBlock++;
+            const qId = currentTagIdx === 0 ? baseQuestionId : `${baseQuestionId}_${currentTagIdx + 1}`;
+            const currentVal = answers[qId] || '';
+
+            return (
+              <span key={partIdx} className="inline-flex items-center gap-1.5 mx-1.5 my-1 align-middle">
+                <span className="relative inline-block">
+                  <input
+                    type="text"
+                    maxLength={65}
+                    value={currentVal}
+                    onChange={(e) => handleTextChange(qId, e.target.value)}
+                    placeholder="Small free text (max 65 chars)..."
+                    className="px-3 py-1.5 rounded-xl border-2 border-tp-purple/30 bg-white text-xs sm:text-sm font-semibold text-gray-900 focus:outline-none focus:border-tp-purple focus:ring-2 focus:ring-tp-purple/20 transition-all shadow-sm w-48 sm:w-64 pr-12"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-mono font-bold text-gray-400 select-none pointer-events-none bg-gray-50/80 px-1 py-0.5 rounded border border-gray-200">
+                    {currentVal.length}/65
+                  </span>
+                </span>
+                {currentVal.trim() && (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                )}
+              </span>
+            );
+          }
+
+          return (
+            <span
+              key={partIdx}
+              dangerouslySetInnerHTML={{ __html: part }}
+            />
+          );
+        })}
+      </div>
+    );
+  };
 
   if (isCheckingAuth) {
     return (
@@ -141,13 +213,13 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
           )}
         </div>
 
-        {freeTextCount > 0 && (
+        {totalFreeTextCount > 0 && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-2.5 text-center flex-shrink-0">
             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block">
               Free-Text Progress
             </span>
             <span className="text-sm font-black text-tp-purple">
-              {answeredCount} / {freeTextCount} Answered
+              {answeredCount} / {totalFreeTextCount} Answered
             </span>
           </div>
         )}
@@ -189,13 +261,21 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
         <div className="space-y-8">
           {/* Blocks Renderer */}
           {lessonData.blocks.map((block, index) => {
+            if (block.type === 'smallfreetext' || (block.type === 'text' && /[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]/i.test(block.content || ''))) {
+              return (
+                <div key={block.id || index}>
+                  {renderTextWithInlineInputs(block.content || '', block.questionId || `q_${index}`, index)}
+                </div>
+              );
+            }
+
             if (block.type === 'text') {
               return (
-                <div key={block.id || index} className="text-gray-800 leading-relaxed text-sm sm:text-base font-normal space-y-3 bg-gray-50/50 p-6 rounded-2xl border border-gray-100">
-                  {block.content?.split('\n\n').map((paragraph, pIdx) => (
-                    <p key={pIdx} className="whitespace-pre-wrap">{paragraph}</p>
-                  ))}
-                </div>
+                <div
+                  key={block.id || index}
+                  className="text-gray-800 leading-relaxed text-sm sm:text-base font-normal bg-gray-50/50 p-6 rounded-2xl border border-gray-100 prose prose-purple max-w-none [&>p]:mb-3 [&>p]:last:mb-0 [&>ul]:list-disc [&>ul]:ml-6 [&>ol]:list-decimal [&>ol]:ml-6 [&>h1]:text-xl [&>h1]:font-black [&>h2]:text-lg [&>h2]:font-bold font-sans"
+                  dangerouslySetInnerHTML={{ __html: block.content || '' }}
+                />
               );
             }
 
@@ -266,7 +346,7 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
           })}
 
           {/* Submit Action */}
-          {freeTextCount > 0 && (
+          {totalFreeTextCount > 0 && (
             <div className="pt-6 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-xs text-gray-500 font-semibold flex items-center gap-2">
                 <User className="w-4 h-4 text-tp-purple" /> Submitting as: <strong className="text-gray-900">{currentUser.name}</strong>

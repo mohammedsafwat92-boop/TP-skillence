@@ -110,7 +110,7 @@ export const InteractiveLessonUploader: React.FC<InteractiveLessonUploaderProps>
           </div>
           <h3 className="text-lg font-black text-emerald-900">{createdLesson.title} Created!</h3>
           <p className="text-xs text-emerald-700 max-w-md mx-auto">
-            Your lesson with {createdLesson.blocks.length} structured blocks ({createdLesson.blocks.filter(b=>b.type==='audio').length} audio tracks, {createdLesson.blocks.filter(b=>b.type==='freetext').length} free-text entry questions) is live.
+            Your lesson with {createdLesson.blocks.length} structured blocks ({createdLesson.blocks.filter(b=>b.type==='audio').length} audio tracks, {createdLesson.blocks.filter(b=>b.type==='freetext'||b.type==='smallfreetext').length} free-text entry questions) is live.
           </p>
           <div className="flex justify-center gap-4 pt-2">
             <button
@@ -275,7 +275,7 @@ async function parseDocxAndBuildLesson(
   onProgress("1. Reading .docx file with Mammoth parser...");
   
   const arrayBuffer = await docxFile.arrayBuffer();
-  const { value: rawText } = await mammoth.extractRawText({ arrayBuffer });
+  const { value: html } = await mammoth.convertToHtml({ arrayBuffer });
 
   onProgress(`2. Uploading ${mp3Files.length} MP3 audio file(s) to Cloudflare R2...`);
 
@@ -327,7 +327,10 @@ async function parseDocxAndBuildLesson(
 
   onProgress("3. Parsing text blocks, audio players, and free-text entry fields...");
 
-  const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(html, 'text/html');
+  const nodes = Array.from(doc.body.childNodes);
+
   const blocks: LessonBlock[] = [];
   let questionCounter = 1;
   let audioIndex = 0;
@@ -339,15 +342,23 @@ async function parseDocxAndBuildLesson(
       blocks.push({
         id: `block_text_${blocks.length}_${Date.now()}`,
         type: 'text',
-        content: currentTextBuffer.join('\n\n')
+        content: currentTextBuffer.join('')
       });
       currentTextBuffer = [];
     }
   };
 
-  for (const line of lines) {
-    const audioMatch = line.match(/[\(\[]Space holder for audio file\s*([^\]\)]*)[\)\]]/i);
-    const freetextMatch = line.match(/[\(\[]Entry:\s*Free\s*Text[\)\]]/i);
+  for (const node of nodes) {
+    const textContent = node.textContent || '';
+    if (node.nodeType === Node.TEXT_NODE && !textContent.trim()) {
+      continue;
+    }
+
+    const nodeHtml = (node as Element).outerHTML || textContent || '';
+
+    const audioMatch = textContent.match(/[\(\[]Space holder for audio file\s*([^\]\)]*)[\)\]]/i);
+    const smallFreetextMatch = textContent.match(/[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]/i);
+    const freetextMatch = textContent.match(/[\(\[]Entry:\s*(?!Small\s*)Free\s*Text[\)\]]/i);
 
     if (audioMatch) {
       flushTextBuffer();
@@ -371,6 +382,18 @@ async function parseDocxAndBuildLesson(
         audioFilename: extractedFilename || mp3Files[audioIndex]?.name || `Audio_${audioIndex + 1}.mp3`
       });
       audioIndex++;
+    } else if (smallFreetextMatch) {
+      flushTextBuffer();
+      const tagMatches = textContent.match(/[\(\[]Entry:\s*Small\s*Free\s*Text[\)\]]/gi) || [1];
+      const qId = `q_${questionCounter}`;
+      blocks.push({
+        id: `block_smallfreetext_${blocks.length}_${Date.now()}`,
+        type: 'smallfreetext',
+        questionId: qId,
+        content: nodeHtml,
+        label: `Short Free Text Response #${questionCounter}`
+      });
+      questionCounter += tagMatches.length;
     } else if (freetextMatch) {
       flushTextBuffer();
       const qId = `q_${questionCounter}`;
@@ -382,7 +405,7 @@ async function parseDocxAndBuildLesson(
       });
       questionCounter++;
     } else {
-      currentTextBuffer.push(line);
+      currentTextBuffer.push(nodeHtml);
     }
   }
 

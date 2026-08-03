@@ -156,7 +156,7 @@ export interface AdminStats {
 
 export interface LessonBlock {
   id: string;
-  type: 'text' | 'audio' | 'freetext';
+  type: 'text' | 'audio' | 'freetext' | 'smallfreetext';
   content?: string;
   audioUrl?: string;
   audioFilename?: string;
