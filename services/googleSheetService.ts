@@ -380,6 +380,44 @@ export const googleSheetService = {
     }
   },
 
+  batchAssignLessons: async (userIds: string[], lessonIds: string[], adminId: string): Promise<{ count: number; totalRequested: number; usersCount: number; lessonsCount: number }> => {
+    try {
+      return await callApi('batchAssignLessons', { userIds, lessonIds, adminId });
+    } catch (e: any) {
+      console.warn("[googleSheetService] batchAssignLessons Web App failed, saving to localStorage fallback:", e?.message);
+      const existing = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
+      const existingSet = new Set(existing.map((a: any) => `${a.userId}|${a.lessonId}`));
+      
+      let createdCount = 0;
+      const assignedAt = new Date().toISOString();
+      
+      userIds.forEach(uId => {
+        lessonIds.forEach(lId => {
+          const key = `${uId}|${lId}`;
+          if (!existingSet.has(key)) {
+            existingSet.add(key);
+            existing.push({
+              id: 'asgn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+              userId: uId,
+              lessonId: lId,
+              adminId,
+              assignedAt
+            });
+            createdCount++;
+          }
+        });
+      });
+
+      localStorage.setItem('local_manual_assignments', JSON.stringify(existing));
+      return {
+        count: createdCount,
+        totalRequested: userIds.length * lessonIds.length,
+        usersCount: userIds.length,
+        lessonsCount: lessonIds.length
+      };
+    }
+  },
+
   getMyLessons: async (userId: string): Promise<any[]> => {
     try {
       return await callApi('getMyLessons', { userId });

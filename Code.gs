@@ -92,6 +92,9 @@ function doPost(e) {
     } else if (action === 'assignLesson') {
       res.data = assignLesson(ss, json.userId, json.lessonId, json.adminId);
       res.success = true;
+    } else if (action === 'batchAssignLessons') {
+      res.data = batchAssignLessons(ss, json.userIds, json.lessonIds, json.adminId);
+      res.success = true;
     } else if (action === 'getMyLessons') {
       res.data = getMyLessons(ss, json.userId);
       res.success = true;
@@ -985,6 +988,54 @@ function assignLesson(ss, userId, lessonId, adminId) {
   const assignedAt = new Date().toISOString();
   sheet.appendRow([id, userId, lessonId, adminId || 'admin', assignedAt]);
   return { id: id, userId: userId, lessonId: lessonId, assignedAt: assignedAt };
+}
+
+function batchAssignLessons(ss, userIds, lessonIds, adminId) {
+  if (!Array.isArray(userIds) || !Array.isArray(lessonIds)) {
+    return { count: 0, message: 'userIds and lessonIds must be arrays' };
+  }
+
+  const sheet = ss.getSheetByName('Brain_ManualAssignments') || ss.insertSheet('Brain_ManualAssignments');
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(['ID', 'UserID', 'LessonID', 'AdminID', 'AssignedAt']);
+  }
+
+  const existingData = sheet.getDataRange().getValues();
+  const existingSet = new Set();
+  for (let i = 1; i < existingData.length; i++) {
+    const uId = String(existingData[i][1]);
+    const lId = String(existingData[i][2]);
+    existingSet.add(uId + '|' + lId);
+  }
+
+  let createdCount = 0;
+  const rowsToAdd = [];
+  const assignedAt = new Date().toISOString();
+  const admin = adminId || 'admin';
+
+  userIds.forEach(function(uId) {
+    lessonIds.forEach(function(lId) {
+      const pairKey = String(uId) + '|' + String(lId);
+      if (!existingSet.has(pairKey)) {
+        existingSet.add(pairKey);
+        const id = 'asgn_' + Utilities.getUuid();
+        rowsToAdd.push([id, String(uId), String(lId), admin, assignedAt]);
+        createdCount++;
+      }
+    });
+  });
+
+  if (rowsToAdd.length > 0) {
+    const startRow = sheet.getLastRow() + 1;
+    sheet.getRange(startRow, 1, rowsToAdd.length, 5).setValues(rowsToAdd);
+  }
+
+  return {
+    count: createdCount,
+    totalRequested: userIds.length * lessonIds.length,
+    usersCount: userIds.length,
+    lessonsCount: lessonIds.length
+  };
 }
 
 function getMyLessons(ss, userId) {

@@ -77,3 +77,7 @@ export const removeCustomLesson = (moduleId: string, lessonTitle: string) => {
 export const assignLesson = async (userId: string, lessonId: string, adminId: string) => {
   return googleSheetService.assignLesson(userId, lessonId, adminId);
 };
+
+export const batchAssignLessons = async (userIds: string[], lessonIds: string[], adminId: string) => {
+  return googleSheetService.batchAssignLessons(userIds, lessonIds, adminId);
+};
