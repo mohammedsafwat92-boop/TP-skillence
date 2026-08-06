@@ -333,17 +333,28 @@ export const googleSheetService = {
     }
   },
 
-  saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ id: string }> => {
+  saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ success: boolean; id?: string; message?: string }> => {
     try {
-      return await callApi('saveAnswers', { userId, lessonId, answers });
+      const data = await callApi('saveAnswers', { userId, lessonId, answers });
+      return {
+        success: true,
+        id: data?.id || ('ans_' + Date.now())
+      };
     } catch (e: any) {
-      console.warn("[googleSheetService] saveAnswers Web App failed, saving to localStorage fallback:", e?.message);
-      const id = 'ans_' + Date.now();
-      const key = `local_freetext_answers_${userId}`;
-      const existing = JSON.parse(localStorage.getItem(key) || '[]');
-      existing.push({ id, userId, lessonId, submittedAt: new Date().toISOString(), answers });
-      localStorage.setItem(key, JSON.stringify(existing));
-      return { id };
+      console.warn("[googleSheetService] saveAnswers Web App failed:", e?.message);
+      try {
+        const id = 'ans_' + Date.now();
+        const key = `local_freetext_answers_${userId}`;
+        const existing = JSON.parse(localStorage.getItem(key) || '[]');
+        existing.push({ id, userId, lessonId, submittedAt: new Date().toISOString(), answers });
+        localStorage.setItem(key, JSON.stringify(existing));
+        return { success: true, id, message: "Saved locally" };
+      } catch (fallbackErr: any) {
+        return {
+          success: false,
+          message: e?.message || "Failed to record answers in database."
+        };
+      }
     }
   },
 

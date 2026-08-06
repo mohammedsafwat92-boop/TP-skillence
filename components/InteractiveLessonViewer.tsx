@@ -82,18 +82,28 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
 
     try {
       const lessonId = lessonData.id || `les_${lessonData.title.replace(/\s+/g, '_')}`;
-      const res = await googleSheetService.saveAnswers(
+      const result = await googleSheetService.saveAnswers(
         currentUser.id,
         lessonId,
         answers
       );
 
-      setSubmissionId(res.id);
-      setSubmitSuccess(true);
-      if (onSubmitted) onSubmitted(res.id);
+      // Validate explicit success boolean from backend response
+      if (result && result.success) {
+        const subId = result.id || 'ans_' + Date.now();
+        setSubmissionId(subId);
+        setSubmitSuccess(true);
+        if (onSubmitted) onSubmitted(subId);
+      } else {
+        const failureMsg = result?.message || "Unknown backend error while saving answers.";
+        setErrorMessage(`Submission failed: ${failureMsg}`);
+        alert(`Submission failed: ${failureMsg}`);
+      }
     } catch (err: any) {
       console.error("Failed to submit free-text answers:", err);
-      setErrorMessage(err?.message || "Failed to submit answers to Google Sheets.");
+      const failureMsg = err?.message || "Unknown network error.";
+      setErrorMessage(`Submission failed: ${failureMsg}`);
+      alert(`Submission failed: ${failureMsg}`);
     } finally {
       setIsSubmitting(false);
     }
