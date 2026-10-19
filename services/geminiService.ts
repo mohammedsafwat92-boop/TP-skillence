@@ -4,7 +4,8 @@ import type { Resource, QuizQuestion } from '../types';
 import { googleSheetService } from './googleSheetService';
 import { GoogleGenAI } from "@google/genai";
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+// Safely check private GEMINI_API_KEY / Config or fallback without exposing secret via public framework prefix
+const API_KEY = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
 
 const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> => {
   try {
@@ -28,7 +29,7 @@ const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> =>
       console.warn(`[geminiService] Both primary and legacy proxy actions failed. Error:`, legacyErrorStr);
       
       if (!API_KEY) {
-        console.error("[geminiService] Direct client fallback blocked: VITE_GEMINI_API_KEY is not defined in the environment.");
+        console.error("[geminiService] Direct client fallback blocked: GEMINI_API_KEY is kept private in backend/Config.");
         throw legacyError;
       }
 
@@ -76,7 +77,7 @@ const callGemini = async (prompt: string) => {
   };
 
   try {
-    const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
+    const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textResponse) throw new Error("Empty response from AI");
     
@@ -101,7 +102,7 @@ async function scrapeUrl(url: string) {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
+      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
       return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     }
 
@@ -139,7 +140,7 @@ async function condenseLargeContent(rawText: string) {
       }]
     };
     try {
-      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
+      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
       masterSummary += (data.candidates?.[0]?.content?.parts?.[0]?.text || "") + "\n\n";
     } catch (e) {
       console.error("Chunk processing failed via proxy:", e);
@@ -187,7 +188,7 @@ export const geminiService = {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-3.1-flash-lite', payload);
+      const data = await proxyGeminiSafe('gemini-3.5-flash', payload);
       let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
       
@@ -397,9 +398,9 @@ TEMPLATE:
           }
         }
 
-        // 2. Ultra-Reliable Standby Fallback using gemini-3.1-flash-lite with native JSON Mode
+        // 2. Ultra-Reliable Standby Fallback using gemini-3.5-flash with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.1-flash-lite fallback...");
+          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-3.5-flash fallback...");
           try {
             const flashPayload = {
               expectJson: true,
@@ -428,17 +429,17 @@ JSON Schema structure:
                 responseMimeType: "application/json"
               }
             };
-            const flashData = await proxyGeminiSafe('gemini-3.1-flash-lite', flashPayload);
+            const flashData = await proxyGeminiSafe('gemini-3.5-flash', flashPayload);
             const flashText = (flashData.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (flashData.candidates?.[0]?.content?.parts?.[0]?.text) || "";
             let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
             const flashQuiz = JSON.parse(cleanedFlash);
             
             if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
               parsedQuiz = flashQuiz;
-              console.log("✅ Quiz successfully generated via stand-by gemini-3.1-flash-lite!");
+              console.log("✅ Quiz successfully generated via stand-by gemini-3.5-flash!");
             }
           } catch (flashErr) {
-            console.error("Stand-by gemini-3.1-flash-lite fallback also failed:", flashErr);
+            console.error("Stand-by gemini-3.5-flash fallback also failed:", flashErr);
           }
         }
 
@@ -471,8 +472,8 @@ JSON Schema structure:
         });
       };
 
-      // Exclusively route to gemini-3.1-flash-lite
-      return await attemptGeneration('gemini-3.1-flash-lite');
+      // Exclusively route to gemini-3.5-flash
+      return await attemptGeneration('gemini-3.5-flash');
 
     } catch (error: any) {
       console.error("❌ Gemma Quiz Gen Error:", error);

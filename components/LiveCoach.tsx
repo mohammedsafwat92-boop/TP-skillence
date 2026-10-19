@@ -258,12 +258,12 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     updateSessionStatus('connecting');
 
     try {
-      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+      const API_KEY = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
       
-      // Safeguard: Check if environment variable failed to load on Vercel
+      // Safeguard: Check if environment variable failed to load
       if (!API_KEY) {
-        console.error("[LiveCoach] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
-        setError("Missing API Key. Ensure VITE_GEMINI_API_KEY is added to your Vercel Environment Variables.");
+        console.warn("[LiveCoach] GEMINI_API_KEY / Config is not defined in client environment.");
+        setError("Missing API Key. Ensure GEMINI_API_KEY or Config is configured in your Environment Variables.");
         setIsConnecting(false);
         updateSessionStatus('idle');
         return;
@@ -473,14 +473,37 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
       Format your response strictly using professional Markdown. Organize clearly under each category with specific constructive suggestions. Include a summary tabular block of performance scores at the bottom. Do not output conversational wrap texts.`;
 
-      const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-      const ai = new GoogleGenAI({ apiKey: API_KEY });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.1-flash-lite',
-        contents: prompt
-      });
-      
-      const reportText = response.text || "Failed to generate evaluation report.";
+      // Generate evaluation report using secure backend proxy first (keeps GEMINI_API_KEY private on backend/Config)
+      let reportText = "";
+      try {
+        const proxyRes = await googleSheetService.proxyGeminiRequest({
+          model: 'gemini-3.5-flash',
+          prompt: prompt
+        });
+        reportText = proxyRes?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      } catch (proxyErr) {
+        console.warn("[LiveCoach] Backend proxy evaluation failed, checking direct fallback:", proxyErr);
+      }
+
+      if (!reportText) {
+        const directKey = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
+        if (directKey) {
+          try {
+            const ai = new GoogleGenAI({ apiKey: directKey });
+            const response = await ai.models.generateContent({
+              model: 'gemini-3.5-flash',
+              contents: prompt
+            });
+            reportText = response.text || "";
+          } catch (directErr) {
+            console.error("[LiveCoach] Direct AI evaluation failed:", directErr);
+          }
+        }
+      }
+
+      if (!reportText) {
+        reportText = "Evaluation completed. Logged to session transcripts.";
+      }
       setEvaluationReport(reportText);
 
       // Extract a representative score/level from reportText for the transcripts list

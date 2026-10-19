@@ -4,12 +4,12 @@
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
 
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-if (!API_KEY) console.error("[shlService] FATAL: VITE_GEMINI_API_KEY is missing from the environment.");
+// Check private GEMINI_API_KEY / Config or fallback without requiring public framework prefix
+const API_KEY = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
 
-// Use gemini-3.1-flash-lite as primary and fallback
-const MODEL_NAME = 'gemini-3.1-flash-lite';
-const FALLBACK_MODEL = 'gemini-3.1-flash-lite';
+// Use gemini-3.5-flash as primary and fallback
+const MODEL_NAME = 'gemini-3.5-flash';
+const FALLBACK_MODEL = 'gemini-3.5-flash';
 
 export const shlService = {
   /**
@@ -51,8 +51,6 @@ export const shlService = {
    * This avoids the "Action not implemented" error associated with the Files API.
    */
   processInline: async (file: File): Promise<any> => {
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
-    
     const base64Data = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -65,15 +63,43 @@ export const shlService = {
     });
 
     const executeAnalysis = async (model: string) => {
-      return await ai.models.generateContent({
-        model: model,
-        contents: {
-          parts: [
-            { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
-            { text: shlService.getAnalysisPrompt() }
+      // 1. First attempt to route via secure backend proxy (GEMINI_API_KEY kept private on server/Config sheet)
+      try {
+        const proxyRes = await googleSheetService.proxyGeminiRequest({
+          model: model,
+          contents: [
+            {
+              role: 'user',
+              parts: [
+                { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
+                { text: shlService.getAnalysisPrompt() }
+              ]
+            }
           ]
+        });
+        const text = proxyRes?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return { text };
         }
-      });
+      } catch (proxyErr) {
+        console.warn(`[shlService] Backend proxy analysis attempt failed for ${model}, checking direct fallback:`, proxyErr);
+      }
+
+      // 2. Direct client SDK fallback if an API key is available
+      if (API_KEY) {
+        const ai = new GoogleGenAI({ apiKey: API_KEY });
+        return await ai.models.generateContent({
+          model: model,
+          contents: {
+            parts: [
+              { inlineData: { data: base64Data, mimeType: 'application/pdf' } },
+              { text: shlService.getAnalysisPrompt() }
+            ]
+          }
+        });
+      }
+
+      throw new Error("Unable to analyze report: Backend proxy unavailable and no direct key configured.");
     };
 
     try {

@@ -525,18 +525,19 @@ function getTranscripts(ss, userId) {
 
 function proxyGeminiCall(ss, modelName, payload) {
   // Retrieve backend API Key from ScriptProperties or spreadsheet Configuration
-  let key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  let key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || 
+            PropertiesService.getScriptProperties().getProperty('Config');
   if (!key) {
     const configSheet = ss.getSheetByName('Config');
     if (configSheet) {
-      const cellVal = configSheet.getRange(1, 2).getValue();
+      const cellVal = configSheet.getRange(1, 2).getValue() || configSheet.getRange(1, 1).getValue();
       if (cellVal) key = cellVal;
     }
   }
   
   // Use a hardcoded project fallback placeholder if none is registered in standard properties
   const targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-3.1-flash-lite') + ':generateContent?key=' + targetKey;
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-3.5-flash') + ':generateContent?key=' + targetKey;
   
   const options = {
     method: 'post',
@@ -558,20 +559,21 @@ function proxyGeminiCall(ss, modelName, payload) {
 
 function proxyGeminiRequest(payload) {
   // Retrieve backend API Key from ScriptProperties or spreadsheet Configuration
-  var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || 
+            PropertiesService.getScriptProperties().getProperty('Config');
   if (!key) {
     try {
       var ss = SpreadsheetApp.getActiveSpreadsheet() || SpreadsheetApp.openById(SHEET_ID);
       var configSheet = ss.getSheetByName('Config');
       if (configSheet) {
-        var cellVal = configSheet.getRange(1, 2).getValue();
+        var cellVal = configSheet.getRange(1, 2).getValue() || configSheet.getRange(1, 1).getValue();
         if (cellVal) key = cellVal;
       }
     } catch(e) {}
   }
   
   var targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  var modelName = payload.model || 'gemini-3.1-flash-lite';
+  var modelName = payload.model || 'gemini-3.5-flash';
   var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + targetKey;
   
   // Build standard Gemini request from the prompt and systemInstruction
