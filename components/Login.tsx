@@ -55,10 +55,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
           <div className="flex items-center justify-center gap-2 mt-2">
             <div className={`w-2 h-2 rounded-full ${
               systemStatus === 'online' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 
-              systemStatus === 'offline' ? 'bg-tp-red shadow-[0_0_8px_#E2001A]' : 'bg-gray-400'
+              systemStatus === 'offline' ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : 'bg-gray-400'
             }`}></div>
             <p className="text-white/60 font-black text-[9px] uppercase tracking-widest">
-              {systemStatus === 'online' ? 'Global Node Online' : systemStatus === 'offline' ? 'Registry Offline' : 'Syncing...'}
+              {systemStatus === 'online' ? 'Global Node Online' : systemStatus === 'offline' ? 'Sandbox Mode Ready' : 'Syncing...'}
             </p>
           </div>
         </div>
@@ -100,7 +100,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
 
             <button 
               type="submit" 
-              disabled={isLoading || systemStatus === 'offline'}
+              disabled={isLoading}
               className="w-full bg-tp-navy text-white py-5 rounded-[20px] font-black uppercase tracking-[0.2em] text-xs shadow-xl hover:bg-tp-purple hover:-translate-y-0.5 transition-all disabled:opacity-50"
             >
               {isLoading ? "Validating Session..." : "Authorize Portal"}

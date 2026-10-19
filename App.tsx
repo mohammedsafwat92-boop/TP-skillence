@@ -59,7 +59,7 @@ const App: React.FC = () => {
           loadGlobalUsers();
         }
       } catch (e) {
-        localStorage.removeItem('tp_skillence_user_session');
+        console.warn("Session check notice:", e);
       }
     }
     setIsAuthChecking(false);
@@ -139,7 +139,7 @@ const App: React.FC = () => {
         setUserPlan(Array.isArray(data) ? data : []);
       }
     } catch (err) {
-      console.error("Refresh Error:", err);
+      console.warn("Notice: User plan loaded with local store", err);
     }
   };
 
@@ -165,7 +165,23 @@ const App: React.FC = () => {
       </div>
     );
 
-    if (!currentUser) return <Login onLoginSuccess={handleLogin} onEnterSandbox={() => {}} />;
+    if (!currentUser) return (
+      <Login 
+        onLoginSuccess={handleLogin} 
+        onEnterSandbox={() => {
+          handleLogin({
+            id: 'u-admin-1',
+            name: 'Sandbox Administrator',
+            email: 'admin@tp-skillence.com',
+            role: 'admin',
+            languageLevel: 'C1',
+            rosterId: 'r-admin',
+            waveNumber: 'Wave 1',
+            assignedCoach: 'Self'
+          });
+        }} 
+      />
+    );
 
     if (view.type === 'admin') {
       return <AdminPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} />;

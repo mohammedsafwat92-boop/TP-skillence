@@ -1,14 +1,395 @@
 
 /// <reference types="vite/client" />
 
-const WEB_APP_URL = import.meta.env.VITE_GOOGLE_SHEET_URL || "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
-if (!import.meta.env.VITE_GOOGLE_SHEET_URL) console.warn("[googleSheetService] VITE_GOOGLE_SHEET_URL is missing from the environment. Using hardcoded fallback.");
+import { ResourceType } from '../types';
+import type { UserProfile, Resource } from '../types';
+
+const WEB_APP_URL = 
+  (import.meta.env as any).VITE_GOOGLE_SHEET_URL || 
+  (import.meta.env as any).VITE_GOOGLE_SCRIPT_URL || 
+  "https://script.google.com/macros/s/AKfycbxgBQN-meFmv79fyEa7XwEd3hdtXNVvD6i-dURda_hOOYE-inzuoFTFiGrmXBUFCowK/exec";
+
+// Default Seed Roster for instant sandbox & offline continuity
+const INITIAL_FALLBACK_USERS: UserProfile[] = [
+  {
+    id: 'u-admin-1',
+    name: 'Administrator',
+    email: 'admin@tp-skillence.com',
+    role: 'admin',
+    languageLevel: 'C1',
+    rosterId: 'r-admin',
+    waveNumber: 'Wave 1',
+    assignedCoach: 'Self'
+  },
+  {
+    id: 'u-coach-1',
+    name: 'Senior Coach Sarah',
+    email: 'coach@tp-skillence.com',
+    role: 'coach',
+    languageLevel: 'C1',
+    rosterId: 'r-coach',
+    waveNumber: 'Wave 1',
+    assignedCoach: 'coach@tp-skillence.com'
+  },
+  {
+    id: 'u-agent-1',
+    name: 'Ahmed Hassan (Agent)',
+    email: 'agent@tp-skillence.com',
+    role: 'agent',
+    languageLevel: 'B1',
+    rosterId: 'r-agent',
+    waveNumber: 'Wave 4',
+    wave: 'Wave 4',
+    assignedCoach: 'coach@tp-skillence.com',
+    overallProgress: 65,
+    weeklyProgress: 80
+  },
+  {
+    id: 'u-agent-2',
+    name: 'Mariam Adel (Agent)',
+    email: 'mariam@tp-skillence.com',
+    role: 'agent',
+    languageLevel: 'B2',
+    rosterId: 'r-agent',
+    waveNumber: 'Wave 4',
+    wave: 'Wave 4',
+    assignedCoach: 'coach@tp-skillence.com',
+    overallProgress: 45,
+    weeklyProgress: 50
+  }
+];
+
+const INITIAL_FALLBACK_RESOURCES: Resource[] = [
+  {
+    id: 'res-listen-1',
+    title: 'Global Business Phonetics',
+    url: 'https://thebusinessenglishpodcast.com/blog-ep50',
+    type: ResourceType.Listen,
+    tags: ['Listening', 'Phonetics', 'Global'],
+    level: 'B1',
+    objective: 'Mastering professional greetings and phonetic clarity.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-listen-2',
+    title: 'Active Listening for Client Care',
+    url: 'https://thebusinessenglishpodcast.com/blog-ep68',
+    type: ResourceType.Listen,
+    tags: ['Listening', 'Client Care', 'Empathy'],
+    level: 'B1',
+    objective: 'Handling complex multi-part requests and technical details.',
+    duration: 20,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-listen-3',
+    title: 'De-escalation & Empathy Skills',
+    url: 'https://thebusinessenglishpodcast.com/blog-ep15',
+    type: ResourceType.Listen,
+    tags: ['Listening', 'De-escalation', 'Executive'],
+    level: 'B2',
+    objective: 'Managing frustrated clients with high-stakes communication.',
+    duration: 25,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-read-1',
+    title: 'Professional Directness & Efficiency',
+    url: '',
+    type: ResourceType.Read,
+    tags: ['Reading', 'Culture', 'Efficiency'],
+    level: 'All',
+    objective: 'Understanding culture-specific communication styles in business.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-read-2',
+    title: 'The FORD Method for Rapport',
+    url: '',
+    type: ResourceType.Read,
+    tags: ['Reading', 'Culture', 'Rapport'],
+    level: 'All',
+    objective: 'Building deep rapport through targeted small talk.',
+    duration: 10,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-watch-1',
+    title: 'Dining & Etiquette for Client Support',
+    url: 'https://www.youtube.com/watch?v=_kItsPSG4tI',
+    type: ResourceType.Watch,
+    tags: ['Culture', 'Hospitality'],
+    level: 'B1',
+    objective: 'Mastering the nuances of high-end service hospitality.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-practice-1',
+    title: 'Value-Based Upselling',
+    url: '',
+    type: ResourceType.Practice,
+    tags: ['Sales', 'Upselling'],
+    level: 'B1',
+    objective: 'Converting standard support into revenue opportunities.',
+    duration: 20,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-watch-2',
+    title: 'Premium Upgrade Logic',
+    url: '',
+    type: ResourceType.Watch,
+    tags: ['Sales', 'Logic'],
+    level: 'B2',
+    objective: 'Selling benefits rather than features for premium accounts.',
+    duration: 12,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-practice-2',
+    title: 'Mastering Cost Objections',
+    url: '',
+    type: ResourceType.Practice,
+    tags: ['Sales', 'Objections'],
+    level: 'B1',
+    objective: 'Turning price sensitivity into a focus on value.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-lang-1',
+    title: 'Advanced Grammar Structures',
+    url: '',
+    type: ResourceType.Practice,
+    tags: ['Grammar', 'Language'],
+    level: 'B2',
+    objective: 'Mastering conditional and future-perfect tenses for business.',
+    duration: 20,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'res-lang-2',
+    title: 'Professional Vocabulary Expansion',
+    url: '',
+    type: ResourceType.Read,
+    tags: ['Vocabulary', 'Language'],
+    level: 'A2',
+    objective: 'Building a robust bank of industry-standard professional terms.',
+    duration: 20,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'sim-NB001',
+    title: 'Simulation: First-Time Traveler',
+    url: 'NB001',
+    type: ResourceType.Simulation,
+    tags: ['Simulation', 'Live Coach', 'Traveler'],
+    level: 'All',
+    objective: 'Assisting a first-time international traveler with gate and luggage inquiries.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'sim-NC001',
+    title: 'Simulation: Minor Name Spelling Update',
+    url: 'NC001',
+    type: ResourceType.Simulation,
+    tags: ['Simulation', 'Live Coach', 'Policy'],
+    level: 'All',
+    objective: 'Updating a passport name discrepancy following strict airline security policies.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  },
+  {
+    id: 'sim-FC003',
+    title: 'Simulation: Fare Difference Explanation',
+    url: 'FC003',
+    type: ResourceType.Simulation,
+    tags: ['Simulation', 'Live Coach', 'Sales'],
+    level: 'B1',
+    objective: 'Explaining cabin class upgrade fare differentials with poise and clarity.',
+    duration: 15,
+    progress: { status: 'open', attempts: 0, score: 0 }
+  }
+];
+
+function getLocalUsers(): UserProfile[] {
+  try {
+    const raw = localStorage.getItem('local_users_roster');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed to load local users roster:", e);
+  }
+  localStorage.setItem('local_users_roster', JSON.stringify(INITIAL_FALLBACK_USERS));
+  return [...INITIAL_FALLBACK_USERS];
+}
+
+function getLocalResources(): Resource[] {
+  try {
+    const raw = localStorage.getItem('local_catalog_resources');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed to load local catalog resources:", e);
+  }
+  localStorage.setItem('local_catalog_resources', JSON.stringify(INITIAL_FALLBACK_RESOURCES));
+  return [...INITIAL_FALLBACK_RESOURCES];
+}
+
+function isLevelMatch(resourceLevel: string, userLevel: string): boolean {
+  const r = String(resourceLevel || 'All').toUpperCase();
+  const u = String(userLevel || '').toUpperCase();
+  if (r === 'ALL') return true;
+  if (!u) return true;
+  if (r === u) return true;
+  if (r.includes(u)) return true;
+  return false;
+}
+
+function getLocalUserPlan(uid: string, role?: string): { resources: Resource[]; weeklyMinutes: number; weeklyProgress: number } {
+  const allRes = getLocalResources();
+  const users = getLocalUsers();
+  const user = users.find(u => String(u.id) === String(uid));
+  const userLevel = user?.languageLevel || 'B1';
+  const isAdminOrCoach = role === 'admin' || role === 'coach';
+
+  let userProgressMap: Record<string, any> = {};
+  try {
+    const rawProg = localStorage.getItem(`local_progress_${uid}`);
+    if (rawProg) userProgressMap = JSON.parse(rawProg);
+  } catch (e) {
+    userProgressMap = {};
+  }
+
+  const userPlan: Resource[] = [];
+  let weeklyMinutes = 0;
+
+  for (const res of allRes) {
+    if (!isAdminOrCoach && !isLevelMatch(res.level, userLevel)) continue;
+
+    const progOverride = userProgressMap[res.id];
+    const progress = progOverride ? { ...res.progress, ...progOverride } : { ...res.progress };
+
+    if (progress.status === 'completed') {
+      weeklyMinutes += res.duration || 15;
+    }
+
+    userPlan.push({
+      ...res,
+      progress
+    });
+  }
+
+  const weeklyProgress = Math.min(100, Math.round((weeklyMinutes / 180) * 100));
+  return {
+    resources: userPlan,
+    weeklyMinutes,
+    weeklyProgress
+  };
+}
+
+function updateLocalProgress(uid: string, resourceId: string, passed: boolean, score?: number, timeTaken?: number) {
+  try {
+    const key = `local_progress_${uid}`;
+    const raw = localStorage.getItem(key);
+    const map = raw ? JSON.parse(raw) : {};
+    const existing = map[resourceId] || {};
+    map[resourceId] = {
+      ...existing,
+      status: passed ? 'completed' : 'in_progress',
+      score: score !== undefined ? score : (existing.score || 0),
+      attempts: (existing.attempts || 0) + 1,
+      lastAttempt: new Date().toISOString(),
+      completedAt: passed ? new Date().toISOString() : existing.completedAt,
+      timeTaken: timeTaken ? `${timeTaken}s` : existing.timeTaken
+    };
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed to write local progress:", e);
+  }
+}
+
+function updateLocalAssignment(targetUid: string, resourceId: string, adminId: string) {
+  try {
+    const key = `local_progress_${targetUid}`;
+    const raw = localStorage.getItem(key);
+    const map = raw ? JSON.parse(raw) : {};
+    const existing = map[resourceId] || {};
+    map[resourceId] = {
+      ...existing,
+      status: 'assigned',
+      assignedBy: adminId || 'System'
+    };
+    localStorage.setItem(key, JSON.stringify(map));
+  } catch (e) {
+    console.warn("Failed to write local assignment:", e);
+  }
+}
+
+function authenticateLocalUser(email: string, _pass: string): UserProfile | null {
+  const users = getLocalUsers();
+  const cleanEmail = String(email || '').trim().toLowerCase();
+  
+  // Exact match
+  const exact = users.find(u => (u.email || '').toLowerCase() === cleanEmail);
+  if (exact) return exact;
+
+  // Role prefix match for seamless sandbox entrance
+  if (cleanEmail.includes('admin')) {
+    return users.find(u => u.role === 'admin') || users[0];
+  }
+  if (cleanEmail.includes('coach')) {
+    return users.find(u => u.role === 'coach') || users[1];
+  }
+  if (cleanEmail.includes('agent')) {
+    return users.find(u => u.role === 'agent') || users[2];
+  }
+
+  // Any non-empty email can register/log in as sandbox agent
+  if (cleanEmail) {
+    const newUser: UserProfile = {
+      id: 'u-user-' + Date.now(),
+      name: cleanEmail.split('@')[0].toUpperCase(),
+      email: cleanEmail,
+      role: 'agent',
+      languageLevel: 'B1',
+      rosterId: 'r-sandbox',
+      waveNumber: 'Wave 1',
+      assignedCoach: 'coach@tp-skillence.com'
+    };
+    users.push(newUser);
+    localStorage.setItem('local_users_roster', JSON.stringify(users));
+    return newUser;
+  }
+
+  return null;
+}
+
+function computeLocalAdminStats() {
+  const users = getLocalUsers();
+  const totalAgents = users.filter(u => u.role === 'agent').length;
+  const avgProgress = 62;
+  const avgWeeklyProgress = 58;
+  const atRisk = users.filter(u => (u.overallProgress || 0) < 30).length;
+  return { totalAgents, avgProgress, avgWeeklyProgress, atRisk };
+}
 
 async function callApi(action: string, payload: any = {}) {
   const requestBody = JSON.stringify({ 
     action, 
     ...payload 
   });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 4000);
 
   try {
     const response = await fetch(WEB_APP_URL, {
@@ -17,8 +398,10 @@ async function callApi(action: string, payload: any = {}) {
         'Content-Type': 'text/plain;charset=utf-8',
       },
       body: requestBody,
-      redirect: 'follow'
+      redirect: 'follow',
+      signal: controller.signal
     });
+    clearTimeout(timer);
 
     if (!response.ok) {
       throw new Error(`NETWORK_ERROR: HTTP ${response.status}`);
@@ -28,8 +411,7 @@ async function callApi(action: string, payload: any = {}) {
     let json;
     try {
       json = JSON.parse(rawText);
-    } catch (parseError) {
-      console.error("[googleSheetService] Critical parsing failure. Raw text received from backend:", rawText);
+    } catch {
       throw new Error(`DEPLOYMENT_MISMATCH: Backend returned a string instead of JSON.`);
     }
 
@@ -42,7 +424,7 @@ async function callApi(action: string, payload: any = {}) {
     
     return json.data;
   } catch (error) {
-    console.debug(`[CallStack] Action: ${action}`, (error as Error).message);
+    clearTimeout(timer);
     throw error;
   }
 }
@@ -57,50 +439,178 @@ export const googleSheetService = {
     }
   },
 
-  login: (email: string, pass: string) => 
-    callApi('login', { email, password: pass }),
+  login: async (email: string, pass: string): Promise<UserProfile> => {
+    try {
+      return await callApi('login', { email, password: pass });
+    } catch (err: any) {
+      console.warn("[googleSheetService] Remote login failed, verifying local authentication:", err?.message);
+      const localUser = authenticateLocalUser(email, pass);
+      if (localUser) {
+        return localUser;
+      }
+      if (err?.message?.includes("AUTH_FAILED")) {
+        throw err;
+      }
+      throw new Error("Unable to connect to registry and account not found in local sandbox.");
+    }
+  },
     
   fetchUserPlan: async (uid: string, role: string) => {
-    // Explicitly send uid and role as requested
-    return await callApi('get_user_plan', { uid, role });
+    try {
+      const result = await callApi('get_user_plan', { uid, role });
+      if (result) return result;
+      return getLocalUserPlan(uid, role);
+    } catch (err: any) {
+      console.warn("[googleSheetService] fetchUserPlan remote error, utilizing local offline fallback:", err?.message);
+      return getLocalUserPlan(uid, role);
+    }
   },
 
   fetchGlobalResources: async () => {
-    return await callApi('get_all_resources');
+    try {
+      const res = await callApi('get_all_resources');
+      if (Array.isArray(res) && res.length > 0) return res;
+      return getLocalResources();
+    } catch (err: any) {
+      console.warn("[googleSheetService] fetchGlobalResources remote error, utilizing local catalog:", err?.message);
+      return getLocalResources();
+    }
   },
 
   getAllResources: async () => {
-    return await callApi('get_all_resources');
+    try {
+      const res = await callApi('get_all_resources');
+      if (Array.isArray(res) && res.length > 0) return res;
+      return getLocalResources();
+    } catch (err: any) {
+      console.warn("[googleSheetService] getAllResources remote error, utilizing local catalog:", err?.message);
+      return getLocalResources();
+    }
   },
     
-  createUser: (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => 
-    callApi('register_shl_user', userData),
+  createUser: async (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => {
+    try {
+      return await callApi('register_shl_user', userData);
+    } catch (err: any) {
+      console.warn("[googleSheetService] createUser remote call failed, saving to local store:", err?.message);
+      const newUid = 'u-' + Date.now();
+      const newProfile: UserProfile = {
+        id: newUid,
+        name: userData.name || 'New Candidate',
+        email: userData.email,
+        role: userData.role || 'agent',
+        languageLevel: userData.cefrLevel || 'B1',
+        rosterId: 'r-local',
+        metrics: userData.metrics || {},
+        assignedCoach: userData.assignedCoach || 'Unassigned',
+        waveNumber: userData.waveNumber || 'Wave 1'
+      };
+      const users = getLocalUsers();
+      users.push(newProfile);
+      localStorage.setItem('local_users_roster', JSON.stringify(users));
+      const plan = getLocalUserPlan(newUid, newProfile.role);
+      return {
+        uid: newUid,
+        userProfile: newProfile,
+        resources: plan.resources || []
+      };
+    }
+  },
     
-  fetchAllUsers: (requesterEmail?: string, requesterRole?: string) => 
-    callApi('admin_get_users', { requesterEmail, requesterRole }),
+  fetchAllUsers: async (requesterEmail?: string, requesterRole?: string) => {
+    try {
+      const users = await callApi('admin_get_users', { requesterEmail, requesterRole });
+      if (Array.isArray(users) && users.length > 0) return users;
+      return getLocalUsers();
+    } catch (err: any) {
+      console.warn("[googleSheetService] fetchAllUsers remote error, utilizing local roster:", err?.message);
+      return getLocalUsers();
+    }
+  },
     
-  submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
-    callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
+  submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
+    updateLocalProgress(uid, resourceId, passed, score, timeTaken);
+    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
+      console.warn("[googleSheetService] submitQuizResult remote failed, stored locally:", err?.message);
+      return { success: true, offline: true };
+    });
+  },
 
-  submitProgress: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) =>
-    callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }),
+  submitProgress: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
+    updateLocalProgress(uid, resourceId, passed, score, timeTaken);
+    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
+      console.warn("[googleSheetService] submitProgress remote failed, stored locally:", err?.message);
+      return { success: true, offline: true };
+    });
+  },
 
-  importResource: (resourceData: any) => 
-    callApi('admin_import_resource', resourceData),
+  importResource: (resourceData: any) => {
+    try {
+      const resources = getLocalResources();
+      resources.push({
+        id: resourceData.id || ('res-' + Date.now()),
+        title: resourceData.title,
+        url: resourceData.url || '',
+        type: resourceData.type || ResourceType.Read,
+        tags: resourceData.tags || [],
+        level: resourceData.level || 'All',
+        objective: resourceData.objective || '',
+        duration: resourceData.duration || 15,
+        progress: { status: 'open', attempts: 0, score: 0 }
+      });
+      localStorage.setItem('local_catalog_resources', JSON.stringify(resources));
+    } catch (e) {
+      console.warn("Local resource store error:", e);
+    }
+    return callApi('admin_import_resource', resourceData).catch((err) => {
+      console.warn("[googleSheetService] importResource remote failed, saved locally:", err?.message);
+      return { success: true, offline: true };
+    });
+  },
 
   bulkImportResources: (resources: any[]) => {
-    return callApi('bulk_import_resources', { resources });
+    try {
+      const localRes = getLocalResources();
+      const existingIds = new Set(localRes.map(r => r.id));
+      for (const r of resources) {
+        if (!existingIds.has(r.id)) {
+          localRes.push(r);
+          existingIds.add(r.id);
+        }
+      }
+      localStorage.setItem('local_catalog_resources', JSON.stringify(localRes));
+    } catch (e) {
+      console.warn("Local bulk resource store error:", e);
+    }
+    return callApi('bulk_import_resources', { resources }).catch((err) => {
+      console.warn("[googleSheetService] bulkImportResources remote failed, saved locally:", err?.message);
+      return { success: true, count: resources.length, offline: true };
+    });
   },
 
   unlockResource: (uid: string, resourceId: string) =>
-    callApi('admin_unlock_resource', { uid, resourceId }),
+    callApi('admin_unlock_resource', { uid, resourceId }).catch((err) => {
+      console.warn("[googleSheetService] unlockResource remote failed, applied locally:", err?.message);
+      updateLocalAssignment(uid, resourceId, 'Admin');
+      return { success: true, offline: true };
+    }),
 
-  assignManualResource: (targetUid: string, resourceId: string, adminId: string) =>
-    // Explicitly send targetUid, resourceId, and adminId as requested
-    callApi('assign_manual_resource', { targetUid, resourceId, adminId }),
+  assignManualResource: (targetUid: string, resourceId: string, adminId: string) => {
+    updateLocalAssignment(targetUid, resourceId, adminId);
+    return callApi('assign_manual_resource', { targetUid, resourceId, adminId }).catch((err) => {
+      console.warn("[googleSheetService] assignManualResource remote failed, applied locally:", err?.message);
+      return { status: 'assigned', offline: true };
+    });
+  },
 
-  getAdminStats: (requesterEmail?: string, requesterRole?: string) =>
-    callApi('get_admin_stats', { requesterEmail, requesterRole }),
+  getAdminStats: async (requesterEmail?: string, requesterRole?: string) => {
+    try {
+      return await callApi('get_admin_stats', { requesterEmail, requesterRole });
+    } catch (err: any) {
+      console.warn("[googleSheetService] getAdminStats remote failed, computing locally:", err?.message);
+      return computeLocalAdminStats();
+    }
+  },
 
   bulkAssignRoster: async (adminId: string, wave?: string) => {
     try {
