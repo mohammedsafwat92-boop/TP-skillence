@@ -4,12 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
 import { googleSheetService } from '../services/googleSheetService';
+import { getApiKey, getNextGeminiModel } from '../services/geminiService';
 import type { UserProfile } from '../types';
-
-const getApiKey = (): string => {
-  const viteKey = typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY || (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG) : undefined;
-  return viteKey || process.env.API_KEY || process.env.GEMINI_API_KEY || '';
-};
 
 export interface RoleplayScenario {
   id: string;
@@ -504,9 +500,10 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
 
       // Generate evaluation report using secure backend proxy first (keeps GEMINI_API_KEY private on backend/Config)
       let reportText = "";
+      const evalModel = getNextGeminiModel();
       try {
         const proxyRes = await googleSheetService.proxyGeminiRequest({
-          model: 'gemini-2.5-flash',
+          model: evalModel,
           prompt: prompt
         });
         reportText = proxyRes?.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -520,7 +517,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
           try {
             const ai = new GoogleGenAI({ apiKey: directKey });
             const response = await ai.models.generateContent({
-              model: 'gemini-2.5-flash',
+              model: evalModel,
               contents: prompt
             });
             reportText = response.text || "";

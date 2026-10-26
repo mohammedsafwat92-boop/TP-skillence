@@ -3,11 +3,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
-import { getApiKey } from './geminiService';
-
-// Use gemini-2.5-flash as active production model
-const MODEL_NAME = 'gemini-2.5-flash';
-const FALLBACK_MODEL = 'gemini-2.5-flash';
+import { getApiKey, getNextGeminiModel, getAlternateGeminiModel } from './geminiService';
 
 export const shlService = {
   /**
@@ -103,14 +99,17 @@ export const shlService = {
       throw new Error("Unable to analyze report: Backend proxy unavailable and no direct key configured.");
     };
 
+    const primaryModel = getNextGeminiModel();
+    const fallbackModel = getAlternateGeminiModel(primaryModel);
+
     try {
-      console.log(`[shlService] Attempting analysis with primary model: ${MODEL_NAME}`);
-      const response = await executeAnalysis(MODEL_NAME);
+      console.log(`[shlService] Attempting analysis with primary model: ${primaryModel}`);
+      const response = await executeAnalysis(primaryModel);
       return shlService.parseAndClean(response.text);
     } catch (primaryError) {
-      console.warn(`[shlService] Primary model ${MODEL_NAME} failed or rejected PDF. Falling back to ${FALLBACK_MODEL}.`, primaryError);
+      console.warn(`[shlService] Primary model ${primaryModel} failed or rejected PDF. Falling back to ${fallbackModel}.`, primaryError);
       try {
-        const fallbackResponse = await executeAnalysis(FALLBACK_MODEL);
+        const fallbackResponse = await executeAnalysis(fallbackModel);
         return shlService.parseAndClean(fallbackResponse.text);
       } catch (fallbackError) {
         console.error("[shlService] Both models failed to process the PDF.", fallbackError);

@@ -11,26 +11,57 @@ export const getApiKey = (): string => {
   return viteKey || process.env.API_KEY || process.env.GEMINI_API_KEY || '';
 };
 
-const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> => {
+const FLASH_LITE_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'] as const;
+let currentModelIndex = 0;
+
+export const getNextGeminiModel = (): string => {
+  const model = FLASH_LITE_MODELS[currentModelIndex];
+  currentModelIndex = (currentModelIndex + 1) % FLASH_LITE_MODELS.length;
+  return model;
+};
+
+export const getAlternateGeminiModel = (failedModel: string): string => {
+  return failedModel === 'gemini-3.5-flash-lite'
+    ? 'gemini-3.1-flash-lite'
+    : 'gemini-3.5-flash-lite';
+};
+
+const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promise<any> => {
+  // Destructure out expectJson
+  const { expectJson, ...cleanPayload } = rawPayload || {};
+  const isJsonExpected = Boolean(expectJson || rawPayload?.config?.expectJson || rawPayload?.generationConfig?.expectJson);
+
+  // Build clean config object without expectJson
+  const rawConfig = cleanPayload.config || cleanPayload.generationConfig || {};
+  const { expectJson: _cJson, ...restConfig } = rawConfig;
+  const config = {
+    ...restConfig,
+    ...(isJsonExpected ? { responseMimeType: 'application/json' } : {})
+  };
+
   try {
     // Securely delegate entirely to our Google Web App endpoint
     const fullPayload = {
       model: modelName,
-      contents: payload.contents,
-      systemInstruction: payload.systemInstruction || "",
-      config: payload.config || payload.generationConfig,
-      expectJson: payload.expectJson !== undefined ? payload.expectJson : false
+      contents: cleanPayload.contents,
+      systemInstruction: cleanPayload.systemInstruction || "",
+      config: config
     };
     return await googleSheetService.proxyGeminiRequest(fullPayload);
   } catch (proxyError: any) {
     const errorStr = String(proxyError?.message || proxyError);
-    console.warn(`[geminiService] proxy_gemini_request failed, trying legacy proxy_gemini fallback. Error details:`, errorStr);
+    console.warn(`[geminiService] proxy_gemini_request failed for ${modelName}, trying legacy proxy_gemini fallback. Error details:`, errorStr);
     try {
-      // Legacy Web App proxy call format
-      return await googleSheetService.proxyGemini(modelName, payload);
+      // Legacy Web App proxy call format (pass clean generationConfig)
+      const legacyPayload = {
+        contents: cleanPayload.contents,
+        systemInstruction: cleanPayload.systemInstruction,
+        generationConfig: config
+      };
+      return await googleSheetService.proxyGemini(modelName, legacyPayload);
     } catch (legacyError: any) {
       const legacyErrorStr = String(legacyError?.message || legacyError);
-      console.warn(`[geminiService] Both primary and legacy proxy actions failed. Error:`, legacyErrorStr);
+      console.warn(`[geminiService] Both primary and legacy proxy actions failed for ${modelName}. Error:`, legacyErrorStr);
       
       const apiKey = getApiKey();
       if (!apiKey) {
@@ -39,12 +70,11 @@ const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> =>
       }
 
       try {
-        console.log(`[geminiService] Activating direct direct-client fallback using modern GoogleGenAI SDK.`);
+        console.log(`[geminiService] Activating direct client fallback using modern GoogleGenAI SDK with model ${modelName}.`);
         const ai = new GoogleGenAI({ apiKey });
         
-        const contents = payload.contents;
-        const systemInstructionText = payload.systemInstruction || "";
-        const config = payload.config || payload.generationConfig || {};
+        const contents = cleanPayload.contents;
+        const systemInstructionText = cleanPayload.systemInstruction || "";
 
         const response = await ai.models.generateContent({
           model: modelName,
@@ -69,9 +99,29 @@ const proxyGeminiSafe = async (modelName: string, payload: any): Promise<any> =>
           ]
         };
       } catch (directError: any) {
-        console.error("[geminiService] Direct client fallback call failed:", directError);
-        throw new Error(`AI Integration Failure: Secure spreadsheet proxy and direct fallbacks failed. Error: ${directError.message || directError}`);
+        console.error(`[geminiService] Direct client fallback call failed for ${modelName}:`, directError);
+        throw new Error(`AI Integration Failure for ${modelName}: Secure spreadsheet proxy and direct fallbacks failed. Error: ${directError.message || directError}`);
       }
+    }
+  }
+};
+
+export const proxyGeminiSafe = async (modelNameOverride?: string, payload?: any): Promise<any> => {
+  const primaryModel = modelNameOverride || getNextGeminiModel();
+  console.log(`▶️ Sending payload to ${primaryModel}...`);
+
+  try {
+    return await executeSingleProxyCall(primaryModel, payload);
+  } catch (primaryError: any) {
+    const errorMsg = String(primaryError?.message || primaryError);
+    console.warn(`⚠️ Request to primary model ${primaryModel} failed (${errorMsg}). Retrying once with failover model...`);
+    const alternateModel = getAlternateGeminiModel(primaryModel);
+    console.log(`▶️ Sending payload to ${alternateModel}...`);
+    try {
+      return await executeSingleProxyCall(alternateModel, payload);
+    } catch (alternateError: any) {
+      console.error(`❌ Both primary model (${primaryModel}) and failover model (${alternateModel}) failed:`, alternateError);
+      throw alternateError;
     }
   }
 };
@@ -82,7 +132,7 @@ const callGemini = async (prompt: string) => {
   };
 
   try {
-    const data = await proxyGeminiSafe('gemini-2.5-flash', payload);
+    const data = await proxyGeminiSafe(undefined, payload);
     const textResponse = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!textResponse) throw new Error("Empty response from AI");
     
@@ -107,7 +157,7 @@ async function scrapeUrl(url: string) {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-2.5-flash', payload);
+      const data = await proxyGeminiSafe(undefined, payload);
       return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
     }
 
@@ -145,7 +195,7 @@ async function condenseLargeContent(rawText: string) {
       }]
     };
     try {
-      const data = await proxyGeminiSafe('gemini-2.5-flash', payload);
+      const data = await proxyGeminiSafe(undefined, payload);
       masterSummary += (data.candidates?.[0]?.content?.parts?.[0]?.text || "") + "\n\n";
     } catch (e) {
       console.error("Chunk processing failed via proxy:", e);
@@ -168,6 +218,7 @@ export const geminiService = {
       if (scrapedText) scrapedText = scrapedText.substring(0, 40000); // 10k token safety limit
 
       const payload = {
+        expectJson: true,
         contents: [{
           role: "user",
           parts: [{ 
@@ -193,7 +244,7 @@ export const geminiService = {
         }]
       };
 
-      const data = await proxyGeminiSafe('gemini-2.5-flash', payload);
+      const data = await proxyGeminiSafe(undefined, payload);
       let resultText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
       resultText = resultText.replace(/```json/g, "").replace(/```/g, "").trim();
       
@@ -286,7 +337,7 @@ export const geminiService = {
   },
 
   generateQuiz: async (title: string, url: string, type: string, scrapedText?: string, level?: string): Promise<QuizQuestion[]> => {
-    console.log("🚨 VERCEL DEPLOYMENT: 'TEMPLATE FILL-IN' + FLASH FALLBACK LOADED!");
+    console.log("🚨 VERCEL DEPLOYMENT: 'TEMPLATE FILL-IN' + FLASH-LITE ROTATOR LOADED!");
     try {
       console.log("▶️ [Step 1] Fetching content...");
       const rawContent = scrapedText || await scrapeUrl(url);
@@ -403,11 +454,12 @@ TEMPLATE:
           }
         }
 
-        // 2. Ultra-Reliable Standby Fallback using gemini-2.5-flash with native JSON Mode
+        // 2. Ultra-Reliable Standby Fallback using alternate model with native JSON Mode
         if (!parsedQuiz) {
-          console.warn("⚠️ Primary generation failed or returned invalid JSON. Routing immediately to stand-by gemini-2.5-flash fallback...");
+          const alternateModel = getAlternateGeminiModel(modelName);
+          console.warn(`⚠️ Primary generation failed or returned invalid JSON for ${modelName}. Routing immediately to standby ${alternateModel} fallback...`);
           try {
-            const flashPayload = {
+            const fallbackPayload = {
               expectJson: true,
               contents: [
                 {
@@ -434,17 +486,17 @@ JSON Schema structure:
                 responseMimeType: "application/json"
               }
             };
-            const flashData = await proxyGeminiSafe('gemini-2.5-flash', flashPayload);
-            const flashText = (flashData.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (flashData.candidates?.[0]?.content?.parts?.[0]?.text) || "";
-            let cleanedFlash = flashText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
-            const flashQuiz = JSON.parse(cleanedFlash);
+            const fallbackData = await proxyGeminiSafe(alternateModel, fallbackPayload);
+            const fallbackText = (fallbackData.data?.candidates?.[0]?.content?.parts?.[0]?.text) || (fallbackData.candidates?.[0]?.content?.parts?.[0]?.text) || "";
+            let cleanedFallback = fallbackText.trim().replace(/```json/gi, "").replace(/```/g, "").trim();
+            const fallbackQuiz = JSON.parse(cleanedFallback);
             
-            if (Array.isArray(flashQuiz) && flashQuiz.length === 5) {
-              parsedQuiz = flashQuiz;
-              console.log("✅ Quiz successfully generated via stand-by gemini-2.5-flash!");
+            if (Array.isArray(fallbackQuiz) && fallbackQuiz.length === 5) {
+              parsedQuiz = fallbackQuiz;
+              console.log(`✅ Quiz successfully generated via standby ${alternateModel}!`);
             }
-          } catch (flashErr) {
-            console.error("Stand-by gemini-2.5-flash fallback also failed:", flashErr);
+          } catch (fallbackErr) {
+            console.error(`Standby ${alternateModel} fallback also failed:`, fallbackErr);
           }
         }
 
@@ -477,8 +529,9 @@ JSON Schema structure:
         });
       };
 
-      // Exclusively route to gemini-2.5-flash
-      return await attemptGeneration('gemini-2.5-flash');
+      // Select primary model via round-robin rotator
+      const primaryModel = getNextGeminiModel();
+      return await attemptGeneration(primaryModel);
 
     } catch (error: any) {
       console.error("❌ Gemma Quiz Gen Error:", error);

@@ -523,33 +523,85 @@ function getTranscripts(ss, userId) {
   return transcripts;
 }
 
+function getCodeGsModel(requestedModel) {
+  if (requestedModel && typeof requestedModel === 'string' && requestedModel.trim()) {
+    var trimmed = requestedModel.trim();
+    if (trimmed !== 'gemini-2.5-flash' && trimmed !== 'gemini-3.5-flash') {
+      return trimmed;
+    }
+  }
+  return (Date.now() % 2 === 0) ? 'gemini-3.5-flash-lite' : 'gemini-3.1-flash-lite';
+}
+
+function getCodeGsAlternateModel(model) {
+  return model === 'gemini-3.5-flash-lite' ? 'gemini-3.1-flash-lite' : 'gemini-3.5-flash-lite';
+}
+
 function proxyGeminiCall(ss, modelName, payload) {
   // Retrieve backend API Key from ScriptProperties or spreadsheet Configuration
-  let key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || 
+  var key = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY') || 
             PropertiesService.getScriptProperties().getProperty('Config');
   if (!key) {
-    const configSheet = ss.getSheetByName('Config');
+    var configSheet = ss.getSheetByName('Config');
     if (configSheet) {
-      const cellVal = configSheet.getRange(1, 2).getValue() || configSheet.getRange(1, 1).getValue();
+      var cellVal = configSheet.getRange(1, 2).getValue() || configSheet.getRange(1, 1).getValue();
       if (cellVal) key = cellVal;
     }
   }
   
-  // Use a hardcoded project fallback placeholder if none is registered in standard properties
-  const targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + (modelName || 'gemini-3.5-flash') + ':generateContent?key=' + targetKey;
+  var targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
+  var primaryModel = getCodeGsModel(modelName);
+
+  // Strip expectJson and map strictly to generationConfig.responseMimeType
+  var isExpectJson = false;
+  if (payload) {
+    if (payload.expectJson !== undefined) {
+      isExpectJson = Boolean(payload.expectJson);
+      delete payload.expectJson;
+    }
+    if (payload.config) {
+      if (payload.config.expectJson !== undefined) {
+        isExpectJson = isExpectJson || Boolean(payload.config.expectJson);
+        delete payload.config.expectJson;
+      }
+      payload.generationConfig = payload.generationConfig || payload.config;
+      delete payload.config;
+    }
+    if (payload.generationConfig) {
+      if (payload.generationConfig.expectJson !== undefined) {
+        isExpectJson = isExpectJson || Boolean(payload.generationConfig.expectJson);
+        delete payload.generationConfig.expectJson;
+      }
+    }
+    if (isExpectJson) {
+      payload.generationConfig = payload.generationConfig || {};
+      payload.generationConfig.responseMimeType = 'application/json';
+    }
+  }
   
-  const options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true
+  var sendCall = function(model) {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + targetKey;
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(payload),
+      muteHttpExceptions: true
+    };
+    return UrlFetchApp.fetch(url, options);
   };
   
-  const response = UrlFetchApp.fetch(url, options);
-  const code = response.getResponseCode();
-  const text = response.getContentText();
+  var response = sendCall(primaryModel);
+  var code = response.getResponseCode();
+  var text = response.getContentText();
   
+  if (code !== 200) {
+    var altModel = getCodeGsAlternateModel(primaryModel);
+    console.warn('Gemini proxyGeminiCall failed on ' + primaryModel + ' with code ' + code + '. Retrying with ' + altModel);
+    response = sendCall(altModel);
+    code = response.getResponseCode();
+    text = response.getContentText();
+  }
+
   if (code !== 200) {
     throw new Error('Gemini API call failed with code ' + code + ': ' + text);
   }
@@ -573,15 +625,31 @@ function proxyGeminiRequest(payload) {
   }
   
   var targetKey = key || 'AIzaSy' + 'DummyKeyPlaceholder'; 
-  var modelName = payload.model || 'gemini-3.5-flash';
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + modelName + ':generateContent?key=' + targetKey;
+  var primaryModel = getCodeGsModel(payload ? payload.model : null);
   
+  // Strip expectJson and map strictly to generationConfig.responseMimeType
+  var isExpectJson = false;
+  if (payload) {
+    if (payload.expectJson !== undefined) {
+      isExpectJson = Boolean(payload.expectJson);
+      delete payload.expectJson;
+    }
+    if (payload.config && payload.config.expectJson !== undefined) {
+      isExpectJson = isExpectJson || Boolean(payload.config.expectJson);
+      delete payload.config.expectJson;
+    }
+    if (payload.generationConfig && payload.generationConfig.expectJson !== undefined) {
+      isExpectJson = isExpectJson || Boolean(payload.generationConfig.expectJson);
+      delete payload.generationConfig.expectJson;
+    }
+  }
+
   // Build standard Gemini request from the prompt and systemInstruction
-  var prompt = payload.prompt || '';
-  var systemInstruction = payload.systemInstruction || '';
+  var prompt = (payload && payload.prompt) || '';
+  var systemInstruction = (payload && payload.systemInstruction) || '';
   
   var contents = [];
-  if (payload.contents) {
+  if (payload && payload.contents) {
     contents = payload.contents;
   } else {
     contents = [{ role: 'user', parts: [{ text: prompt }] }];
@@ -597,23 +665,44 @@ function proxyGeminiRequest(payload) {
     };
   }
   
-  if (payload.config) {
-    geminiPayload.generationConfig = payload.config;
-  } else if (payload.generationConfig) {
-    geminiPayload.generationConfig = payload.generationConfig;
+  var genConfig = {};
+  if (payload && payload.config) {
+    genConfig = Object.assign({}, payload.config);
+  } else if (payload && payload.generationConfig) {
+    genConfig = Object.assign({}, payload.generationConfig);
+  }
+  delete genConfig.expectJson;
+
+  if (isExpectJson) {
+    genConfig.responseMimeType = 'application/json';
+  }
+  if (Object.keys(genConfig).length > 0) {
+    geminiPayload.generationConfig = genConfig;
   }
   
-  var options = {
-    method: 'post',
-    contentType: 'application/json',
-    payload: JSON.stringify(geminiPayload),
-    muteHttpExceptions: true
+  var sendReq = function(model) {
+    var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + model + ':generateContent?key=' + targetKey;
+    var options = {
+      method: 'post',
+      contentType: 'application/json',
+      payload: JSON.stringify(geminiPayload),
+      muteHttpExceptions: true
+    };
+    return UrlFetchApp.fetch(url, options);
   };
   
-  var response = UrlFetchApp.fetch(url, options);
+  var response = sendReq(primaryModel);
   var code = response.getResponseCode();
   var text = response.getContentText();
   
+  if (code !== 200) {
+    var altModel = getCodeGsAlternateModel(primaryModel);
+    console.warn('Gemini proxyGeminiRequest failed on ' + primaryModel + ' with code ' + code + '. Retrying with ' + altModel);
+    response = sendReq(altModel);
+    code = response.getResponseCode();
+    text = response.getContentText();
+  }
+
   if (code !== 200) {
     throw new Error('Gemini API call failed with code ' + code + ': ' + text);
   }
