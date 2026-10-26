@@ -3,13 +3,11 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
+import { getApiKey } from './geminiService';
 
-// Check private GEMINI_API_KEY / Config or fallback without requiring public framework prefix
-const API_KEY = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
-
-// Use gemini-3.5-flash as primary and fallback
-const MODEL_NAME = 'gemini-3.5-flash';
-const FALLBACK_MODEL = 'gemini-3.5-flash';
+// Use gemini-2.5-flash as active production model
+const MODEL_NAME = 'gemini-2.5-flash';
+const FALLBACK_MODEL = 'gemini-2.5-flash';
 
 export const shlService = {
   /**
@@ -86,8 +84,9 @@ export const shlService = {
       }
 
       // 2. Direct client SDK fallback if an API key is available
-      if (API_KEY) {
-        const ai = new GoogleGenAI({ apiKey: API_KEY });
+      const apiKey = getApiKey();
+      if (apiKey) {
+        const ai = new GoogleGenAI({ apiKey });
         return await ai.models.generateContent({
           model: model,
           contents: {
@@ -97,6 +96,8 @@ export const shlService = {
             ]
           }
         });
+      } else {
+        console.error("[shlService] Gemini API key is missing or empty. Please configure GEMINI_API_KEY or VITE_GEMINI_API_KEY.");
       }
 
       throw new Error("Unable to analyze report: Backend proxy unavailable and no direct key configured.");

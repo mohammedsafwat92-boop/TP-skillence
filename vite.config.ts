@@ -7,7 +7,13 @@ export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, '.', '');
     Object.assign(process.env, env);
 
+    const apiKey = env.VITE_GEMINI_API_KEY || env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+
     return {
+      define: {
+        'process.env.API_KEY': JSON.stringify(apiKey),
+        'process.env.GEMINI_API_KEY': JSON.stringify(apiKey),
+      },
       server: {
         port: 3000,
         host: '0.0.0.0',

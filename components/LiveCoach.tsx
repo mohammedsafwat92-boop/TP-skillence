@@ -6,6 +6,11 @@ import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
 import { googleSheetService } from '../services/googleSheetService';
 import type { UserProfile } from '../types';
 
+const getApiKey = (): string => {
+  const viteKey = typeof import.meta !== 'undefined' && import.meta.env ? (import.meta.env.VITE_GEMINI_API_KEY || (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG) : undefined;
+  return viteKey || process.env.API_KEY || process.env.GEMINI_API_KEY || '';
+};
+
 export interface RoleplayScenario {
   id: string;
   category: string;
@@ -257,46 +262,69 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
     setSessionStartTime(Date.now());
     updateSessionStatus('connecting');
 
+    const apiKey = getApiKey();
+    if (!apiKey) {
+      console.error("[LiveCoach] Gemini API key is missing or empty. Please set GEMINI_API_KEY or VITE_GEMINI_API_KEY.");
+      setError("Missing Gemini API Key. Please configure GEMINI_API_KEY or VITE_GEMINI_API_KEY in your Environment Variables.");
+      setIsConnecting(false);
+      updateSessionStatus('idle');
+      return;
+    }
+
+    let stream: MediaStream;
     try {
-      const API_KEY = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
-      
-      // Safeguard: Check if environment variable failed to load
-      if (!API_KEY) {
-        console.warn("[LiveCoach] GEMINI_API_KEY / Config is not defined in client environment.");
-        setError("Missing API Key. Ensure GEMINI_API_KEY or Config is configured in your Environment Variables.");
-        setIsConnecting(false);
-        updateSessionStatus('idle');
-        return;
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error("Microphone API is not supported in this browser environment.");
       }
-      
-      const ai = new GoogleGenAI({ 
-        apiKey: API_KEY,
-        apiVersion: 'v1beta'
-      });
-      
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (micErr: any) {
+      console.error("[LiveCoach] Microphone access failed:", micErr);
+      const isDenied = micErr?.name === 'NotAllowedError' || micErr?.name === 'PermissionDeniedError';
+      const micMsg = isDenied
+        ? "Microphone access was denied. Please allow microphone permissions in your browser to start the simulation."
+        : `Microphone error: ${micErr?.message || 'Unable to access your microphone.'}`;
+      setError(micMsg);
+      setIsConnecting(false);
+      updateSessionStatus('idle');
+      return;
+    }
+
+    try {
       audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       outAudioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+    } catch (audioCtxErr: any) {
+      console.error("[LiveCoach] AudioContext initialization failed:", audioCtxErr);
+      setError("Audio engine initialization failed. Please try a different browser or reload the page.");
+      setIsConnecting(false);
+      updateSessionStatus('idle');
+      return;
+    }
 
-      // Create an inline AudioWorklet processor Blob Url
-      const workletCode = `
-        class AudioProcessor extends AudioWorkletProcessor {
-          process(inputs, outputs, parameters) {
-            const input = inputs[0];
-            if (input && input.length > 0) {
-              const channelData = input[0];
-              this.port.postMessage(channelData);
-            }
-            return true;
+    // Create an inline AudioWorklet processor Blob Url
+    const workletCode = `
+      class AudioProcessor extends AudioWorkletProcessor {
+        process(inputs, outputs, parameters) {
+          const input = inputs[0];
+          if (input && input.length > 0) {
+            const channelData = input[0];
+            this.port.postMessage(channelData);
           }
+          return true;
         }
-        registerProcessor('audio-processor', AudioProcessor);
-      `;
-      const workletBlob = new globalThis.Blob([workletCode], { type: 'application/javascript' });
-      const workletUrl = URL.createObjectURL(workletBlob);
+      }
+      registerProcessor('audio-processor', AudioProcessor);
+    `;
+    const workletBlob = new globalThis.Blob([workletCode], { type: 'application/javascript' });
+    const workletUrl = URL.createObjectURL(workletBlob);
+
+    try {
+      const ai = new GoogleGenAI({ 
+        apiKey: apiKey,
+        apiVersion: 'v1beta'
+      });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-3.1-flash-live-preview',
+        model: 'gemini-3.8-live',
         callbacks: {
           onopen: async () => {
             setIsConnected(true);
@@ -370,8 +398,8 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             }
           },
           onerror: (e) => {
-            console.error("Live API Error", e);
-            setError("Auditory feed terminated unexpectedly (Mic disconnected or network timeout).");
+            console.error("[LiveCoach] Live API WebSocket Error:", e);
+            setError("Live audio connection lost (microphone stream interrupted or WebSocket error).");
             setIsConnecting(false);
             setIsConnected(false);
             cleanupAudioWorklet();
@@ -395,7 +423,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             
             if (sessionStatusRef.current === 'active') {
               updateSessionStatus('crashed');
-              setError("Live stream connection interrupted. Dialogue log saved safely.");
+              setError("Live stream connection was closed. Dialogue log saved safely.");
             }
           },
         },
@@ -411,10 +439,11 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       });
 
       sessionRef.current = await sessionPromise;
-    } catch (err) {
-      console.error(err);
-      setError("Mic access denied or API configuration error.");
+    } catch (wsErr: any) {
+      console.error("[LiveCoach] Live WebSocket connection failed:", wsErr);
+      setError(`Failed to connect to Live Coach API: ${wsErr?.message || 'WebSocket connection failure'}. Please verify network and API key.`);
       setIsConnecting(false);
+      setIsConnected(false);
       updateSessionStatus('idle');
     }
   };
@@ -477,7 +506,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       let reportText = "";
       try {
         const proxyRes = await googleSheetService.proxyGeminiRequest({
-          model: 'gemini-3.5-flash',
+          model: 'gemini-2.5-flash',
           prompt: prompt
         });
         reportText = proxyRes?.candidates?.[0]?.content?.parts?.[0]?.text || "";
@@ -486,18 +515,20 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       }
 
       if (!reportText) {
-        const directKey = (import.meta.env as any).GEMINI_API_KEY || (import.meta.env as any).Config || (import.meta.env as any).CONFIG || (import.meta.env as any).VITE_GEMINI_API_KEY || "";
+        const directKey = getApiKey();
         if (directKey) {
           try {
             const ai = new GoogleGenAI({ apiKey: directKey });
             const response = await ai.models.generateContent({
-              model: 'gemini-3.5-flash',
+              model: 'gemini-2.5-flash',
               contents: prompt
             });
             reportText = response.text || "";
           } catch (directErr) {
             console.error("[LiveCoach] Direct AI evaluation failed:", directErr);
           }
+        } else {
+          console.error("[LiveCoach] Direct evaluation skipped: Gemini API key is missing or empty.");
         }
       }
 
