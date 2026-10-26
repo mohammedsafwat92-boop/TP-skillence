@@ -52,16 +52,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [searchTerm, setSearchTerm] = useState('');
   const [showStagnant, setShowStagnant] = useState(false);
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
-  const [adminStats, setAdminStats] = useState<any>(null);
+  const [adminStats, setAdminStats] = useState<any>(() => googleSheetService.getCachedAdminStats(currentUser.email, currentUser.role));
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string>('overall');
-  const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string[]>>({});
+  const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string[]>>(() => googleSheetService.getCachedWeeklyAssignments() || {});
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
   const [targetWeek, setTargetWeek] = useState<number>(1);
   const [activeWave, setActiveWave] = useState<string>('all');
   const [drilldownUser, setDrilldownUser] = useState<UserProfile | null>(null);
   const [isDrilldownOpen, setIsDrilldownOpen] = useState(false);
-  const [waveConfigs, setWaveConfigs] = useState<Record<string, any>>({});
+  const [waveConfigs, setWaveConfigs] = useState<Record<string, any>>(() => googleSheetService.getCachedWaveConfigs() || {});
   const [isSavingGoal, setIsSavingGoal] = useState(false);
   const [defaultGoalInput, setDefaultGoalInput] = useState<string>('');
   const [weeklyOverrideInput, setWeeklyOverrideInput] = useState<string>('');
@@ -159,7 +159,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchResources = async () => {
     try {
-      const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin');
+      const res = await googleSheetService.fetchUserPlan(currentUser.id, 'admin', (fresh) => {
+        if (fresh && fresh.resources) {
+          setGlobalResources(fresh.resources);
+        } else if (Array.isArray(fresh)) {
+          setGlobalResources(fresh);
+        }
+      });
       if (res && res.resources) {
         setGlobalResources(res.resources);
       } else {
@@ -172,8 +178,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const loadAdminStats = async () => {
     try {
-      const data = await googleSheetService.getAdminStats(currentUser.email, currentUser.role);
-      setAdminStats(data);
+      const data = await googleSheetService.getAdminStats(currentUser.email, currentUser.role, (fresh) => {
+        if (fresh) setAdminStats(fresh);
+      });
+      if (data) setAdminStats(data);
     } catch (err) {
       console.error('Error fetching admin stats:', err);
     }
@@ -181,8 +189,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const loadWaveConfigs = async () => {
     try {
-      const configs = await googleSheetService.getWaveConfigs();
-      setWaveConfigs(configs || {});
+      const configs = await googleSheetService.getWaveConfigs((fresh) => {
+        if (fresh) setWaveConfigs(fresh);
+      });
+      if (configs) setWaveConfigs(configs);
     } catch (err) {
       console.error('Error fetching wave configs:', err);
     }
@@ -198,8 +208,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const fetchWeeklyAssignments = async () => {
     try {
-      const data = await googleSheetService.getWeeklyAssignments();
-      setWeeklyAssignments(data);
+      const data = await googleSheetService.getWeeklyAssignments((fresh) => {
+        if (fresh) setWeeklyAssignments(fresh);
+      });
+      if (data) setWeeklyAssignments(data);
     } catch (err) {
       console.error('Error fetching weekly assignments:', err);
     }

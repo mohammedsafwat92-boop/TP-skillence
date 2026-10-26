@@ -3,6 +3,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import type { UserProfile, Resource, View, SkillCategory } from '../types';
 import { ResourceType } from '../types';
 import { getMyLessons } from '../services/progressService';
+import { googleSheetService } from '../services/googleSheetService';
 import { Sparkles, Loader2, ShieldCheck, FileText } from 'lucide-react';
 import { 
   TrendingUpIcon, 
@@ -25,8 +26,20 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOpenResource, initialSkill }) => {
   const [activeSkill, setActiveSkill] = useState<SkillCategory>(initialSkill || 'All');
-  const [myLessons, setMyLessons] = useState<any[]>([]);
-  const [isLoadingMyLessons, setIsLoadingMyLessons] = useState<boolean>(true);
+  
+  // Instant SWR cache hydration for zero-delay dashboard rendering
+  const [myLessons, setMyLessons] = useState<any[]>(() => {
+    const uid = user?.id || (user as any)?.uid || user?.email;
+    if (!uid) return [];
+    const cached = googleSheetService.getCachedMyLessons(uid);
+    return Array.isArray(cached) ? cached : [];
+  });
+  const [isLoadingMyLessons, setIsLoadingMyLessons] = useState<boolean>(() => {
+    const uid = user?.id || (user as any)?.uid || user?.email;
+    if (!uid) return false;
+    const cached = googleSheetService.getCachedMyLessons(uid);
+    return !(Array.isArray(cached) && cached.length > 0);
+  });
 
   useEffect(() => {
     if (initialSkill) setActiveSkill(initialSkill);
@@ -39,13 +52,27 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
         setIsLoadingMyLessons(false);
         return;
       }
-      setIsLoadingMyLessons(true);
+      
+      const cached = googleSheetService.getCachedMyLessons(uid);
+      if (Array.isArray(cached) && cached.length > 0) {
+        setMyLessons(cached);
+        setIsLoadingMyLessons(false);
+      } else {
+        setIsLoadingMyLessons(true);
+      }
+
       try {
-        const fetched = await getMyLessons(uid);
-        setMyLessons(Array.isArray(fetched) ? fetched : []);
+        const fetched = await getMyLessons(uid, (fresh) => {
+          if (Array.isArray(fresh)) {
+            setMyLessons(fresh);
+            setIsLoadingMyLessons(false);
+          }
+        });
+        if (Array.isArray(fetched)) {
+          setMyLessons(fetched);
+        }
       } catch (err) {
         console.error("Failed to fetch user shielded lessons:", err);
-        setMyLessons([]);
       } finally {
         setIsLoadingMyLessons(false);
       }

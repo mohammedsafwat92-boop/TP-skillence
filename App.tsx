@@ -54,6 +54,19 @@ const App: React.FC = () => {
       try {
         const user = normalizeUser(JSON.parse(cachedUser));
         setCurrentUser(user);
+
+        // Immediate SWR cache hydration so dashboard loads with ZERO spinner delay
+        const cachedPlan = googleSheetService.getCachedUserPlan(user.id, user.role);
+        if (cachedPlan) {
+          if (cachedPlan.resources) {
+            setUserPlan(cachedPlan.resources);
+          } else if (Array.isArray(cachedPlan)) {
+            setUserPlan(cachedPlan);
+          }
+          setIsLoading(false);
+          setIsAuthChecking(false);
+        }
+
         await refreshPlan(user.id, user.role);
         if (user.role === 'admin' || user.role === 'coach') {
           loadGlobalUsers();
@@ -83,6 +96,18 @@ const App: React.FC = () => {
     const normalized = normalizeUser(user);
     setCurrentUser(normalized);
     localStorage.setItem('tp_skillence_user_session', JSON.stringify(normalized));
+
+    // Instant SWR cache hydration for zero-delay transition
+    const cachedPlan = googleSheetService.getCachedUserPlan(normalized.id, normalized.role);
+    if (cachedPlan) {
+      if (cachedPlan.resources) {
+        setUserPlan(cachedPlan.resources);
+      } else if (Array.isArray(cachedPlan)) {
+        setUserPlan(cachedPlan);
+      }
+      setIsLoading(false);
+    }
+
     await refreshPlan(normalized.id, normalized.role);
     if (normalized.role === 'admin' || normalized.role === 'coach') {
       loadGlobalUsers();
@@ -98,6 +123,14 @@ const App: React.FC = () => {
       }
       const normalized = normalizeUser(targetUser);
       setCurrentUser(normalized);
+      
+      const cachedPlan = googleSheetService.getCachedUserPlan(normalized.id, normalized.role);
+      if (cachedPlan) {
+        if (cachedPlan.resources) setUserPlan(cachedPlan.resources);
+        else if (Array.isArray(cachedPlan)) setUserPlan(cachedPlan);
+        setIsLoading(false);
+      }
+
       // Impersonated view is usually an agent view
       await refreshPlan(normalized.id, normalized.role);
       setView({ type: 'dashboard' });
@@ -114,6 +147,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     try {
       setCurrentUser(originalUser);
+      const cachedPlan = googleSheetService.getCachedUserPlan(originalUser.id, originalUser.role);
+      if (cachedPlan) {
+        if (cachedPlan.resources) setUserPlan(cachedPlan.resources);
+        else if (Array.isArray(cachedPlan)) setUserPlan(cachedPlan);
+        setIsLoading(false);
+      }
       await refreshPlan(originalUser.id, originalUser.role);
       setOriginalUser(null);
       if (originalUser.role === 'admin') setView({ type: 'admin' });
@@ -131,7 +170,13 @@ const App: React.FC = () => {
     const r = role || currentUser?.role;
     if (!id) return;
     try {
-      const data = await googleSheetService.fetchUserPlan(id, r);
+      const data = await googleSheetService.fetchUserPlan(id, r, (fresh) => {
+        if (fresh && fresh.resources) {
+          setUserPlan(fresh.resources);
+        } else if (Array.isArray(fresh)) {
+          setUserPlan(fresh);
+        }
+      });
       // Handle both old array format and new object format for backward compatibility
       if (data && data.resources) {
         setUserPlan(data.resources);

@@ -429,6 +429,157 @@ async function callApi(action: string, payload: any = {}) {
   }
 }
 
+// ==========================================
+// SWR (Stale-While-Revalidate) Caching Layer
+// ==========================================
+
+interface SwrCacheWrapper<T> {
+  __swr: true;
+  timestamp: number;
+  data: T;
+}
+
+export type CacheSubscriber = (key: string, data?: any) => void;
+const cacheSubscribers = new Set<CacheSubscriber>();
+
+export function subscribeToCache(subscriber: CacheSubscriber): () => void {
+  cacheSubscribers.add(subscriber);
+  return () => {
+    cacheSubscribers.delete(subscriber);
+  };
+}
+
+function notifyCacheSubscribers(key: string, data?: any) {
+  cacheSubscribers.forEach(cb => {
+    try {
+      cb(key, data);
+    } catch (e) {
+      console.warn("[SWR] Subscriber notification error:", e);
+    }
+  });
+}
+
+export function getCached<T = any>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && parsed.__swr === true) {
+      return parsed.data as T;
+    }
+    return parsed as T;
+  } catch {
+    return null;
+  }
+}
+
+export function setCached<T = any>(key: string, data: T): void {
+  try {
+    const entry: SwrCacheWrapper<T> = {
+      __swr: true,
+      timestamp: Date.now(),
+      data
+    };
+    localStorage.setItem(key, JSON.stringify(entry));
+  } catch (e) {
+    console.warn(`[SWR] Failed to cache key "${key}":`, e);
+  }
+}
+
+export function invalidateCache(pattern: string | RegExp | ((key: string) => boolean)): void {
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (!k) continue;
+      if (typeof pattern === 'string') {
+        if (k.startsWith(pattern) || k.includes(pattern)) {
+          keysToRemove.push(k);
+        }
+      } else if (pattern instanceof RegExp) {
+        if (pattern.test(k)) {
+          keysToRemove.push(k);
+        }
+      } else if (typeof pattern === 'function') {
+        if (pattern(k)) {
+          keysToRemove.push(k);
+        }
+      }
+    }
+    keysToRemove.forEach(k => {
+      localStorage.removeItem(k);
+      notifyCacheSubscribers(k, null);
+    });
+  } catch (e) {
+    console.warn('[SWR] Invalidation error:', e);
+  }
+}
+
+export async function swrFetch<T>(
+  key: string,
+  fetcher: () => Promise<T>,
+  options?: {
+    onUpdate?: (freshData: T) => void;
+    fallback?: () => T | Promise<T>;
+    isValid?: (data: any) => boolean;
+  }
+): Promise<T> {
+  const cached = getCached<T>(key);
+  const hasValidCache = cached !== null && cached !== undefined && (options?.isValid ? options.isValid(cached) : true);
+
+  const executeBackgroundRevalidate = async (): Promise<T> => {
+    try {
+      const fresh = await fetcher();
+      if (fresh !== undefined && fresh !== null) {
+        const passes = options?.isValid ? options.isValid(fresh) : true;
+        if (passes) {
+          setCached(key, fresh);
+          notifyCacheSubscribers(key, fresh);
+          if (options?.onUpdate) {
+            try {
+              options.onUpdate(fresh);
+            } catch (cbErr) {
+              console.warn(`[SWR] onUpdate callback error for key "${key}":`, cbErr);
+            }
+          }
+          return fresh;
+        }
+      }
+      if (options?.fallback) {
+        const fallbackData = await options.fallback();
+        if (fallbackData) {
+          setCached(key, fallbackData);
+          notifyCacheSubscribers(key, fallbackData);
+          if (options?.onUpdate) options.onUpdate(fallbackData);
+          return fallbackData;
+        }
+      }
+      return fresh;
+    } catch (err) {
+      console.warn(`[SWR] Remote revalidation failed for key "${key}":`, err);
+      if (options?.fallback) {
+        const fallbackData = await options.fallback();
+        if (fallbackData) {
+          setCached(key, fallbackData);
+          notifyCacheSubscribers(key, fallbackData);
+          if (options?.onUpdate) options.onUpdate(fallbackData);
+          return fallbackData;
+        }
+      }
+      throw err;
+    }
+  };
+
+  if (hasValidCache) {
+    // Return cached data immediately so UI loads with ZERO spinner delay
+    executeBackgroundRevalidate().catch(() => {});
+    return cached as T;
+  }
+
+  // No cache present; perform initial fetch
+  return await executeBackgroundRevalidate();
+}
+
 export const googleSheetService = {
   testConnection: async () => {
     try {
@@ -438,6 +589,20 @@ export const googleSheetService = {
       return false;
     }
   },
+
+  // SWR Exposure & Utility Methods
+  swrFetch,
+  getCached,
+  setCached,
+  invalidateCache,
+  subscribeToCache,
+
+  getCachedUserPlan: (uid: string, _role?: string) => getCached(`swr_user_plan_${uid}`),
+  getCachedAllResources: () => getCached<Resource[]>('swr_all_resources'),
+  getCachedAdminStats: (requesterEmail?: string, _requesterRole?: string) => getCached(`swr_admin_stats_${requesterEmail || 'all'}`),
+  getCachedWeeklyAssignments: () => getCached<Record<number, string[]>>('swr_weekly_assignments'),
+  getCachedWaveConfigs: () => getCached<Record<string, any>>('swr_wave_configs'),
+  getCachedMyLessons: (userId: string) => getCached<any[]>(`swr_my_lessons_${userId}`),
 
   login: async (email: string, pass: string): Promise<UserProfile> => {
     try {
@@ -455,37 +620,53 @@ export const googleSheetService = {
     }
   },
     
-  fetchUserPlan: async (uid: string, role: string) => {
-    try {
-      const result = await callApi('get_user_plan', { uid, role });
-      if (result) return result;
-      return getLocalUserPlan(uid, role);
-    } catch (err: any) {
-      console.warn("[googleSheetService] fetchUserPlan remote error, utilizing local offline fallback:", err?.message);
-      return getLocalUserPlan(uid, role);
-    }
+  fetchUserPlan: async (uid: string, role: string, onUpdate?: (fresh: any) => void) => {
+    const key = `swr_user_plan_${uid}`;
+    return swrFetch(
+      key,
+      async () => {
+        const result = await callApi('get_user_plan', { uid, role });
+        if (result) return result;
+        return getLocalUserPlan(uid, role);
+      },
+      {
+        fallback: () => getLocalUserPlan(uid, role),
+        onUpdate,
+        isValid: (data) => Boolean(data && (data.resources || Array.isArray(data)))
+      }
+    );
   },
 
-  fetchGlobalResources: async () => {
-    try {
-      const res = await callApi('get_all_resources');
-      if (Array.isArray(res) && res.length > 0) return res;
-      return getLocalResources();
-    } catch (err: any) {
-      console.warn("[googleSheetService] fetchGlobalResources remote error, utilizing local catalog:", err?.message);
-      return getLocalResources();
-    }
+  fetchGlobalResources: async (onUpdate?: (fresh: Resource[]) => void) => {
+    return swrFetch(
+      'swr_all_resources',
+      async () => {
+        const res = await callApi('get_all_resources');
+        if (Array.isArray(res) && res.length > 0) return res;
+        return getLocalResources();
+      },
+      {
+        fallback: () => getLocalResources(),
+        onUpdate,
+        isValid: (data) => Array.isArray(data) && data.length > 0
+      }
+    );
   },
 
-  getAllResources: async () => {
-    try {
-      const res = await callApi('get_all_resources');
-      if (Array.isArray(res) && res.length > 0) return res;
-      return getLocalResources();
-    } catch (err: any) {
-      console.warn("[googleSheetService] getAllResources remote error, utilizing local catalog:", err?.message);
-      return getLocalResources();
-    }
+  getAllResources: async (onUpdate?: (fresh: Resource[]) => void) => {
+    return swrFetch(
+      'swr_all_resources',
+      async () => {
+        const res = await callApi('get_all_resources');
+        if (Array.isArray(res) && res.length > 0) return res;
+        return getLocalResources();
+      },
+      {
+        fallback: () => getLocalResources(),
+        onUpdate,
+        isValid: (data) => Array.isArray(data) && data.length > 0
+      }
+    );
   },
     
   createUser: async (userData: any): Promise<{ uid: string; userProfile: any; resources: any[] }> => {
@@ -530,6 +711,8 @@ export const googleSheetService = {
     
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
     updateLocalProgress(uid, resourceId, passed, score, timeTaken);
+    invalidateCache(`swr_user_plan_${uid}`);
+    invalidateCache('swr_admin_stats');
     return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
       console.warn("[googleSheetService] submitQuizResult remote failed, stored locally:", err?.message);
       return { success: true, offline: true };
@@ -538,6 +721,8 @@ export const googleSheetService = {
 
   submitProgress: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
     updateLocalProgress(uid, resourceId, passed, score, timeTaken);
+    invalidateCache(`swr_user_plan_${uid}`);
+    invalidateCache('swr_admin_stats');
     return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
       console.warn("[googleSheetService] submitProgress remote failed, stored locally:", err?.message);
       return { success: true, offline: true };
@@ -562,6 +747,8 @@ export const googleSheetService = {
     } catch (e) {
       console.warn("Local resource store error:", e);
     }
+    invalidateCache('swr_all_resources');
+    invalidateCache('swr_user_plan');
     return callApi('admin_import_resource', resourceData).catch((err) => {
       console.warn("[googleSheetService] importResource remote failed, saved locally:", err?.message);
       return { success: true, offline: true };
@@ -582,39 +769,57 @@ export const googleSheetService = {
     } catch (e) {
       console.warn("Local bulk resource store error:", e);
     }
+    invalidateCache('swr_all_resources');
+    invalidateCache('swr_user_plan');
     return callApi('bulk_import_resources', { resources }).catch((err) => {
       console.warn("[googleSheetService] bulkImportResources remote failed, saved locally:", err?.message);
       return { success: true, count: resources.length, offline: true };
     });
   },
 
-  unlockResource: (uid: string, resourceId: string) =>
-    callApi('admin_unlock_resource', { uid, resourceId }).catch((err) => {
+  unlockResource: (uid: string, resourceId: string) => {
+    updateLocalAssignment(uid, resourceId, 'Admin');
+    invalidateCache(`swr_user_plan_${uid}`);
+    invalidateCache('swr_admin_stats');
+    return callApi('admin_unlock_resource', { uid, resourceId }).catch((err) => {
       console.warn("[googleSheetService] unlockResource remote failed, applied locally:", err?.message);
-      updateLocalAssignment(uid, resourceId, 'Admin');
       return { success: true, offline: true };
-    }),
+    });
+  },
 
   assignManualResource: (targetUid: string, resourceId: string, adminId: string) => {
     updateLocalAssignment(targetUid, resourceId, adminId);
+    invalidateCache(`swr_user_plan_${targetUid}`);
+    invalidateCache('swr_admin_stats');
     return callApi('assign_manual_resource', { targetUid, resourceId, adminId }).catch((err) => {
       console.warn("[googleSheetService] assignManualResource remote failed, applied locally:", err?.message);
       return { status: 'assigned', offline: true };
     });
   },
 
-  getAdminStats: async (requesterEmail?: string, requesterRole?: string) => {
-    try {
-      return await callApi('get_admin_stats', { requesterEmail, requesterRole });
-    } catch (err: any) {
-      console.warn("[googleSheetService] getAdminStats remote failed, computing locally:", err?.message);
-      return computeLocalAdminStats();
-    }
+  getAdminStats: async (requesterEmail?: string, requesterRole?: string, onUpdate?: (fresh: any) => void) => {
+    const key = `swr_admin_stats_${requesterEmail || 'all'}`;
+    return swrFetch(
+      key,
+      async () => {
+        return await callApi('get_admin_stats', { requesterEmail, requesterRole });
+      },
+      {
+        fallback: () => computeLocalAdminStats(),
+        onUpdate,
+        isValid: (data) => Boolean(data)
+      }
+    );
   },
 
   bulkAssignRoster: async (adminId: string, wave?: string) => {
+    invalidateCache('swr_user_plan');
+    invalidateCache('swr_admin_stats');
     try {
-      return await callApi('bulk_assign_roster', { adminId, wave });
+      const res = await callApi('bulk_assign_roster', { adminId, wave });
+      invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
+      return res;
     } catch (apiError: any) {
       console.warn("[googleSheetService] bulk_assign_roster backend action failed or is not deployed. Running client-side bulk assignment fallback...", apiError?.message);
       
@@ -685,41 +890,60 @@ export const googleSheetService = {
         );
       }
       
+      invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
       return { success: true, count: assignments.length, newAssignments: assignments.length, updatedAssignments: 0 };
     }
   },
 
-  getWeeklyAssignments: async (): Promise<Record<number, string[]>> => {
-    try {
-      return await callApi('get_weekly_assignments');
-    } catch (e: any) {
-      console.warn("[googleSheetService] getWeeklyAssignments Web App failed, retrieving from localStorage. Error:", e?.message);
-      try {
-        const stored = localStorage.getItem("local_weekly_assignments");
-        return stored ? JSON.parse(stored) : {};
-      } catch (parseErr) {
-        return {};
+  getWeeklyAssignments: async (onUpdate?: (fresh: Record<number, string[]>) => void): Promise<Record<number, string[]>> => {
+    return swrFetch<Record<number, string[]>>(
+      'swr_weekly_assignments',
+      async () => {
+        return await callApi('get_weekly_assignments');
+      },
+      {
+        fallback: () => {
+          try {
+            const stored = localStorage.getItem("local_weekly_assignments");
+            return stored ? JSON.parse(stored) : {};
+          } catch (parseErr) {
+            return {};
+          }
+        },
+        onUpdate,
+        isValid: (data) => typeof data === 'object' && data !== null
       }
-    }
+    );
   },
 
-  getWaveConfigs: async () => {
-    try {
-      return await callApi('get_wave_configs');
-    } catch (e: any) {
-      console.warn("[googleSheetService] getWaveConfigs Web App failed, utilizing localStorage fallback. Error:", e?.message);
-      try {
-        const stored = localStorage.getItem("local_wave_configs");
-        return stored ? JSON.parse(stored) : {};
-      } catch (parseErr) {
-        return {};
+  getWaveConfigs: async (onUpdate?: (fresh: Record<string, any>) => void) => {
+    return swrFetch<Record<string, any>>(
+      'swr_wave_configs',
+      async () => {
+        return await callApi('get_wave_configs');
+      },
+      {
+        fallback: () => {
+          try {
+            const stored = localStorage.getItem("local_wave_configs");
+            return stored ? JSON.parse(stored) : {};
+          } catch (parseErr) {
+            return {};
+          }
+        },
+        onUpdate,
+        isValid: (data) => typeof data === 'object' && data !== null
       }
-    }
+    );
   },
 
   setWaveConfig: async (waveNumber: string, goalType: 'default' | 'weekly', goalMinutes: number) => {
+    invalidateCache('swr_wave_configs');
     try {
-      return await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
+      const res = await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
+      invalidateCache('swr_wave_configs');
+      return res;
     } catch (e: any) {
       console.warn("[googleSheetService] setWaveConfig Web App failed, utilizing localStorage fallback. Error:", e?.message);
       let local: Record<string, any> = {};
@@ -747,13 +971,19 @@ export const googleSheetService = {
       local[waveNumber].activeGoal = local[waveNumber].currentWeekGoal || local[waveNumber].defaultGoal || 180;
       
       localStorage.setItem("local_wave_configs", JSON.stringify(local));
+      invalidateCache('swr_wave_configs');
       return local;
     }
   },
 
   assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string, targetWave?: string): Promise<Record<number, string[]>> => {
+    invalidateCache('swr_weekly_assignments');
+    invalidateCache('swr_user_plan');
     try {
-      return await callApi('assign_to_week', { weekNumber, resourceIds, adminId, targetWave: targetWave || 'All' });
+      const res = await callApi('assign_to_week', { weekNumber, resourceIds, adminId, targetWave: targetWave || 'All' });
+      invalidateCache('swr_weekly_assignments');
+      invalidateCache('swr_user_plan');
+      return res;
     } catch (e: any) {
       console.warn("[googleSheetService] assignToWeek Web App failed, utilizing localStorage fallback. Error:", e?.message);
       let local: Record<number, string[]> = {};
@@ -765,6 +995,8 @@ export const googleSheetService = {
       }
       local[weekNumber] = resourceIds;
       localStorage.setItem("local_weekly_assignments", JSON.stringify(local));
+      invalidateCache('swr_weekly_assignments');
+      invalidateCache('swr_user_plan');
       return local;
     }
   },
@@ -820,8 +1052,10 @@ export const googleSheetService = {
     callApi('proxy_gemini_request', { payload }),
 
   addSingleUser: async (userData: { name: string; email: string; waveNumber: string; role: 'agent' }): Promise<boolean> => {
+    invalidateCache('swr_admin_stats');
     try {
       await callApi('addSingleUser', userData);
+      invalidateCache('swr_admin_stats');
       return true;
     } catch (e) {
       console.error("[googleSheetService] addSingleUser failed:", e);
@@ -830,8 +1064,13 @@ export const googleSheetService = {
   },
 
   saveLesson: async (title: string, lessonData: any): Promise<{ id: string; title: string }> => {
+    invalidateCache('swr_interactive_lessons');
+    invalidateCache('swr_all_resources');
     try {
-      return await callApi('saveLesson', { title, lessonData });
+      const res = await callApi('saveLesson', { title, lessonData });
+      invalidateCache('swr_interactive_lessons');
+      invalidateCache('swr_all_resources');
+      return res;
     } catch (e: any) {
       console.warn("[googleSheetService] saveLesson Web App failed, saving to localStorage fallback:", e?.message);
       const id = 'les_' + Date.now();
@@ -839,13 +1078,21 @@ export const googleSheetService = {
       const newLesson = { id, title, createdAt: new Date().toISOString(), lessonData };
       existing.unshift(newLesson);
       localStorage.setItem('local_interactive_lessons', JSON.stringify(existing));
+      invalidateCache('swr_interactive_lessons');
+      invalidateCache('swr_all_resources');
       return { id, title };
     }
   },
 
   saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ success: boolean; id?: string; message?: string }> => {
+    invalidateCache(`swr_my_lessons_${userId}`);
+    invalidateCache(`swr_user_plan_${userId}`);
+    invalidateCache('swr_admin_stats');
     try {
       const data = await callApi('saveAnswers', { userId, lessonId, answers });
+      invalidateCache(`swr_my_lessons_${userId}`);
+      invalidateCache(`swr_user_plan_${userId}`);
+      invalidateCache('swr_admin_stats');
       return {
         success: true,
         id: data?.id || ('ans_' + Date.now())
@@ -858,6 +1105,9 @@ export const googleSheetService = {
         const existing = JSON.parse(localStorage.getItem(key) || '[]');
         existing.push({ id, userId, lessonId, submittedAt: new Date().toISOString(), answers });
         localStorage.setItem(key, JSON.stringify(existing));
+        invalidateCache(`swr_my_lessons_${userId}`);
+        invalidateCache(`swr_user_plan_${userId}`);
+        invalidateCache('swr_admin_stats');
         return { success: true, id, message: "Saved locally" };
       } catch (fallbackErr: any) {
         return {
@@ -888,8 +1138,15 @@ export const googleSheetService = {
   },
 
   assignLesson: async (userId: string, lessonId: string, adminId: string): Promise<{ id: string; userId: string; lessonId: string }> => {
+    invalidateCache(`swr_my_lessons_${userId}`);
+    invalidateCache(`swr_user_plan_${userId}`);
+    invalidateCache('swr_admin_stats');
     try {
-      return await callApi('assignLesson', { userId, lessonId, adminId });
+      const res = await callApi('assignLesson', { userId, lessonId, adminId });
+      invalidateCache(`swr_my_lessons_${userId}`);
+      invalidateCache(`swr_user_plan_${userId}`);
+      invalidateCache('swr_admin_stats');
+      return res;
     } catch (e: any) {
       console.warn("[googleSheetService] assignLesson Web App failed, saving to localStorage fallback:", e?.message);
       const id = 'asgn_' + Date.now();
@@ -897,13 +1154,28 @@ export const googleSheetService = {
       const newAsgn = { id, userId, lessonId, adminId, assignedAt: new Date().toISOString() };
       existing.push(newAsgn);
       localStorage.setItem('local_manual_assignments', JSON.stringify(existing));
+      invalidateCache(`swr_my_lessons_${userId}`);
+      invalidateCache(`swr_user_plan_${userId}`);
+      invalidateCache('swr_admin_stats');
       return newAsgn;
     }
   },
 
   batchAssignLessons: async (userIds: string[], lessonIds: string[], adminId: string): Promise<{ count: number; totalRequested: number; usersCount: number; lessonsCount: number }> => {
+    userIds.forEach(uId => {
+      invalidateCache(`swr_my_lessons_${uId}`);
+      invalidateCache(`swr_user_plan_${uId}`);
+    });
+    invalidateCache('swr_admin_stats');
+
     try {
-      return await callApi('batchAssignLessons', { userIds, lessonIds, adminId });
+      const res = await callApi('batchAssignLessons', { userIds, lessonIds, adminId });
+      userIds.forEach(uId => {
+        invalidateCache(`swr_my_lessons_${uId}`);
+        invalidateCache(`swr_user_plan_${uId}`);
+      });
+      invalidateCache('swr_admin_stats');
+      return res;
     } catch (e: any) {
       console.warn("[googleSheetService] batchAssignLessons Web App failed, saving to localStorage fallback:", e?.message);
       const existing = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
@@ -930,6 +1202,11 @@ export const googleSheetService = {
       });
 
       localStorage.setItem('local_manual_assignments', JSON.stringify(existing));
+      userIds.forEach(uId => {
+        invalidateCache(`swr_my_lessons_${uId}`);
+        invalidateCache(`swr_user_plan_${uId}`);
+      });
+      invalidateCache('swr_admin_stats');
       return {
         count: createdCount,
         totalRequested: userIds.length * lessonIds.length,
@@ -939,19 +1216,29 @@ export const googleSheetService = {
     }
   },
 
-  getMyLessons: async (userId: string): Promise<any[]> => {
-    try {
-      return await callApi('getMyLessons', { userId });
-    } catch (e: any) {
-      console.warn("[googleSheetService] getMyLessons Web App failed, fetching from localStorage fallback:", e?.message);
-      const localAssignments = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
-      const userLessonIds = localAssignments
-        .filter((a: any) => String(a.userId) === String(userId))
-        .map((a: any) => String(a.lessonId));
-      const allInteractive = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
-      if (userLessonIds.length === 0) return [];
-      return allInteractive.filter((l: any) => userLessonIds.includes(String(l.id)));
-    }
+  getMyLessons: async (userId: string, onUpdate?: (fresh: any[]) => void): Promise<any[]> => {
+    const key = `swr_my_lessons_${userId}`;
+    return swrFetch<any[]>(
+      key,
+      async () => {
+        const res = await callApi('getMyLessons', { userId });
+        if (Array.isArray(res)) return res;
+        return [];
+      },
+      {
+        fallback: () => {
+          const localAssignments = JSON.parse(localStorage.getItem('local_manual_assignments') || '[]');
+          const userLessonIds = localAssignments
+            .filter((a: any) => String(a.userId) === String(userId))
+            .map((a: any) => String(a.lessonId));
+          const allInteractive = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
+          if (userLessonIds.length === 0) return [];
+          return allInteractive.filter((l: any) => userLessonIds.includes(String(l.id)));
+        },
+        onUpdate,
+        isValid: (data) => Array.isArray(data)
+      }
+    );
   }
 };
 

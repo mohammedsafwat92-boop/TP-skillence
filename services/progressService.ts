@@ -47,6 +47,7 @@ export const getUserId = (): string => {
     return 'tp-agent-default'; 
 };
 
-export const getMyLessons = async (userId: string) => {
-  return googleSheetService.getMyLessons(userId);
+export const getMyLessons = async (userId: string, onUpdate?: (fresh: any[]) => void) => {
+  return googleSheetService.getMyLessons(userId, onUpdate);
 };
+
