@@ -1,4 +1,5 @@
 import { CohortSummary, Trainee, RubricBreakdown, BusinessAccount } from '../types';
+import { recalculateCohortSummariesFromDirectory } from '../utils/sheetParser';
 
 export const DEFAULT_SHEET_NAMES = [
   'Wave 1 (EOT) — Mobility',
@@ -178,7 +179,7 @@ function buildOfficialCohort(params: {
   };
 }
 
-export const INITIAL_COHORTS_DATA: CohortSummary[] = [
+export const INITIAL_COHORTS_DATA: CohortSummary[] = recalculateCohortSummariesFromDirectory([
   // Wave 1: Mobility Account (13 Agents)
   buildOfficialCohort({
     sheetIndex: 1,
@@ -386,4 +387,4 @@ export const INITIAL_COHORTS_DATA: CohortSummary[] = [
       { name: 'Basma Adel El-Refai', id: 'W277-03', role: 'Core Travel Care', rp1: 3.00, rp2: 3.05, rp3: 3.10, rp4: 3.12, rp5: 3.16, initial: 3.00, final: 3.16, gain: 0.16, module: 88, attendance: 90, priority: 'High' },
     ],
   }),
-];
+]);

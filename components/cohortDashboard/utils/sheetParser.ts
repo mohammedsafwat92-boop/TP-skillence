@@ -538,3 +538,134 @@ export function exportCurrentCohortsToExcel(cohorts: CohortSummary[]): void {
 
   XLSX.writeFile(wb, `all_6_cohorts_performance_report_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
+
+/**
+ * Computes every wave's traineeCount, initialRP, finalRP, rpGain, moduleCompletion,
+ * attendanceCompletion, avgRoleplayScore, avgTestScore, avgOverallScore, roleplayPassRate,
+ * testPassRate, certificationRate, atRiskCount, topPerformer, rubricAverages, roleplayAverages,
+ * and testAverages directly from its trainees[] list.
+ */
+export function recalculateCohortSummariesFromDirectory(cohorts: CohortSummary[]): CohortSummary[] {
+  return cohorts.map((cohort, idx) => {
+    const trainees = cohort.trainees || [];
+    const count = trainees.length;
+
+    if (count === 0) {
+      return {
+        ...cohort,
+        sheetIndex: cohort.sheetIndex || idx + 1,
+        traineeCount: 0,
+        initialRP: 0,
+        finalRP: 0,
+        rpGain: 0,
+        moduleCompletion: 0,
+        attendanceCompletion: 0,
+        avgRoleplayScore: 0,
+        avgTestScore: 0,
+        avgOverallScore: 0,
+        roleplayPassRate: 0,
+        testPassRate: 0,
+        certificationRate: 0,
+        atRiskCount: 0,
+        topPerformer: { name: 'N/A', score: 0 },
+        rubricAverages: {
+          communication: 0,
+          productKnowledge: 0,
+          activeListening: 0,
+          objectionHandling: 0,
+          callControl: 0,
+        },
+        roleplayAverages: {
+          rp1Discovery: 0,
+          rp2Objection: 0,
+          rp3ValuePitch: 0,
+          rp4Deescalation: 0,
+          rp5Closing: 0,
+        },
+        testAverages: {
+          baselineTest: 0,
+          module1Test: 0,
+          module2Test: 0,
+          module3Test: 0,
+          finalExam: 0,
+        },
+      };
+    }
+
+    const initialRP = +(trainees.reduce((s, t) => s + (t.initialRP || 0), 0) / count).toFixed(2);
+    const finalRP = +(trainees.reduce((s, t) => s + (t.finalRP || 0), 0) / count).toFixed(2);
+    const rpGain = +(finalRP - initialRP).toFixed(2);
+    const moduleCompletion = +(trainees.reduce((s, t) => s + (t.moduleComp || 0), 0) / count).toFixed(1);
+    const attendanceCompletion = +(trainees.reduce((s, t) => s + (t.attendanceComp || 0), 0) / count).toFixed(1);
+
+    const avgRoleplayScore = Math.round(trainees.reduce((s, t) => s + (t.roleplays?.average || 0), 0) / count);
+    const avgTestScore = Math.round(trainees.reduce((s, t) => s + (t.tests?.average || 0), 0) / count);
+    const avgOverallScore = Math.round(trainees.reduce((s, t) => s + (t.overallScore || 0), 0) / count);
+
+    const roleplayPassRate = Math.round(
+      (trainees.filter((t) => (t.finalRP >= 3.0 || t.roleplays?.passStatus === 'Pass')).length / count) * 100
+    );
+    const testPassRate = Math.round(
+      (trainees.filter((t) => (t.moduleComp >= 75 || t.tests?.passStatus !== 'Retake Required')).length / count) * 100
+    );
+    const certificationRate = Math.round(
+      (trainees.filter((t) => t.priority !== 'High' && t.status !== 'Remediation Needed').length / count) * 100
+    );
+    const atRiskCount = trainees.filter(
+      (t) => t.priority === 'High' || t.status === 'At Risk' || t.status === 'Remediation Needed'
+    ).length;
+
+    const topSorted = [...trainees].sort((a, b) => (b.overallScore || 0) - (a.overallScore || 0));
+    const topPerformer = {
+      name: topSorted[0]?.name || 'N/A',
+      score: topSorted[0]?.overallScore || 0,
+    };
+
+    const rubricAverages: RubricBreakdown = {
+      communication: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.communication || 0), 0) / count),
+      productKnowledge: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.productKnowledge || 0), 0) / count),
+      activeListening: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.activeListening || 0), 0) / count),
+      objectionHandling: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.objectionHandling || 0), 0) / count),
+      callControl: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.callControl || 0), 0) / count),
+    };
+
+    const roleplayAverages = {
+      rp1Discovery: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rp1Discovery || 0), 0) / count),
+      rp2Objection: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rp2Objection || 0), 0) / count),
+      rp3ValuePitch: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rp3ValuePitch || 0), 0) / count),
+      rp4Deescalation: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rp4Deescalation || 0), 0) / count),
+      rp5Closing: Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rp5Closing || 0), 0) / count),
+    };
+
+    const testAverages = {
+      baselineTest: Math.round(trainees.reduce((s, t) => s + (t.tests?.baselineTest || 0), 0) / count),
+      module1Test: Math.round(trainees.reduce((s, t) => s + (t.tests?.module1Test || 0), 0) / count),
+      module2Test: Math.round(trainees.reduce((s, t) => s + (t.tests?.module2Test || 0), 0) / count),
+      module3Test: Math.round(trainees.reduce((s, t) => s + (t.tests?.module3Test || 0), 0) / count),
+      finalExam: Math.round(trainees.reduce((s, t) => s + (t.tests?.finalExam || 0), 0) / count),
+    };
+
+    return {
+      ...cohort,
+      sheetIndex: cohort.sheetIndex || idx + 1,
+      traineeCount: count,
+      initialRP,
+      finalRP,
+      rpGain,
+      moduleCompletion,
+      attendanceCompletion,
+      avgRoleplayScore,
+      avgTestScore,
+      avgOverallScore,
+      roleplayPassRate,
+      testPassRate,
+      certificationRate,
+      atRiskCount,
+      topPerformer,
+      rubricAverages,
+      roleplayAverages,
+      testAverages,
+      trainees,
+    };
+  });
+}

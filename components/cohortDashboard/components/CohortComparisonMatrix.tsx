@@ -101,7 +101,9 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
           <div>
             <h3 className="text-sm font-bold text-white flex items-center gap-2">
               Cross-Cohort Performance Matrix
-              <span className="text-xs font-normal text-slate-400">(All 6 Sheets)</span>
+              <span className="text-xs font-normal text-slate-400">
+                ({cohorts.length} {cohorts.length === 1 ? 'Wave' : 'Waves'} • {cohorts.reduce((s, c) => s + c.traineeCount, 0)} Trainees)
+              </span>
             </h3>
             <p className="text-xs text-slate-400">
               Comparative benchmark across roleplay simulations and standardized test evaluations
@@ -119,7 +121,7 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
             }`}
           >
-            Sheet Order (1-6)
+            Wave Order (1-{cohorts.length})
           </button>
           <button
             onClick={() => handleSort('avgOverallScore')}
@@ -159,7 +161,7 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4">Rank & Sheet</th>
+              <th className="py-3.5 px-4">Rank & Wave</th>
               <th className="py-3.5 px-4">Cohort & Facilitator</th>
               <th className="py-3.5 px-3 text-center">Trainees</th>
               <th
@@ -208,23 +210,34 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
                 key={cohort.id}
                 className="hover:bg-slate-800/40 transition-colors group"
               >
-                {/* Rank & Sheet Index */}
+                {/* Rank & Wave Index */}
                 <td className="py-3.5 px-4 whitespace-nowrap">
                   <div className="flex items-center gap-2">
                     {getRankBadge(cohort.avgOverallScore)}
                     <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                      Sheet {cohort.sheetIndex}
+                      {cohort.code || `W${cohort.sheetIndex}`}
                     </span>
                   </div>
                 </td>
 
-                {/* Cohort Name & Trainer */}
+                {/* Cohort Name, Account Badge & Trainer */}
                 <td className="py-3.5 px-4">
                   <div>
-                    <div className="font-bold text-white group-hover:text-indigo-300 transition-colors">
-                      {cohort.name}
+                    <div className="flex items-center flex-wrap gap-2">
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0"
+                        style={{
+                          backgroundColor: `${cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6')}20`,
+                          color: cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6'),
+                        }}
+                      >
+                        {cohort.account}
+                      </span>
+                      <span className="font-bold text-white group-hover:text-indigo-300 transition-colors">
+                        {cohort.name}
+                      </span>
                     </div>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
+                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
                       <span>Trainer: <strong className="text-slate-300 font-medium">{cohort.trainer}</strong></span>
                       <span className="text-slate-600">•</span>
                       <span className="text-slate-400 font-mono text-[10px]">Tab: "{cohort.tabName}"</span>
@@ -358,7 +371,7 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
                 Program Average
               </td>
               <td className="py-3 px-4 text-[11px] text-slate-400">
-                Collective All 6 Cohorts
+                Collective {cohorts.length} Waves
               </td>
               <td className="py-3 px-3 text-center text-indigo-400 font-bold">
                 {cohorts.reduce((acc, c) => acc + c.traineeCount, 0)}
@@ -376,7 +389,7 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
                 {Math.round(cohorts.reduce((acc, c) => acc + c.certificationRate, 0) / (cohorts.length || 1))}%
               </td>
               <td className="py-3 px-4 text-slate-400 text-[11px]">
-                6 Cohorts Evaluated
+                {cohorts.length} {cohorts.length === 1 ? 'Wave' : 'Waves'} Evaluated
               </td>
               <td className="py-3 px-4 text-right text-[11px] text-emerald-400">
                 Synchronized

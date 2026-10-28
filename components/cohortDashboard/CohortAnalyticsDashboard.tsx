@@ -11,7 +11,8 @@ import { CohortInsights } from './components/CohortInsights';
 import { SheetsDataManagerModal } from './components/SheetsDataManagerModal';
 import {
   downloadSixSheetExcelTemplate,
-  exportCurrentCohortsToExcel
+  exportCurrentCohortsToExcel,
+  recalculateCohortSummariesFromDirectory
 } from './utils/sheetParser';
 import { mapLiveUsersToCohorts } from './utils/liveRosterMapper';
 import { UserProfile } from '../../types';
@@ -55,20 +56,31 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
     return cohorts.filter((c) => c.account === accountFilter);
   }, [cohorts, accountFilter]);
 
-  // Account rollups
+  // Account rollups strictly derived from active trainees in each cohort
   const accountRollups = useMemo(() => {
     const accounts: BusinessAccount[] = ['Mobility', 'Teleco', 'Travel'];
     return accounts.map((acc) => {
       const list = cohorts.filter((c) => c.account === acc);
-      const totalHC = list.reduce((s, c) => s + c.traineeCount, 0) || 1;
-      const initialRP = list.reduce((s, c) => s + c.initialRP * c.traineeCount, 0) / totalHC;
-      const finalRP = list.reduce((s, c) => s + c.finalRP * c.traineeCount, 0) / totalHC;
-      const moduleComp = list.reduce((s, c) => s + c.moduleCompletion * c.traineeCount, 0) / totalHC;
-      const attendanceComp = list.reduce((s, c) => s + c.attendanceCompletion * c.traineeCount, 0) / totalHC;
+      const allActiveTrainees = list.flatMap((c) => c.trainees || []);
+      const totalHC = allActiveTrainees.length;
+
+      const initialRP = totalHC > 0 ? allActiveTrainees.reduce((s, t) => s + (t.initialRP || 0), 0) / totalHC : 0;
+      const finalRP = totalHC > 0 ? allActiveTrainees.reduce((s, t) => s + (t.finalRP || 0), 0) / totalHC : 0;
+      const moduleComp = totalHC > 0 ? allActiveTrainees.reduce((s, t) => s + (t.moduleComp || 0), 0) / totalHC : 0;
+      const attendanceComp = totalHC > 0 ? allActiveTrainees.reduce((s, t) => s + (t.attendanceComp || 0), 0) / totalHC : 0;
+
+      const waveBreakdowns = list.map((c) => ({
+        id: c.id,
+        code: c.code || `W${c.sheetIndex}`,
+        name: c.name,
+        count: (c.trainees || []).length,
+      }));
+
       return {
         account: acc,
         wavesCount: list.length,
         headcount: totalHC,
+        waveBreakdowns,
         initialRP,
         finalRP,
         gain: finalRP - initialRP,
@@ -79,9 +91,9 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
     });
   }, [cohorts]);
 
-  // Dynamic counts for tabs
+  // Dynamic counts for tabs derived strictly from active trainees
   const filterCounts = useMemo(() => {
-    const totalCount = cohorts.reduce((s, c) => s + c.traineeCount, 0);
+    const totalCount = cohorts.reduce((s, c) => s + (c.trainees?.length || 0), 0);
     const mobilityWaves = cohorts.filter((c) => c.account === 'Mobility');
     const telecoWaves = cohorts.filter((c) => c.account === 'Teleco');
     const travelWaves = cohorts.filter((c) => c.account === 'Travel');
@@ -90,11 +102,11 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
       totalWaves: cohorts.length,
       totalCount,
       mobilityWaves: mobilityWaves.length,
-      mobilityCount: mobilityWaves.reduce((s, c) => s + c.traineeCount, 0),
+      mobilityCount: mobilityWaves.reduce((s, c) => s + (c.trainees?.length || 0), 0),
       telecoWaves: telecoWaves.length,
-      telecoCount: telecoWaves.reduce((s, c) => s + c.traineeCount, 0),
+      telecoCount: telecoWaves.reduce((s, c) => s + (c.trainees?.length || 0), 0),
       travelWaves: travelWaves.length,
-      travelCount: travelWaves.reduce((s, c) => s + c.traineeCount, 0),
+      travelCount: travelWaves.reduce((s, c) => s + (c.trainees?.length || 0), 0),
     };
   }, [cohorts]);
 
@@ -107,13 +119,16 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
 
   const handleSelectAccountFilter = (acc: 'all' | BusinessAccount) => {
     setAccountFilter(acc);
+    setSelectedCohortForTrainees(null);
     setCurrentTab('dashboard');
   };
 
-  const handleUpdateCohorts = (newCohorts: CohortSummary[], sourceType: string) => {
-    setCohorts(newCohorts);
+  const handleUpdateCohorts = (newCohorts: CohortSummary[], sourceType: string = sheetSourceType) => {
+    const refreshed = recalculateCohortSummariesFromDirectory(newCohorts);
+    setCohorts(refreshed);
     setSheetSourceType(sourceType);
-    showToast(`Synchronized ${newCohorts.length} training cohort sheets across Mobility, Teleco & Travel.`);
+    const totalCount = refreshed.reduce((s, c) => s + c.traineeCount, 0);
+    showToast(`Updated directory: ${refreshed.length} waves and ${totalCount} trainees synchronized.`);
   };
 
   const handleSyncLiveRoster = () => {
@@ -280,45 +295,79 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Account Portfolio Benchmark Scorecards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {accountRollups.map((r) => (
-            <div
-              key={r.account}
-              className="bg-white border border-[#E5E7EC] rounded-2xl p-5 shadow-sm"
-              style={{ borderTop: `4px solid ${r.color}` }}
-            >
-              <div className="flex items-center justify-between mb-3">
-                <span
-                  className="px-2.5 py-0.5 rounded text-xs font-extrabold uppercase"
-                  style={{ backgroundColor: `${r.color}18`, color: r.color }}
-                >
-                  {r.account} Account
-                </span>
-                <span className="text-xs font-mono font-bold text-zinc-600">
-                  {r.wavesCount} {r.wavesCount === 1 ? 'Wave' : 'Waves'} · {r.headcount} Agents
-                </span>
+          {accountRollups.map((r) => {
+            const isSelected = accountFilter === r.account;
+            return (
+              <div
+                key={r.account}
+                onClick={() => handleSelectAccountFilter(r.account)}
+                className={`bg-white border rounded-2xl p-5 shadow-sm transition-all cursor-pointer hover:shadow-md ${
+                  isSelected ? 'ring-2 ring-offset-1 border-transparent' : 'border-[#E5E7EC]'
+                }`}
+                style={{
+                  borderTop: `4px solid ${r.color}`,
+                  boxShadow: isSelected ? `0 0 0 2px ${r.color}` : undefined,
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span
+                    className="px-2.5 py-0.5 rounded text-xs font-extrabold uppercase flex items-center gap-1.5"
+                    style={{ backgroundColor: `${r.color}18`, color: r.color }}
+                  >
+                    {r.account} Account
+                  </span>
+                  <span className="text-xs font-mono font-bold text-zinc-600">
+                    {r.wavesCount} {r.wavesCount === 1 ? 'Wave' : 'Waves'} · {r.headcount} Trainees
+                  </span>
+                </div>
+
+                {/* Exact wave badges and trainee counts per wave (e.g. W1 (13), W2 (17)) */}
+                <div className="flex flex-wrap items-center gap-1.5 mb-3 pt-1">
+                  {r.waveBreakdowns.map((wb) => (
+                    <button
+                      key={wb.id}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAccountFilter(r.account);
+                        setSelectedCohortForTrainees(wb.id);
+                        setCurrentTab('trainees');
+                      }}
+                      className="px-2 py-0.5 rounded-md text-[11px] font-mono font-bold transition-all hover:scale-105 cursor-pointer border"
+                      style={{
+                        backgroundColor: `${r.color}12`,
+                        borderColor: `${r.color}40`,
+                        color: r.color,
+                      }}
+                      title={`${wb.name} (${wb.count} Trainees) — Click to view in Directory`}
+                    >
+                      {wb.code} ({wb.count})
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 text-xs tabular-nums">
+                  <div>
+                    <span className="text-zinc-500 block">Initial → Final</span>
+                    <strong className="text-sm font-mono text-zinc-900">
+                      {r.initialRP.toFixed(2)} → {r.finalRP.toFixed(2)}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block">Net RP Uplift</span>
+                    <strong className="text-sm font-mono text-[#08755D]">
+                      +{r.gain.toFixed(2)} pts
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-zinc-500 block">Modules / Att.</span>
+                    <strong className="text-sm font-mono text-zinc-900">
+                      {r.moduleComp.toFixed(1)}% · {r.attendanceComp.toFixed(1)}%
+                    </strong>
+                  </div>
+                </div>
               </div>
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 text-xs tabular-nums">
-                <div>
-                  <span className="text-zinc-500 block">Initial → Final</span>
-                  <strong className="text-sm font-mono text-zinc-900">
-                    {r.initialRP.toFixed(2)} → {r.finalRP.toFixed(2)}
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block">Net RP Uplift</span>
-                  <strong className="text-sm font-mono text-[#08755D]">
-                    +{r.gain.toFixed(2)} pts
-                  </strong>
-                </div>
-                <div>
-                  <span className="text-zinc-500 block">Modules / Att.</span>
-                  <strong className="text-sm font-mono text-zinc-900">
-                    {r.moduleComp.toFixed(1)}% · {r.attendanceComp.toFixed(1)}%
-                  </strong>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
         {currentTab === 'dashboard' && (
@@ -333,6 +382,8 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
             <TraineeDirectory
               cohorts={filteredCohorts}
               selectedCohortId={selectedCohortForTrainees}
+              selectedAccount={accountFilter}
+              onUpdateCohorts={(updated) => handleUpdateCohorts(updated, sheetSourceType)}
             />
           </div>
         )}
@@ -361,6 +412,8 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
           <TraineeDirectory
             cohorts={filteredCohorts}
             selectedCohortId={selectedCohortForTrainees}
+            selectedAccount={accountFilter}
+            onUpdateCohorts={(updated) => handleUpdateCohorts(updated, sheetSourceType)}
           />
         )}
 

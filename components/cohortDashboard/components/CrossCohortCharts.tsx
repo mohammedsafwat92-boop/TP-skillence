@@ -65,7 +65,7 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
             Cross-Cohort Comparative Analytics
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Compare performance across all 6 sheets to pinpoint curriculum strengths and skill gaps
+            Compare performance across all {cohorts.length} waves ({cohorts.reduce((s, c) => s + c.traineeCount, 0)} trainees) to pinpoint curriculum strengths and skill gaps
           </p>
         </div>
 
@@ -425,18 +425,18 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-5 space-y-4">
             <h4 className="text-xs font-bold text-white flex items-center gap-2">
               <TrendingUp className="w-4 h-4 text-emerald-400" />
-              Chronological Performance Progression (Cohort 1 through Cohort 6)
+              Chronological Performance Progression ({cohorts[0]?.code || 'W1'} through {cohorts[cohorts.length - 1]?.code || `W${cohorts.length}`})
             </h4>
 
             <div className="space-y-4">
               {cohorts.map((c) => {
-                const style = cohortColors[c.sheetIndex] || cohortColors[1];
+                const style = cohortColors[c.sheetIndex] || cohortColors[((c.sheetIndex - 1) % 6) + 1] || cohortColors[1];
                 return (
                   <div key={c.id} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <span className="w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center font-mono text-white" style={{ backgroundColor: style.fill }}>
-                          C{c.sheetIndex}
+                          {c.code || `C${c.sheetIndex}`}
                         </span>
                         <span className="font-semibold text-white">{c.name}</span>
                         <span className="text-[11px] text-slate-500 font-normal">({c.trainer})</span>
@@ -476,7 +476,9 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
                 </span>
               </div>
               <span className="text-emerald-400 font-semibold">
-                +14% Total Program Gain from Cohort 1 to Cohort 6
+                {cohorts.length > 1
+                  ? `+${Math.max(0, (cohorts[cohorts.length - 1]?.avgOverallScore || 0) - (cohorts[0]?.avgOverallScore || 0))}% Total Program Gain from ${cohorts[0]?.code || 'Wave 1'} to ${cohorts[cohorts.length - 1]?.code || 'Wave ' + cohorts.length}`
+                  : `${cohorts[0]?.code || 'Wave 1'} Evaluated (${cohorts[0]?.avgOverallScore || 0}% Overall)`}
               </span>
             </div>
           </div>

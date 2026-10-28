@@ -475,7 +475,7 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
                       Official 6-Cohort Training Benchmark Dataset
                     </h3>
                     <p className="text-xs text-slate-400 mt-1">
-                      Includes 48 fully detailed trainees across 6 distinct cohorts (Alpha Vanguard to Zeta Elite) with comprehensive simulation scores, rubric breakdowns, test progression, and trainer evaluations.
+                      Includes {INITIAL_COHORTS_DATA.reduce((s, c) => s + c.traineeCount, 0)} fully detailed trainees across 6 official waves: Mobility [W1: {INITIAL_COHORTS_DATA.find(c => c.code === 'W1')?.traineeCount || 13}, W2: {INITIAL_COHORTS_DATA.find(c => c.code === 'W2')?.traineeCount || 17}], Teleco [W3: {INITIAL_COHORTS_DATA.find(c => c.code === 'W3')?.traineeCount || 16}], and Travel [W4: {INITIAL_COHORTS_DATA.find(c => c.code === 'W4')?.traineeCount || 18}, W5: {INITIAL_COHORTS_DATA.find(c => c.code === 'W5')?.traineeCount || 6}, W6: {INITIAL_COHORTS_DATA.find(c => c.code === 'W6')?.traineeCount || 12}] with comprehensive simulation scores, rubric breakdowns, test progression, and trainer evaluations.
                     </p>
                   </div>
                   <button
