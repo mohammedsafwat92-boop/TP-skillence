@@ -1,5 +1,6 @@
 
 import React from 'react';
+import { Layers } from 'lucide-react';
 import { DashboardIcon, AdminIcon, XIcon, ExitIcon, SpeakingIcon, ListeningIcon, ReadingIcon, PracticeIcon, BrainIcon, PhoneIcon } from './Icons';
 import type { View, Module, UserProfile } from '../types';
 
@@ -53,6 +54,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
                   <AdminIcon />
                   <span className="ml-3 font-bold">Admin Panel</span>
               </NavItem>
+              <NavItem view={{ type: 'admin', tab: 'cohort-analytics' }} currentView={currentView} onNavigate={onNavigate}>
+                <Layers className="w-5 h-5 text-emerald-400" />
+                <span className="ml-3 font-bold">Cohort Analytics</span>
+              </NavItem>
               <NavItem view={{ type: 'live-coach' }} currentView={currentView} onNavigate={onNavigate}>
                 <SpeakingIcon className="w-5 h-5" />
                 <span className="ml-3">Simulations</span>
@@ -85,7 +90,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
           )}
         </ul>
 
-        <div className="mt-10 mb-4 px-6"><h2 className="text-[10px] font-black text-white/40 uppercase tracking-[0.3em]">Core Skills</h2></div>
+        <div className="mt-10 mb-4 px-6"><h2 className="text-xs font-bold text-white/50 uppercase tracking-wider">Core Skills</h2></div>
         <ul className="space-y-1">
             <NavItem view={{ type: 'dashboard', skill: 'Listening' }} currentView={currentView} onNavigate={onNavigate}>
                 <ListeningIcon className="w-5 h-5 opacity-80" />
@@ -111,15 +116,15 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
             className="flex items-center w-full py-4 px-4 rounded-xl text-white/60 hover:bg-tp-red/10 hover:text-tp-red transition-all text-left"
           >
             <ExitIcon className="w-5 h-5" />
-            <span className="ml-3 text-[11px] font-black uppercase tracking-widest">Logout Session</span>
+            <span className="ml-3 text-xs font-semibold uppercase tracking-wider">Logout Session</span>
           </button>
         </div>
       </nav>
 
       <div className="p-6 border-t border-white/5">
           <div className="bg-white/5 border border-white/10 rounded-2xl p-4 text-center">
-              <p className="text-[10px] text-white/80 font-bold uppercase tracking-widest leading-tight">Client Specialized Track</p>
-              <p className="text-[9px] text-white/30 font-medium mt-1 uppercase tracking-widest">Skillence © 2025</p>
+              <p className="text-xs text-white/80 font-semibold uppercase tracking-wider leading-tight">Client Specialized Track</p>
+              <p className="text-[11px] text-white/40 font-medium mt-1 uppercase tracking-wider">Skillence © 2025</p>
           </div>
       </div>
     </div>

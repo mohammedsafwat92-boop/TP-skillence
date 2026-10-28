@@ -229,7 +229,7 @@ const App: React.FC = () => {
     );
 
     if (view.type === 'admin') {
-      return <AdminPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} />;
+      return <AdminPanel onUpdateContent={() => refreshPlan(currentUser.id, currentUser.role)} currentUser={currentUser} onImpersonate={handleImpersonate} initialTab={view.tab} />;
     }
 
     if (view.type === 'live-coach') {
@@ -272,7 +272,7 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className={`flex min-h-screen overflow-hidden ${currentUser ? 'bg-[#FBFBFF]' : 'bg-tp-purple'}`}>
+    <div className={`flex min-h-screen overflow-hidden ${currentUser ? 'bg-transparent' : 'bg-tp-purple'}`}>
       {currentUser && (
         <Sidebar 
           modules={allTrainingModules} 
@@ -289,28 +289,34 @@ const App: React.FC = () => {
 
       <main className={`flex-1 overflow-y-auto ${currentUser ? 'relative lg:ml-72 transition-all' : 'w-full'}`}>
         {originalUser && (
-          <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-4 shadow-xl flex items-center justify-between animate-fadeIn border-b border-amber-600/20">
+          <div className="sticky top-0 z-[60] bg-amber-500 text-white px-6 py-3.5 shadow-md flex items-center justify-between animate-fadeIn border-b border-amber-600/20">
             <div className="flex items-center gap-3">
               <div className="p-1.5 bg-white/20 rounded-lg">
                 <UserIcon className="w-4 h-4" />
               </div>
-              <p className="text-[11px] font-black uppercase tracking-widest">
+              <p className="text-xs font-bold uppercase tracking-wider">
                 Sandbox Mode: Viewing as <span className="underline underline-offset-4 decoration-2">{currentUser?.name}</span>
               </p>
             </div>
             <button 
               onClick={handleExitImpersonation}
-              className="bg-tp-navy text-white px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2 shadow-lg"
+              className="bg-tp-navy text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-white hover:text-tp-navy transition-all flex items-center gap-2 shadow-sm"
             >
               <ExitIcon className="w-4 h-4" /> Exit to {originalUser.role === 'admin' ? 'Admin Panel' : 'Coach Hub'}
             </button>
           </div>
         )}
 
-        <div className={`${currentUser ? 'p-4 md:p-12' : ''}`}>
+        <div className={`${currentUser ? 'px-4 py-6 sm:px-6 lg:px-8' : ''}`}>
           {currentUser && (
-            <div className="flex items-center justify-between lg:hidden mb-12">
-              <button onClick={() => setIsSidebarOpen(true)} className="p-5 bg-white shadow-2xl rounded-3xl text-tp-purple"><MenuIcon className="w-6 h-6" /></button>
+            <div className="flex items-center justify-between lg:hidden mb-6">
+              <button 
+                onClick={() => setIsSidebarOpen(true)} 
+                className="p-2.5 bg-white shadow-sm border border-slate-200 rounded-xl text-tp-purple hover:bg-slate-50 transition-colors"
+                aria-label="Open Navigation Menu"
+              >
+                <MenuIcon className="w-6 h-6" />
+              </button>
             </div>
           )}
           <div className={currentUser ? "max-w-7xl mx-auto" : "w-full"}>{renderContent()}</div>

@@ -47,51 +47,51 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
       <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-tp-red/5 rounded-full blur-[100px] -ml-40 -mb-40"></div>
       
       <div className="w-full max-w-md relative z-10 animate-fadeIn">
-        <div className="text-center mb-10">
-          <div className="inline-flex w-20 h-20 bg-white rounded-[24px] items-center justify-center shadow-2xl mb-6">
-            <span className="text-tp-purple font-black text-3xl">S</span>
+        <div className="text-center mb-8">
+          <div className="inline-flex w-16 h-16 bg-white rounded-2xl items-center justify-center shadow-xl mb-4">
+            <span className="text-tp-purple font-extrabold text-2xl">S</span>
           </div>
-          <h1 className="text-3xl font-black text-white tracking-tighter uppercase">Skillence Academy</h1>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">Skillence Academy</h1>
           <div className="flex items-center justify-center gap-2 mt-2">
             <div className={`w-2 h-2 rounded-full ${
-              systemStatus === 'online' ? 'bg-green-500 shadow-[0_0_8px_#22c55e]' : 
-              systemStatus === 'offline' ? 'bg-amber-400 shadow-[0_0_8px_#f59e0b]' : 'bg-gray-400'
+              systemStatus === 'online' ? 'bg-emerald-400 shadow-[0_0_8px_#34d399]' : 
+              systemStatus === 'offline' ? 'bg-amber-400 shadow-[0_0_8px_#fbbf24]' : 'bg-slate-400'
             }`}></div>
-            <p className="text-white/60 font-black text-[9px] uppercase tracking-widest">
+            <p className="text-white/70 font-semibold text-xs uppercase tracking-wider">
               {systemStatus === 'online' ? 'Global Node Online' : systemStatus === 'offline' ? 'Sandbox Mode Ready' : 'Syncing...'}
             </p>
           </div>
         </div>
 
-        <div className="bg-white/95 backdrop-blur-xl rounded-[40px] p-10 md:p-12 shadow-2xl border border-white/20">
-          <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white rounded-3xl p-8 sm:p-10 shadow-2xl border border-white/20">
+          <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
-              <div className="bg-tp-red/10 border border-tp-red/20 p-4 rounded-2xl flex items-center gap-3 text-tp-red">
-                <ExclamationCircleIcon className="w-5 h-5 flex-shrink-0" />
-                <p className="text-[10px] font-black uppercase tracking-widest">{error}</p>
+              <div className="bg-rose-50 border border-rose-200 p-3.5 rounded-xl flex items-center gap-2.5 text-rose-700">
+                <ExclamationCircleIcon className="w-4 h-4 flex-shrink-0" />
+                <p className="text-xs font-semibold">{error}</p>
               </div>
             )}
 
             <div className="space-y-4">
               <div>
-                <label className="text-[9px] font-black text-tp-purple/40 uppercase tracking-widest mb-1.5 block px-1">Enterprise Email</label>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5 block">Enterprise Email</label>
                 <input 
                   type="email" 
                   required
                   placeholder="admin@tp-skillence.com"
-                  className="w-full bg-tp-purple/5 border-2 border-transparent rounded-2xl px-6 py-4 outline-none focus:border-tp-red focus:bg-white transition-all text-tp-purple font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-tp-purple focus:ring-2 focus:ring-tp-purple/20 transition-all text-slate-900 font-medium text-sm"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
 
               <div>
-                <label className="text-[9px] font-black text-tp-purple/40 uppercase tracking-widest mb-1.5 block px-1">Access Code</label>
+                <label className="text-xs font-semibold text-slate-600 uppercase tracking-wider mb-1.5 block">Access Code</label>
                 <input 
                   type="password" 
                   required
                   placeholder="••••••••"
-                  className="w-full bg-tp-purple/5 border-2 border-transparent rounded-2xl px-6 py-4 outline-none focus:border-tp-red focus:bg-white transition-all text-tp-purple font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-tp-purple focus:ring-2 focus:ring-tp-purple/20 transition-all text-slate-900 font-medium text-sm"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />
@@ -101,24 +101,24 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess, onEnterSandbox }) => {
             <button 
               type="submit" 
               disabled={isLoading}
-              className="w-full bg-tp-navy text-white py-5 rounded-[20px] font-black uppercase tracking-[0.2em] text-xs shadow-xl hover:bg-tp-purple hover:-translate-y-0.5 transition-all disabled:opacity-50"
+              className="w-full bg-tp-purple text-white py-3.5 px-6 rounded-xl font-bold uppercase tracking-wider text-xs shadow-md hover:bg-tp-purple-light transition-all disabled:opacity-50"
             >
               {isLoading ? "Validating Session..." : "Authorize Portal"}
             </button>
           </form>
 
-          <div className="mt-8 pt-8 border-t border-tp-purple/5 text-center">
+          <div className="mt-6 pt-6 border-t border-slate-100 text-center">
             <button 
               onClick={onEnterSandbox}
-              className="text-tp-purple/40 hover:text-tp-red font-black uppercase text-[9px] tracking-widest transition-colors"
+              className="text-slate-500 hover:text-tp-purple font-semibold uppercase text-xs tracking-wider transition-colors"
             >
               Emergency Sandbox Access (Offline)
             </button>
           </div>
         </div>
 
-        <div className="text-center mt-8">
-          <p className="text-white/20 text-[8px] font-black uppercase tracking-[0.3em]">
+        <div className="text-center mt-6">
+          <p className="text-white/40 text-xs font-medium uppercase tracking-wider">
             © 2025 Skillence Egypt • Client Specialized Track
           </p>
         </div>

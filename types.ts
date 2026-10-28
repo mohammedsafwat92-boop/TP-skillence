@@ -111,7 +111,7 @@ export interface Quiz {
 export type View = 
   | { type: 'dashboard', skill?: SkillCategory }
   | { type: 'module'; moduleId: string }
-  | { type: 'admin' }
+  | { type: 'admin'; tab?: string }
   | { type: 'lesson'; resource: Resource; fromModuleId?: string }
   | { type: 'quiz'; quizId: string }
   | { type: 'live-coach' }
