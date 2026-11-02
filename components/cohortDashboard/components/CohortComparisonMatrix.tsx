@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Layers,
   ArrowUpDown,
@@ -11,9 +11,11 @@ import {
   CheckCircle2,
   ExternalLink,
   Zap,
-  GraduationCap
+  GraduationCap,
+  Building2,
+  GitCompare,
 } from 'lucide-react';
-import { CohortSummary } from '../types';
+import { CohortSummary, BusinessAccount } from '../types';
 
 interface CohortComparisonMatrixProps {
   cohorts: CohortSummary[];
@@ -21,7 +23,14 @@ interface CohortComparisonMatrixProps {
   onCompareHeadToHead: (cohortAId: string, cohortBId: string) => void;
 }
 
-type SortField = 'sheetIndex' | 'avgOverallScore' | 'avgRoleplayScore' | 'avgTestScore' | 'certificationRate' | 'traineeCount';
+type SortField =
+  | 'sheetIndex'
+  | 'avgOverallScore'
+  | 'avgRoleplayScore'
+  | 'avgTestScore'
+  | 'certificationRate'
+  | 'traineeCount'
+  | 'rpGain';
 
 export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
   cohorts,
@@ -30,17 +39,21 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
 }) => {
   const [sortField, setSortField] = useState<SortField>('sheetIndex');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [groupByAccount, setGroupByAccount] = useState<boolean>(true);
+  const [showDeltaVsBaseline, setShowDeltaVsBaseline] = useState<boolean>(false);
+
+  const baselineCohort = cohorts[0] || null;
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
     } else {
       setSortField(field);
-      setSortDirection('desc'); // default to highest first
+      setSortDirection('desc');
     }
   };
 
-  const sortedCohorts = [...cohorts].sort((a, b) => {
+  const sortFunction = (a: CohortSummary, b: CohortSummary) => {
     let comp = 0;
     if (sortField === 'sheetIndex') comp = a.sheetIndex - b.sheetIndex;
     else if (sortField === 'avgOverallScore') comp = a.avgOverallScore - b.avgOverallScore;
@@ -48,356 +61,419 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
     else if (sortField === 'avgTestScore') comp = a.avgTestScore - b.avgTestScore;
     else if (sortField === 'certificationRate') comp = a.certificationRate - b.certificationRate;
     else if (sortField === 'traineeCount') comp = a.traineeCount - b.traineeCount;
+    else if (sortField === 'rpGain') comp = a.rpGain - b.rpGain;
     return sortDirection === 'asc' ? comp : -comp;
-  });
+  };
+
+  const sortedCohorts = useMemo(() => {
+    return [...cohorts].sort(sortFunction);
+  }, [cohorts, sortField, sortDirection]);
+
+  // Grouped by account
+  const accountGroups = useMemo(() => {
+    const accounts: BusinessAccount[] = ['Mobility', 'Teleco', 'Travel'];
+    return accounts
+      .map((acc) => {
+        const groupCohorts = cohorts.filter((c) => c.account === acc).sort(sortFunction);
+        const totalTrainees = groupCohorts.reduce((s, c) => s + c.traineeCount, 0);
+        const avgOverall =
+          totalTrainees > 0
+            ? Math.round(groupCohorts.reduce((s, c) => s + c.avgOverallScore * c.traineeCount, 0) / totalTrainees)
+            : 0;
+        const avgRP =
+          totalTrainees > 0
+            ? Math.round(groupCohorts.reduce((s, c) => s + c.avgRoleplayScore * c.traineeCount, 0) / totalTrainees)
+            : 0;
+        const avgTest =
+          totalTrainees > 0
+            ? Math.round(groupCohorts.reduce((s, c) => s + c.avgTestScore * c.traineeCount, 0) / totalTrainees)
+            : 0;
+        const avgGain =
+          totalTrainees > 0
+            ? Number(
+                (groupCohorts.reduce((s, c) => s + c.rpGain * c.traineeCount, 0) / totalTrainees).toFixed(2)
+              )
+            : 0;
+
+        return {
+          account: acc,
+          cohorts: groupCohorts,
+          totalTrainees,
+          avgOverall,
+          avgRP,
+          avgTest,
+          avgGain,
+          color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+        };
+      })
+      .filter((g) => g.cohorts.length > 0);
+  }, [cohorts, sortField, sortDirection]);
 
   const getRankBadge = (score: number) => {
-    // Rank according to overall score
-    const rankIndex = [...cohorts].sort((a, b) => b.avgOverallScore - a.avgOverallScore).findIndex((c) => c.avgOverallScore === score);
+    const rankIndex = [...cohorts]
+      .sort((a, b) => b.avgOverallScore - a.avgOverallScore)
+      .findIndex((c) => c.avgOverallScore === score);
     if (rankIndex === 0) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-          <Trophy className="w-3 h-3 text-amber-400" />
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-300">
+          <Trophy className="w-3 h-3 text-amber-600" />
           #1
         </span>
       );
     }
     if (rankIndex === 1) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-400/15 text-slate-300 border border-slate-400/30">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
           #2
         </span>
       );
     }
     if (rankIndex === 2) {
       return (
-        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-700/15 text-amber-500 border border-amber-700/30">
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200">
           #3
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-800 text-slate-400 border border-slate-700">
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
         #{rankIndex + 1}
       </span>
     );
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 88) return 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20';
-    if (score >= 80) return 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20';
-    if (score >= 72) return 'text-amber-400 bg-amber-500/10 border-amber-500/20';
-    return 'text-rose-400 bg-rose-500/10 border-rose-500/20';
+    if (score >= 88) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    if (score >= 80) return 'text-blue-700 bg-blue-50 border-blue-200';
+    if (score >= 72) return 'text-amber-700 bg-amber-50 border-amber-200';
+    return 'text-rose-700 bg-rose-50 border-rose-200';
+  };
+
+  const renderCohortRow = (cohort: CohortSummary) => {
+    const deltaOverall = baselineCohort ? cohort.avgOverallScore - baselineCohort.avgOverallScore : 0;
+    const deltaRP = baselineCohort ? cohort.avgRoleplayScore - baselineCohort.avgRoleplayScore : 0;
+
+    return (
+      <tr key={cohort.id} className="hover:bg-slate-50/80 transition-colors group">
+        {/* Rank & Wave Index */}
+        <td className="py-3 px-4 whitespace-nowrap">
+          <div className="flex items-center gap-2">
+            {getRankBadge(cohort.avgOverallScore)}
+            <span className="px-2 py-0.5 rounded text-xs font-mono font-bold bg-slate-100 text-slate-800 border border-slate-200">
+              {cohort.code}
+            </span>
+          </div>
+        </td>
+
+        {/* Cohort Name, Account Badge & Trainer */}
+        <td className="py-3 px-4">
+          <div>
+            <div className="flex items-center flex-wrap gap-1.5">
+              <span
+                className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0"
+                style={{
+                  backgroundColor: `${cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6')}18`,
+                  color: cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6'),
+                }}
+              >
+                {cohort.account}
+              </span>
+              <span className="font-bold text-slate-900 group-hover:text-[#2E0854] transition-colors">
+                {cohort.name}
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-500 flex items-center gap-2 mt-0.5">
+              <span>Trainer: <strong className="text-slate-700 font-medium">{cohort.trainer}</strong></span>
+              <span className="text-slate-300">•</span>
+              <span className="text-slate-400 font-mono text-[10px]">Tab: "{cohort.tabName}"</span>
+            </div>
+          </div>
+        </td>
+
+        {/* Trainee Count */}
+        <td className="py-3 px-3 text-center">
+          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 font-mono">
+            <Users className="w-3 h-3 text-purple-700" />
+            {cohort.traineeCount}
+          </span>
+        </td>
+
+        {/* Initial → Final RP (1-5 Scale) & Net Gain */}
+        <td className="py-3 px-4">
+          <div className="space-y-0.5">
+            <div className="text-xs font-mono font-bold text-slate-900">
+              {cohort.initialRP?.toFixed(2) || '0.00'} → {cohort.finalRP?.toFixed(2) || '0.00'}
+            </div>
+            <div className="text-[11px] font-mono text-emerald-700 font-bold">
+              +{cohort.rpGain?.toFixed(2) || '0.00'} pts
+            </div>
+          </div>
+        </td>
+
+        {/* Roleplays Avg */}
+        <td className="py-3 px-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5">
+              <span className={`px-2 py-0.5 rounded font-bold border text-xs font-mono ${getScoreColor(cohort.avgRoleplayScore)}`}>
+                {cohort.avgRoleplayScore}%
+              </span>
+              {showDeltaVsBaseline && baselineCohort && cohort.id !== baselineCohort.id && (
+                <span className={`text-[10px] font-mono font-bold ${deltaRP >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                  {deltaRP >= 0 ? `+${deltaRP}` : deltaRP}%
+                </span>
+              )}
+            </div>
+          </div>
+        </td>
+
+        {/* Tests Avg */}
+        <td className="py-3 px-4">
+          <span className={`px-2 py-0.5 rounded font-bold border text-xs font-mono ${getScoreColor(cohort.avgTestScore)}`}>
+            {cohort.avgTestScore}%
+          </span>
+        </td>
+
+        {/* Overall Score */}
+        <td className="py-3 px-4">
+          <div className="flex items-center gap-1.5">
+            <span className={`px-2 py-0.5 rounded-md font-extrabold border text-xs font-mono ${getScoreColor(cohort.avgOverallScore)}`}>
+              {cohort.avgOverallScore}%
+            </span>
+            {showDeltaVsBaseline && baselineCohort && cohort.id !== baselineCohort.id && (
+              <span className={`text-[10px] font-mono font-bold ${deltaOverall >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>
+                {deltaOverall >= 0 ? `+${deltaOverall}` : deltaOverall}%
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* Certification Readiness */}
+        <td className="py-3 px-4">
+          <div className="flex items-center gap-2">
+            <div className="w-16 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div
+                className="h-full bg-emerald-500 rounded-full"
+                style={{ width: `${cohort.certificationRate}%` }}
+              />
+            </div>
+            <span className="font-mono text-xs font-bold text-slate-800">
+              {cohort.certificationRate}%
+            </span>
+          </div>
+        </td>
+
+        {/* Top Performer */}
+        <td className="py-3 px-4">
+          <div className="text-xs">
+            <span className="font-bold text-slate-900 block truncate max-w-[120px]">
+              {cohort.topPerformer?.name || 'N/A'}
+            </span>
+            <span className="text-[11px] font-mono text-emerald-700 font-semibold">
+              Score: {cohort.topPerformer?.score}%
+            </span>
+          </div>
+        </td>
+
+        {/* Actions */}
+        <td className="py-3 px-4 text-right whitespace-nowrap">
+          <div className="flex items-center justify-end gap-1.5">
+            <button
+              onClick={() => onSelectCohort(cohort.id)}
+              className="px-2.5 py-1 rounded bg-slate-100 hover:bg-purple-100 hover:text-[#2E0854] text-slate-700 font-bold text-xs transition-colors cursor-pointer"
+              title="Inspect individual trainees in Directory"
+            >
+              Directory
+            </button>
+            <button
+              onClick={() => onCompareHeadToHead(baselineCohort?.id || cohort.id, cohort.id)}
+              className="px-2.5 py-1 rounded bg-[#2E0854] hover:bg-[#4B1D7C] text-white font-bold text-xs transition-colors cursor-pointer flex items-center gap-1"
+              title="Compare Head-to-Head against baseline"
+            >
+              <GitCompare className="w-3 h-3" />
+              <span>H2H</span>
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
   };
 
   return (
-    <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+    <div className="bg-white border border-slate-200/90 rounded-2xl shadow-xs overflow-hidden">
       {/* Table Header Controls */}
-      <div className="px-6 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-slate-950/60">
+      <div className="px-6 py-4 border-b border-slate-200 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-slate-50/70">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+          <div className="w-8 h-8 rounded-lg bg-purple-100 border border-purple-200 flex items-center justify-center text-[#2E0854]">
             <Layers className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               Cross-Cohort Performance Matrix
-              <span className="text-xs font-normal text-slate-400">
-                ({cohorts.length} {cohorts.length === 1 ? 'Wave' : 'Waves'} • {cohorts.reduce((s, c) => s + c.traineeCount, 0)} Trainees)
+              <span className="text-xs font-normal text-slate-500">
+                ({cohorts.length} Waves · {cohorts.reduce((s, c) => s + c.traineeCount, 0)} Trainees)
               </span>
             </h3>
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-slate-500">
               Comparative benchmark across roleplay simulations and standardized test evaluations
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>Sort by:</span>
+        <div className="flex items-center flex-wrap gap-2 text-xs">
+          {/* Group by Account Toggle */}
+          <button
+            onClick={() => setGroupByAccount(!groupByAccount)}
+            className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              groupByAccount
+                ? 'bg-[#2E0854] text-white border-[#2E0854]'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5" />
+            <span>Group by Account</span>
+          </button>
+
+          {/* Delta vs Baseline Toggle */}
+          <button
+            onClick={() => setShowDeltaVsBaseline(!showDeltaVsBaseline)}
+            className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+              showDeltaVsBaseline
+                ? 'bg-purple-100 text-[#2E0854] border-purple-300'
+                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+            }`}
+            title={`Compare metrics delta vs ${baselineCohort?.code || 'W1'} baseline`}
+          >
+            <GitCompare className="w-3.5 h-3.5" />
+            <span>vs {baselineCohort?.code || 'Baseline'}</span>
+          </button>
+
+          <span className="text-slate-300">|</span>
+
+          {/* Sort Buttons */}
+          <span className="text-slate-500 font-semibold">Sort:</span>
           <button
             onClick={() => handleSort('sheetIndex')}
             className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
               sortField === 'sheetIndex'
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            Wave Order (1-{cohorts.length})
+            Wave
           </button>
           <button
             onClick={() => handleSort('avgOverallScore')}
             className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
               sortField === 'avgOverallScore'
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            Overall Score
+            Overall
           </button>
           <button
-            onClick={() => handleSort('avgRoleplayScore')}
+            onClick={() => handleSort('rpGain')}
             className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-              sortField === 'avgRoleplayScore'
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+              sortField === 'rpGain'
+                ? 'bg-slate-900 text-white font-semibold'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
             }`}
           >
-            Roleplays
-          </button>
-          <button
-            onClick={() => handleSort('avgTestScore')}
-            className={`px-2.5 py-1 rounded-md transition-colors cursor-pointer ${
-              sortField === 'avgTestScore'
-                ? 'bg-indigo-600 text-white font-semibold'
-                : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-            }`}
-          >
-            Tests
+            RP Gain
           </button>
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table Content */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
-          <thead className="bg-slate-950 text-slate-400 font-semibold border-b border-slate-800 uppercase tracking-wider text-[11px]">
+          <thead className="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200 uppercase tracking-wider text-[11px]">
             <tr>
-              <th className="py-3.5 px-4">Rank & Wave</th>
-              <th className="py-3.5 px-4">Cohort & Facilitator</th>
-              <th className="py-3.5 px-3 text-center">Trainees</th>
-              <th
-                onClick={() => handleSort('avgRoleplayScore')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors"
-              >
+              <th className="py-3 px-4">Rank & Wave</th>
+              <th className="py-3 px-4">Cohort & Facilitator</th>
+              <th className="py-3 px-3 text-center">Trainees</th>
+              <th onClick={() => handleSort('rpGain')} className="py-3 px-4 cursor-pointer hover:text-slate-900">
                 <div className="flex items-center gap-1">
-                  <span>Roleplays Avg (5 Scenarios)</span>
+                  <span>RP 1-5 Scale & Gain</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th
-                onClick={() => handleSort('avgTestScore')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors"
-              >
+              <th onClick={() => handleSort('avgRoleplayScore')} className="py-3 px-4 cursor-pointer hover:text-slate-900">
                 <div className="flex items-center gap-1">
-                  <span>Tests Avg (5 Modules)</span>
+                  <span>Roleplays Avg</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th
-                onClick={() => handleSort('avgOverallScore')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors"
-              >
+              <th onClick={() => handleSort('avgTestScore')} className="py-3 px-4 cursor-pointer hover:text-slate-900">
+                <div className="flex items-center gap-1">
+                  <span>Tests Avg</span>
+                  <ArrowUpDown className="w-3 h-3" />
+                </div>
+              </th>
+              <th onClick={() => handleSort('avgOverallScore')} className="py-3 px-4 cursor-pointer hover:text-slate-900">
                 <div className="flex items-center gap-1">
                   <span>Combined Score</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th
-                onClick={() => handleSort('certificationRate')}
-                className="py-3.5 px-4 cursor-pointer hover:text-white transition-colors"
-              >
+              <th onClick={() => handleSort('certificationRate')} className="py-3 px-4 cursor-pointer hover:text-slate-900">
                 <div className="flex items-center gap-1">
                   <span>Cert Readiness</span>
                   <ArrowUpDown className="w-3 h-3" />
                 </div>
               </th>
-              <th className="py-3.5 px-4">Top Performer</th>
-              <th className="py-3.5 px-4 text-right">Actions</th>
+              <th className="py-3 px-4">Top Performer</th>
+              <th className="py-3 px-4 text-right">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-800/60 font-medium">
-            {sortedCohorts.map((cohort) => (
-              <tr
-                key={cohort.id}
-                className="hover:bg-slate-800/40 transition-colors group"
-              >
-                {/* Rank & Wave Index */}
-                <td className="py-3.5 px-4 whitespace-nowrap">
-                  <div className="flex items-center gap-2">
-                    {getRankBadge(cohort.avgOverallScore)}
-                    <span className="px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                      {cohort.code || `W${cohort.sheetIndex}`}
-                    </span>
-                  </div>
-                </td>
-
-                {/* Cohort Name, Account Badge & Trainer */}
-                <td className="py-3.5 px-4">
-                  <div>
-                    <div className="flex items-center flex-wrap gap-2">
-                      <span
-                        className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0"
-                        style={{
-                          backgroundColor: `${cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6')}20`,
-                          color: cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6'),
-                        }}
-                      >
-                        {cohort.account}
-                      </span>
-                      <span className="font-bold text-white group-hover:text-indigo-300 transition-colors">
-                        {cohort.name}
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-1">
-                      <span>Trainer: <strong className="text-slate-300 font-medium">{cohort.trainer}</strong></span>
-                      <span className="text-slate-600">•</span>
-                      <span className="text-slate-400 font-mono text-[10px]">Tab: "{cohort.tabName}"</span>
-                    </div>
-                  </div>
-                </td>
-
-                {/* Trainee Count */}
-                <td className="py-3.5 px-3 text-center">
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-800/80 text-slate-300 border border-slate-700">
-                    <Users className="w-3 h-3 text-indigo-400" />
-                    {cohort.traineeCount}
-                  </span>
-                </td>
-
-                {/* Roleplays Avg */}
-                <td className="py-3.5 px-4">
-                  <div className="space-y-1 max-w-[130px]">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className={`px-2 py-0.5 rounded font-bold border ${getScoreColor(cohort.avgRoleplayScore)}`}>
-                        {cohort.avgRoleplayScore}%
-                      </span>
-                      <span className="text-[11px] text-slate-400">{cohort.roleplayPassRate}% pass</span>
-                    </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-indigo-500 h-1.5 rounded-full"
-                        style={{ width: `${cohort.avgRoleplayScore}%` }}
-                      />
-                    </div>
-                  </div>
-                </td>
-
-                {/* Tests Avg */}
-                <td className="py-3.5 px-4">
-                  <div className="space-y-1 max-w-[130px]">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className={`px-2 py-0.5 rounded font-bold border ${getScoreColor(cohort.avgTestScore)}`}>
-                        {cohort.avgTestScore}%
-                      </span>
-                      <span className="text-[11px] text-slate-400">{cohort.testPassRate}% cert</span>
-                    </div>
-                    <div className="w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
-                      <div
-                        className="bg-cyan-500 h-1.5 rounded-full"
-                        style={{ width: `${cohort.avgTestScore}%` }}
-                      />
-                    </div>
-                  </div>
-                </td>
-
-                {/* Overall Score */}
-                <td className="py-3.5 px-4">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-extrabold text-white">
-                      {cohort.avgOverallScore}%
-                    </span>
-                    {cohort.avgOverallScore >= 85 ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        Top Tier
-                      </span>
-                    ) : cohort.avgOverallScore >= 78 ? (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                        Target
-                      </span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                        Ramping
-                      </span>
-                    )}
-                  </div>
-                </td>
-
-                {/* Certification Rate */}
-                <td className="py-3.5 px-4">
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-slate-200">{cohort.certificationRate}%</span>
-                    {cohort.atRiskCount > 0 ? (
-                      <span className="text-[10px] text-amber-400 flex items-center gap-0.5">
-                        ({cohort.atRiskCount} at-risk)
-                      </span>
-                    ) : (
-                      <span className="text-[10px] text-emerald-400">100% on track</span>
-                    )}
-                  </div>
-                </td>
-
-                {/* Top Performer */}
-                <td className="py-3.5 px-4">
-                  <div className="flex items-center gap-1.5">
-                    <Award className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <div>
-                      <div className="text-white font-medium truncate max-w-[130px]">
-                        {cohort.topPerformer.name}
+          <tbody className="divide-y divide-slate-100 font-medium">
+            {groupByAccount ? (
+              accountGroups.map((group) => (
+                <React.Fragment key={group.account}>
+                  {/* Account Subheader & Subtotals */}
+                  <tr className="bg-slate-50/90 border-y border-slate-200 font-bold">
+                    <td colSpan={2} className="py-2.5 px-4">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: group.color }}
+                        />
+                        <span className="text-slate-900 uppercase tracking-wide text-xs">
+                          {group.account} Account Portfolio
+                        </span>
+                        <span className="text-slate-500 font-normal">
+                          ({group.cohorts.length} Waves · {group.totalTrainees} Trainees)
+                        </span>
                       </div>
-                      <div className="text-[10px] text-slate-400">
-                        Score: <span className="text-amber-400 font-semibold">{cohort.topPerformer.score}%</span>
-                      </div>
-                    </div>
-                  </div>
-                </td>
-
-                {/* Actions */}
-                <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                  <div className="flex items-center justify-end gap-1.5">
-                    <button
-                      onClick={() => onSelectCohort(cohort.id)}
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition-colors cursor-pointer border border-slate-700"
-                    >
-                      View Trainees
-                    </button>
-                    {cohort.sheetIndex > 1 && (
-                      <button
-                        onClick={() => onCompareHeadToHead('cohort-1', cohort.id)}
-                        className="px-2 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-[11px] font-medium transition-colors cursor-pointer border border-indigo-500/30"
-                        title="Compare with Cohort 1 baseline"
-                      >
-                        vs C1
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                    </td>
+                    <td className="py-2.5 px-3 text-center font-mono text-slate-700">
+                      {group.totalTrainees}
+                    </td>
+                    <td className="py-2.5 px-4 font-mono text-emerald-700">
+                      +{group.avgGain} avg gain
+                    </td>
+                    <td className="py-2.5 px-4 font-mono text-slate-700">
+                      {group.avgRP}%
+                    </td>
+                    <td className="py-2.5 px-4 font-mono text-slate-700">
+                      {group.avgTest}%
+                    </td>
+                    <td className="py-2.5 px-4 font-mono text-[#2E0854]">
+                      {group.avgOverall}%
+                    </td>
+                    <td colSpan={3} className="py-2.5 px-4" />
+                  </tr>
+                  {group.cohorts.map(renderCohortRow)}
+                </React.Fragment>
+              ))
+            ) : (
+              sortedCohorts.map(renderCohortRow)
+            )}
           </tbody>
-
-          {/* Table Footer Summary Row */}
-          <tfoot className="bg-slate-950 font-semibold text-slate-300 border-t-2 border-slate-700">
-            <tr>
-              <td className="py-3 px-4 font-bold text-white uppercase text-[11px]">
-                Program Average
-              </td>
-              <td className="py-3 px-4 text-[11px] text-slate-400">
-                Collective {cohorts.length} Waves
-              </td>
-              <td className="py-3 px-3 text-center text-indigo-400 font-bold">
-                {cohorts.reduce((acc, c) => acc + c.traineeCount, 0)}
-              </td>
-              <td className="py-3 px-4 text-indigo-400 font-bold">
-                {Math.round(cohorts.reduce((acc, c) => acc + c.avgRoleplayScore, 0) / (cohorts.length || 1))}%
-              </td>
-              <td className="py-3 px-4 text-cyan-400 font-bold">
-                {Math.round(cohorts.reduce((acc, c) => acc + c.avgTestScore, 0) / (cohorts.length || 1))}%
-              </td>
-              <td className="py-3 px-4 text-white font-extrabold text-sm">
-                {Math.round(cohorts.reduce((acc, c) => acc + c.avgOverallScore, 0) / (cohorts.length || 1))}%
-              </td>
-              <td className="py-3 px-4 text-emerald-400 font-bold">
-                {Math.round(cohorts.reduce((acc, c) => acc + c.certificationRate, 0) / (cohorts.length || 1))}%
-              </td>
-              <td className="py-3 px-4 text-slate-400 text-[11px]">
-                {cohorts.length} {cohorts.length === 1 ? 'Wave' : 'Waves'} Evaluated
-              </td>
-              <td className="py-3 px-4 text-right text-[11px] text-emerald-400">
-                Synchronized
-              </td>
-            </tr>
-          </tfoot>
         </table>
       </div>
     </div>
   );
 };
+
+export default CohortComparisonMatrix;

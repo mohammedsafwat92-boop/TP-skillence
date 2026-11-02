@@ -382,14 +382,32 @@ function computeLocalAdminStats() {
   return { totalAgents, avgProgress, avgWeeklyProgress, atRisk };
 }
 
-async function callApi(action: string, payload: any = {}) {
+const READ_ACTIONS = new Set([
+  'get_user_plan',
+  'get_all_resources',
+  'get_admin_stats',
+  'get_weekly_assignments',
+  'get_wave_configs',
+  'getMyLessons',
+  'test_connection',
+  'get_all_users',
+  'get_roster'
+]);
+
+function isReadAction(action: string): boolean {
+  if (READ_ACTIONS.has(action)) return true;
+  return action.startsWith('get_') || action.startsWith('fetch_');
+}
+
+async function executeFetch(action: string, payload: any = {}): Promise<any> {
   const requestBody = JSON.stringify({ 
     action, 
     ...payload 
   });
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  // 20-second timeout for Google Apps Script cold starts
+  const timer = setTimeout(() => controller.abort(), 20000);
 
   try {
     const response = await fetch(WEB_APP_URL, {
@@ -426,6 +444,30 @@ async function callApi(action: string, payload: any = {}) {
   } catch (error) {
     clearTimeout(timer);
     throw error;
+  }
+}
+
+async function callApi(action: string, payload: any = {}) {
+  const isRead = isReadAction(action);
+  const maxRetries = isRead ? 2 : 0;
+  let attempt = 0;
+
+  while (true) {
+    try {
+      return await executeFetch(action, payload);
+    } catch (err: any) {
+      const isAuthError = err?.message?.includes('AUTH_FAILED');
+      const isAbortOrNetwork = err?.name === 'AbortError' || err?.message?.includes('NETWORK_ERROR') || err?.message?.includes('Failed to fetch');
+      
+      if (!isAuthError && isRead && attempt < maxRetries && isAbortOrNetwork) {
+        attempt++;
+        const backoffMs = attempt * 800; // 800ms, 1600ms
+        console.warn(`[GoogleSheetService] Retrying read action "${action}" (attempt ${attempt}/${maxRetries}) in ${backoffMs}ms due to:`, err.message);
+        await new Promise(res => setTimeout(res, backoffMs));
+        continue;
+      }
+      throw err;
+    }
   }
 }
 

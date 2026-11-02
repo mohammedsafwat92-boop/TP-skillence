@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { INITIAL_COHORTS_DATA } from './data/mockCohortsData';
 import { BusinessAccount, CohortSummary, ViewTab } from './types';
 import { Header } from './components/Header';
@@ -12,9 +12,9 @@ import { SheetsDataManagerModal } from './components/SheetsDataManagerModal';
 import {
   downloadSixSheetExcelTemplate,
   exportCurrentCohortsToExcel,
-  recalculateCohortSummariesFromDirectory
+  recalculateCohortSummariesFromDirectory,
 } from './utils/sheetParser';
-import { mapLiveUsersToCohorts } from './utils/liveRosterMapper';
+import { mapLiveUsersToCohorts, normalizeWaveKey } from './utils/liveRosterMapper';
 import { UserProfile } from '../../types';
 import {
   FileSpreadsheet,
@@ -24,37 +24,88 @@ import {
   RefreshCw,
   Sparkles,
   Users,
-  RotateCcw
+  RotateCcw,
+  Layers,
+  Database,
+  Filter,
 } from 'lucide-react';
+
+export type DataSourceMode = 'cross_referenced' | 'live_only' | 'benchmark_only';
 
 export interface CohortAnalyticsDashboardProps {
   liveUsers?: UserProfile[];
   adminStats?: any;
   currentUser?: UserProfile;
   onRefreshUsers?: () => void;
+  activeWave?: string;
+  onSelectWave?: (wave: string) => void;
+  waveConfigs?: Record<string, any>;
 }
 
 export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> = ({
   liveUsers = [],
   adminStats,
   currentUser,
-  onRefreshUsers
+  onRefreshUsers,
+  activeWave,
+  onSelectWave,
+  waveConfigs = {},
 }) => {
-  const [cohorts, setCohorts] = useState<CohortSummary[]>(INITIAL_COHORTS_DATA);
+  const [dataSourceMode, setDataSourceMode] = useState<DataSourceMode>('cross_referenced');
+  const [cohorts, setCohorts] = useState<CohortSummary[]>(() =>
+    mapLiveUsersToCohorts(liveUsers, adminStats, INITIAL_COHORTS_DATA, waveConfigs, 'cross_referenced')
+  );
   const [accountFilter, setAccountFilter] = useState<'all' | BusinessAccount>('all');
+  const [internalSelectedWave, setInternalSelectedWave] = useState<string>('all');
   const [currentTab, setCurrentTab] = useState<ViewTab>('dashboard');
   const [isDataManagerOpen, setIsDataManagerOpen] = useState<boolean>(false);
   const [isSyncing] = useState<boolean>(false);
   const [sheetSourceType, setSheetSourceType] = useState<string>('google_sheets');
   const [selectedCohortForTrainees, setSelectedCohortForTrainees] = useState<string | null>(null);
-  const [headToHeadCohortA, setHeadToHeadCohortA] = useState<string>('cohort-1');
-  const [headToHeadCohortB, setHeadToHeadCohortB] = useState<string>('cohort-5');
+  const [headToHeadCohortA, setHeadToHeadCohortA] = useState<string>('W1');
+  const [headToHeadCohortB, setHeadToHeadCohortB] = useState<string>('W5');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Sync internal selected wave with external prop activeWave if provided
+  useEffect(() => {
+    if (activeWave) {
+      const norm = normalizeWaveKey(activeWave);
+      setInternalSelectedWave(norm.canonical);
+    }
+  }, [activeWave]);
+
+  // Synchronize cohorts when liveUsers, adminStats, or dataSourceMode changes
+  useEffect(() => {
+    const updated = mapLiveUsersToCohorts(
+      liveUsers,
+      adminStats,
+      INITIAL_COHORTS_DATA,
+      waveConfigs,
+      dataSourceMode
+    );
+    setCohorts(updated);
+  }, [liveUsers, adminStats, dataSourceMode, waveConfigs]);
+
+  // Filter cohorts by account AND wave (if a specific wave is selected)
   const filteredCohorts = useMemo(() => {
-    if (accountFilter === 'all') return cohorts;
-    return cohorts.filter((c) => c.account === accountFilter);
-  }, [cohorts, accountFilter]);
+    let list = cohorts;
+    if (accountFilter !== 'all') {
+      list = list.filter((c) => c.account === accountFilter);
+    }
+    if (internalSelectedWave !== 'all') {
+      const normSelected = normalizeWaveKey(internalSelectedWave);
+      const waveFiltered = list.filter(
+        (c) =>
+          normalizeWaveKey(c.tabName).waveNum === normSelected.waveNum ||
+          normalizeWaveKey(c.name).waveNum === normSelected.waveNum ||
+          c.code.toLowerCase() === normSelected.shortCode.toLowerCase()
+      );
+      if (waveFiltered.length > 0) {
+        list = waveFiltered;
+      }
+    }
+    return list;
+  }, [cohorts, accountFilter, internalSelectedWave]);
 
   // Account rollups strictly derived from active trainees in each cohort
   const accountRollups = useMemo(() => {
@@ -110,6 +161,19 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
     };
   }, [cohorts]);
 
+  // Available waves for the currently selected account
+  const availableAccountWaves = useMemo(() => {
+    const relevant = accountFilter === 'all' ? cohorts : cohorts.filter((c) => c.account === accountFilter);
+    return relevant.map((c) => ({
+      id: c.id,
+      code: c.code || `W${c.sheetIndex}`,
+      name: c.name,
+      tabName: c.tabName || `Wave ${c.sheetIndex}`,
+      count: c.traineeCount || (c.trainees || []).length,
+      account: c.account,
+    }));
+  }, [cohorts, accountFilter]);
+
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => {
@@ -119,8 +183,14 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
 
   const handleSelectAccountFilter = (acc: 'all' | BusinessAccount) => {
     setAccountFilter(acc);
+    setInternalSelectedWave('all');
+    if (onSelectWave) onSelectWave('all');
     setSelectedCohortForTrainees(null);
-    setCurrentTab('dashboard');
+  };
+
+  const handleSelectWavePill = (waveCanonical: string) => {
+    setInternalSelectedWave(waveCanonical);
+    if (onSelectWave) onSelectWave(waveCanonical);
   };
 
   const handleUpdateCohorts = (newCohorts: CohortSummary[], sourceType: string = sheetSourceType) => {
@@ -131,27 +201,32 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
     showToast(`Updated directory: ${refreshed.length} waves and ${totalCount} trainees synchronized.`);
   };
 
+  const handleSwitchDataSourceMode = (mode: DataSourceMode) => {
+    setDataSourceMode(mode);
+    if (mode === 'cross_referenced') {
+      const mapped = mapLiveUsersToCohorts(liveUsers, adminStats, INITIAL_COHORTS_DATA, waveConfigs, 'cross_referenced');
+      setCohorts(mapped);
+      setSheetSourceType('cross_referenced');
+      showToast(`Switched to Cross-Referenced Mode: Unified Live Roster with 6-Sheet Benchmarks.`);
+    } else if (mode === 'live_only') {
+      const mapped = mapLiveUsersToCohorts(liveUsers, adminStats, INITIAL_COHORTS_DATA, waveConfigs, 'live_only');
+      setCohorts(mapped);
+      setSheetSourceType('live_skillence_roster');
+      showToast(`Switched to Live Roster Only: Showing ${mapped.length} live waves from Skillence.`);
+    } else {
+      setCohorts(INITIAL_COHORTS_DATA);
+      setSheetSourceType('google_sheets');
+      showToast(`Switched to 6-Sheet Benchmark Only: Standard baseline cohorts.`);
+    }
+  };
+
   const handleSyncLiveRoster = () => {
     if (!liveUsers || liveUsers.length === 0) {
       showToast('Live roster is refreshing, please wait a moment...');
       if (onRefreshUsers) onRefreshUsers();
       return;
     }
-    const liveCohorts = mapLiveUsersToCohorts(liveUsers, adminStats);
-    if (liveCohorts.length === 0) {
-      showToast('No active agent records found in live roster.');
-      return;
-    }
-    setCohorts(liveCohorts);
-    setSheetSourceType('live_skillence_roster');
-    const totalLiveTrainees = liveCohorts.reduce((s, c) => s + c.traineeCount, 0);
-    showToast(`Mapped ${liveCohorts.length} live cohort waves with ${totalLiveTrainees} agents from Skillence Roster!`);
-  };
-
-  const handleResetToDefaultSheets = () => {
-    setCohorts(INITIAL_COHORTS_DATA);
-    setSheetSourceType('google_sheets');
-    showToast('Switched to standard 6-Sheet benchmark model.');
+    handleSwitchDataSourceMode('cross_referenced');
   };
 
   const handleExportExcel = () => {
@@ -184,10 +259,10 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
   };
 
   return (
-    <div className="min-h-screen bg-[#F4F5F8] text-[#111116] flex flex-col font-sans">
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans">
       {toastMessage && (
-        <div className="fixed bottom-5 right-5 z-50 bg-[#050505] text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2 border border-[#06C167]">
-          <CheckCircle2 className="w-4 h-4 text-[#06C167]" />
+        <div className="fixed bottom-5 right-5 z-50 bg-[#2E0854] text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2 border border-purple-400">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
       )}
@@ -202,93 +277,163 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
         onSyncLiveRoster={handleSyncLiveRoster}
         hasLiveRoster={liveUsers.length > 0}
         isSyncing={isSyncing}
-        sheetSourceType={sheetSourceType}
+        sheetSourceType={dataSourceMode}
       />
 
+      {/* 3-Mode Data Source Switcher & Top Utility Bar */}
+      <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <Database className="w-3.5 h-3.5 text-purple-700" />
+              Intelligence Mode:
+            </span>
+            <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200">
+              <button
+                onClick={() => handleSwitchDataSourceMode('cross_referenced')}
+                className={`px-3 py-1 rounded-md font-bold text-xs transition-all cursor-pointer ${
+                  dataSourceMode === 'cross_referenced'
+                    ? 'bg-[#2E0854] text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Seamlessly merges live Skillence trainees & SVAR metrics into 6-Sheet benchmarks"
+              >
+                Cross-Referenced (App + Benchmark)
+              </button>
+              <button
+                onClick={() => handleSwitchDataSourceMode('live_only')}
+                className={`px-3 py-1 rounded-md font-bold text-xs transition-all cursor-pointer ${
+                  dataSourceMode === 'live_only'
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Strictly display live users registered in Skillence Roster"
+              >
+                Live Skillence Roster Only
+              </button>
+              <button
+                onClick={() => handleSwitchDataSourceMode('benchmark_only')}
+                className={`px-3 py-1 rounded-md font-bold text-xs transition-all cursor-pointer ${
+                  dataSourceMode === 'benchmark_only'
+                    ? 'bg-slate-700 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+                title="Standard 6-Sheet baseline data"
+              >
+                6-Sheet Benchmark Only
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <button
+              onClick={() => setIsDataManagerOpen(true)}
+              className="text-[#2E0854] hover:text-[#4B1D7C] hover:underline font-bold cursor-pointer flex items-center gap-1"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Configure 6 Sheets</span>
+            </button>
+            <span className="text-slate-300">|</span>
+            <button
+              onClick={handleExportExcel}
+              className="text-slate-600 hover:text-slate-900 flex items-center gap-1 font-bold cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5 text-purple-600" />
+              <span>Export .XLSX</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Global Account Filter Bar */}
-      <div className="bg-[#050505] border-b-2 border-[#06C167] text-white px-4 sm:px-6 lg:px-8 py-2.5">
+      <div className="bg-[#2E0854] border-b border-purple-900 text-white px-4 sm:px-6 lg:px-8 py-2.5">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-zinc-400 mr-1">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-200 mr-1">
               Business Accounts:
             </span>
             <button
               onClick={() => handleSelectAccountFilter('all')}
-              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+              className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer ${
                 accountFilter === 'all'
-                  ? 'bg-white text-black'
-                  : 'bg-zinc-900 text-zinc-300 border border-zinc-700 hover:text-white'
+                  ? 'bg-white text-[#2E0854] shadow-sm'
+                  : 'bg-white/10 text-purple-100 hover:bg-white/20'
               }`}
             >
               All Accounts ({filterCounts.totalWaves} Waves · {filterCounts.totalCount} Agents)
             </button>
             <button
               onClick={() => handleSelectAccountFilter('Mobility')}
-              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+              className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer ${
                 accountFilter === 'Mobility'
-                  ? 'bg-[#06C167] text-black'
-                  : 'bg-zinc-900 text-emerald-400 border border-emerald-700/50 hover:bg-zinc-800'
+                  ? 'bg-[#06C167] text-white shadow-sm'
+                  : 'bg-white/10 text-emerald-300 hover:bg-white/20'
               }`}
             >
-              Mobility ({filterCounts.mobilityWaves} {filterCounts.mobilityWaves === 1 ? 'Wave' : 'Waves'} · {filterCounts.mobilityCount} Agents)
+              Mobility ({filterCounts.mobilityWaves} Waves · {filterCounts.mobilityCount} Agents)
             </button>
             <button
               onClick={() => handleSelectAccountFilter('Teleco')}
-              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+              className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer ${
                 accountFilter === 'Teleco'
-                  ? 'bg-[#3B82F6] text-white'
-                  : 'bg-zinc-900 text-blue-400 border border-blue-700/50 hover:bg-zinc-800'
+                  ? 'bg-[#3B82F6] text-white shadow-sm'
+                  : 'bg-white/10 text-blue-300 hover:bg-white/20'
               }`}
             >
-              Teleco ({filterCounts.telecoWaves} {filterCounts.telecoWaves === 1 ? 'Wave' : 'Waves'} · {filterCounts.telecoCount} Agents)
+              Teleco ({filterCounts.telecoWaves} Waves · {filterCounts.telecoCount} Agents)
             </button>
             <button
               onClick={() => handleSelectAccountFilter('Travel')}
-              className={`px-3 py-1 rounded-md font-bold transition-colors cursor-pointer ${
+              className={`px-3 py-1 rounded-md font-bold transition-all cursor-pointer ${
                 accountFilter === 'Travel'
-                  ? 'bg-[#8B5CF6] text-white'
-                  : 'bg-zinc-900 text-purple-400 border border-purple-700/50 hover:bg-zinc-800'
+                  ? 'bg-[#8B5CF6] text-white shadow-sm'
+                  : 'bg-white/10 text-purple-300 hover:bg-white/20'
               }`}
             >
-              Travel ({filterCounts.travelWaves} {filterCounts.travelWaves === 1 ? 'Wave' : 'Waves'} · {filterCounts.travelCount} Agents)
+              Travel ({filterCounts.travelWaves} Waves · {filterCounts.travelCount} Agents)
             </button>
           </div>
-          <div className="flex items-center gap-2">
-            {sheetSourceType === 'live_skillence_roster' ? (
+        </div>
+      </div>
+
+      {/* Secondary Wave Filter Pill Bar */}
+      <div className="bg-slate-100/90 border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-2">
+        <div className="max-w-7xl mx-auto flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 mr-1 flex items-center gap-1">
+            <Filter className="w-3 h-3 text-slate-400" />
+            Wave Selection:
+          </span>
+          <button
+            onClick={() => handleSelectWavePill('all')}
+            className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer border ${
+              internalSelectedWave === 'all'
+                ? 'bg-white text-[#2E0854] border-purple-300 shadow-xs'
+                : 'bg-white/60 text-slate-600 border-slate-200 hover:bg-white hover:text-slate-900'
+            }`}
+          >
+            All Waves ({cohorts.length})
+          </button>
+          {availableAccountWaves.map((w) => {
+            const isSelected = internalSelectedWave === w.tabName || internalSelectedWave === w.code;
+            return (
               <button
-                onClick={handleResetToDefaultSheets}
-                className="text-amber-400 hover:text-amber-300 flex items-center gap-1 font-bold cursor-pointer"
-                title="Switch back to standard 6-sheet benchmark data"
+                key={w.id}
+                onClick={() => handleSelectWavePill(w.tabName)}
+                className={`px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-[#2E0854] text-white border-[#2E0854] shadow-xs'
+                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
               >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Default 6 Sheets</span>
+                <span>{w.code}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                  isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                }`}>
+                  {w.count}
+                </span>
               </button>
-            ) : (
-              <button
-                onClick={handleSyncLiveRoster}
-                className="text-emerald-400 hover:text-emerald-300 flex items-center gap-1 font-bold cursor-pointer"
-                title="Sync from live Skillence Roster"
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>Sync Live Roster</span>
-              </button>
-            )}
-            <span className="text-zinc-600">·</span>
-            <button
-              onClick={() => setIsDataManagerOpen(true)}
-              className="text-[#06C167] hover:underline font-bold cursor-pointer"
-            >
-              Sync 6 Sheets
-            </button>
-            <span className="text-zinc-600">·</span>
-            <button
-              onClick={handleExportExcel}
-              className="text-zinc-200 hover:text-white flex items-center gap-1 font-bold cursor-pointer"
-            >
-              <Download className="w-3.5 h-3.5 text-[#06C167]" />
-              <span>Export .XLSX</span>
-            </button>
-          </div>
+            );
+          })}
         </div>
       </div>
 
@@ -301,8 +446,8 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
               <div
                 key={r.account}
                 onClick={() => handleSelectAccountFilter(r.account)}
-                className={`bg-white border rounded-2xl p-5 shadow-sm transition-all cursor-pointer hover:shadow-md ${
-                  isSelected ? 'ring-2 ring-offset-1 border-transparent' : 'border-[#E5E7EC]'
+                className={`bg-white border rounded-2xl p-5 shadow-xs transition-all cursor-pointer hover:shadow-md ${
+                  isSelected ? 'ring-2 ring-offset-1 border-transparent' : 'border-slate-200/90'
                 }`}
                 style={{
                   borderTop: `4px solid ${r.color}`,
@@ -316,7 +461,7 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
                   >
                     {r.account} Account
                   </span>
-                  <span className="text-xs font-mono font-bold text-zinc-600">
+                  <span className="text-xs font-mono font-bold text-slate-600">
                     {r.wavesCount} {r.wavesCount === 1 ? 'Wave' : 'Waves'} · {r.headcount} Trainees
                   </span>
                 </div>
@@ -329,6 +474,7 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
                       onClick={(e) => {
                         e.stopPropagation();
                         setAccountFilter(r.account);
+                        handleSelectWavePill(wb.code);
                         setSelectedCohortForTrainees(wb.id);
                         setCurrentTab('trainees');
                       }}
@@ -345,22 +491,22 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
                   ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-zinc-100 text-xs tabular-nums">
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs tabular-nums">
                   <div>
-                    <span className="text-zinc-500 block">Initial → Final</span>
-                    <strong className="text-sm font-mono text-zinc-900">
+                    <span className="text-slate-500 block">Initial → Final</span>
+                    <strong className="text-sm font-mono text-slate-900">
                       {r.initialRP.toFixed(2)} → {r.finalRP.toFixed(2)}
                     </strong>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Net RP Uplift</span>
-                    <strong className="text-sm font-mono text-[#08755D]">
+                    <span className="text-slate-500 block">Net RP Uplift</span>
+                    <strong className="text-sm font-mono text-[#06C167]">
                       +{r.gain.toFixed(2)} pts
                     </strong>
                   </div>
                   <div>
-                    <span className="text-zinc-500 block">Modules / Att.</span>
-                    <strong className="text-sm font-mono text-zinc-900">
+                    <span className="text-slate-500 block">Modules / Att.</span>
+                    <strong className="text-sm font-mono text-slate-900">
                       {r.moduleComp.toFixed(1)}% · {r.attendanceComp.toFixed(1)}%
                     </strong>
                   </div>
@@ -373,12 +519,12 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
         {currentTab === 'dashboard' && (
           <div className="space-y-6">
             <CohortOverviewCards cohorts={filteredCohorts} />
+            <CrossCohortCharts cohorts={filteredCohorts} />
             <CohortComparisonMatrix
               cohorts={filteredCohorts}
               onSelectCohort={handleSelectCohortFromMatrix}
               onCompareHeadToHead={handleCompareHeadToHead}
             />
-            <CrossCohortCharts cohorts={filteredCohorts} />
             <TraineeDirectory
               cohorts={filteredCohorts}
               selectedCohortId={selectedCohortForTrainees}
@@ -422,30 +568,30 @@ export const CohortAnalyticsDashboard: React.FC<CohortAnalyticsDashboardProps> =
         )}
 
         {currentTab === 'sheet_sync' && (
-          <div className="bg-white border border-[#E5E7EC] rounded-2xl p-6 shadow-sm">
-            <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
+          <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs">
+            <div className="flex items-center justify-between pb-4 border-b border-slate-200">
               <div>
-                <h3 className="text-base font-bold text-zinc-900 flex items-center gap-2">
-                  <FileSpreadsheet className="w-5 h-5 text-[#06C167]" />
+                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                  <FileSpreadsheet className="w-5 h-5 text-emerald-600" />
                   6 Google Sheets Workbooks &amp; Account Hierarchy
                 </h3>
-                <p className="text-xs text-zinc-500 mt-0.5">
+                <p className="text-xs text-slate-500 mt-0.5">
                   Connected across Mobility (Waves 1–2), Teleco (Wave 3), and Travel (Waves 4–6)
                 </p>
               </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleDownloadTemplate}
-                  className="px-3.5 py-2 bg-zinc-100 hover:bg-zinc-200 text-zinc-800 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer"
+                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer"
                 >
                   <FileDown className="w-4 h-4" />
                   <span>Template (.xlsx)</span>
                 </button>
                 <button
                   onClick={() => setIsDataManagerOpen(true)}
-                  className="px-4 py-2 bg-[#06C167] hover:bg-[#05ad5c] text-black rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2"
+                  className="px-4 py-2 bg-[#2E0854] hover:bg-[#4B1D7C] text-white rounded-lg text-xs font-extrabold transition-all cursor-pointer flex items-center gap-2"
                 >
-                  <RefreshCw className="w-3.5 h-3.5" />
+                  <RefreshCw className="w-3.5 h-3.5 text-purple-200" />
                   <span>Open 6-Sheet Sync Wizard</span>
                 </button>
               </div>

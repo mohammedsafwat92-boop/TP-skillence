@@ -87,7 +87,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
 
   const availableWaves = useMemo(() => {
     if (!userList) return [];
-    return Array.from(new Set(userList.map(u => u.waveNumber).filter(Boolean))).sort();
+    return Array.from(new Set(userList.filter(u => u.role === 'agent').map(u => (u.waveNumber || u.wave || '').trim()).filter(Boolean))).sort();
   }, [userList]);
 
   const availableWeeks = useMemo(() => {
@@ -391,7 +391,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
           <div className="flex bg-slate-100/80 p-1 rounded-xl overflow-x-auto max-w-full border border-slate-200/60">
           {[
             { id: 'users', label: 'Roster' },
-            ...(currentUser.role === 'admin' ? [{ id: 'cohort-analytics', label: 'Cohort Analytics', badge: '6 Waves' }] : []),
+            ...(currentUser.role === 'admin' ? [{ id: 'cohort-analytics', label: 'Cohort Analytics', badge: availableWaves.length > 0 ? `${availableWaves.length} Waves` : 'Live Waves' }] : []),
             { id: 'library', label: 'Resource Library' },
             { id: 'interactive', label: 'Interactive .DOCX' },
             { id: 'assigner', label: 'Assign Lessons' },
@@ -949,6 +949,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             adminStats={adminStats}
             currentUser={currentUser}
             onRefreshUsers={fetchUsers}
+            activeWave={activeWave}
+            onSelectWave={setActiveWave}
+            waveConfigs={waveConfigs}
           />
         </div>
       )}

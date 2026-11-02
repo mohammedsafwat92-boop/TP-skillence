@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Sparkles,
   TrendingUp,
@@ -9,171 +9,235 @@ import {
   GraduationCap,
   Users,
   Compass,
-  ArrowUpRight
+  ArrowUpRight,
+  Building2,
+  ShieldAlert,
 } from 'lucide-react';
-import { CohortSummary } from '../types';
+import { CohortSummary, BusinessAccount } from '../types';
 
 interface CohortInsightsProps {
   cohorts: CohortSummary[];
 }
 
 export const CohortInsights: React.FC<CohortInsightsProps> = ({ cohorts }) => {
-  // Compute analytics
-  const sortedByOverall = [...cohorts].sort((a, b) => b.avgOverallScore - a.avgOverallScore);
-  const bestCohort = sortedByOverall[0];
-  const lowestCohort = sortedByOverall[sortedByOverall.length - 1];
-
-  // Compare first wave and last wave
-  const cFirst = cohorts[0] || {
-    name: 'Wave 1',
-    code: 'W1',
-    sheetIndex: 1,
-    avgOverallScore: 78,
-    avgRoleplayScore: 75,
-    atRiskCount: 2,
-    roleplayAverages: { rp2Objection: 72 }
-  } as CohortSummary;
-  const cLast = cohorts[cohorts.length - 1] || cFirst;
-  const progressionGain = Math.max(0, cLast.avgOverallScore - cFirst.avgOverallScore);
-
-  // Trainer breakdown
-  const trainerMap: Record<string, { count: number; totalScore: number; cohorts: string[] }> = {};
-  cohorts.forEach((c) => {
-    const t = c.trainer;
-    if (!trainerMap[t]) {
-      trainerMap[t] = { count: 0, totalScore: 0, cohorts: [] };
-    }
-    trainerMap[t].count += c.traineeCount;
-    trainerMap[t].totalScore += c.avgOverallScore * c.traineeCount;
-    trainerMap[t].cohorts.push(c.code);
-  });
-
   const totalTrainees = cohorts.reduce((acc, c) => acc + c.traineeCount, 0);
+
+  // 1. Scenario Uplift Analytics
+  const scenarioStats = useMemo(() => {
+    const keys = [
+      { key: 'rp1Discovery', name: 'RP1: Discovery & Needs Analysis' },
+      { key: 'rp2Objection', name: 'RP2: Objection Handling' },
+      { key: 'rp3ValuePitch', name: 'RP3: Value Proposition & Demo' },
+      { key: 'rp4Deescalation', name: 'RP4: Difficult Customer De-escalation' },
+      { key: 'rp5Closing', name: 'RP5: Commercial Negotiation & Closing' },
+    ] as const;
+
+    const list = keys.map(({ key, name }) => {
+      const scores = cohorts.map((c) => c.roleplayAverages[key] || 0);
+      const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+      const min = Math.min(...scores);
+      const max = Math.max(...scores);
+      const uplift = max - min;
+      return { key, name, avg, min, max, uplift };
+    });
+
+    list.sort((a, b) => b.uplift - a.uplift);
+    return {
+      highestUplift: list[0] || { name: 'Objection Handling', uplift: 15, avg: 82 },
+      lowestUplift: list[list.length - 1] || { name: 'Discovery', uplift: 6, avg: 86 },
+    };
+  }, [cohorts]);
+
+  // 2. Account Leader & Bottleneck
+  const accountInsights = useMemo(() => {
+    const accounts: BusinessAccount[] = ['Mobility', 'Teleco', 'Travel'];
+    const rollups = accounts.map((acc) => {
+      const list = cohorts.filter((c) => c.account === acc);
+      const trainees = list.flatMap((c) => c.trainees || []);
+      const count = trainees.length;
+      const certReady = trainees.filter((t) => t.status === 'Ready').length;
+      const certRate = count > 0 ? Math.round((certReady / count) * 100) : 0;
+      const atRiskCount = trainees.filter((t) => t.status === 'At Risk' || t.status === 'Remediation Needed').length;
+      const avgOverall = count > 0 ? Math.round(trainees.reduce((s, t) => s + t.overallScore, 0) / count) : 0;
+
+      return {
+        account: acc,
+        count,
+        certRate,
+        atRiskCount,
+        avgOverall,
+        color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+      };
+    });
+
+    rollups.sort((a, b) => b.certRate - a.certRate);
+    const leader = rollups[0];
+    const bottleneck = [...rollups].sort((a, b) => b.atRiskCount - a.atRiskCount)[0];
+
+    return { leader, bottleneck, rollups };
+  }, [cohorts]);
+
+  // 3. Trainer breakdown
+  const trainerMap = useMemo(() => {
+    const map: Record<string, { count: number; totalScore: number; cohorts: string[] }> = {};
+    cohorts.forEach((c) => {
+      const t = c.trainer || 'Lead Trainer';
+      if (!map[t]) {
+        map[t] = { count: 0, totalScore: 0, cohorts: [] };
+      }
+      map[t].count += c.traineeCount;
+      map[t].totalScore += c.avgOverallScore * c.traineeCount;
+      map[t].cohorts.push(c.code);
+    });
+    return map;
+  }, [cohorts]);
+
+  // 4. Total At-Risk Action Plan
+  const atRiskTrainees = useMemo(() => {
+    return cohorts
+      .flatMap((c) => c.trainees || [])
+      .filter((t) => t.status === 'At Risk' || t.status === 'Remediation Needed');
+  }, [cohorts]);
 
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-gradient-to-r from-indigo-950/60 via-slate-900 to-slate-900 border border-indigo-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+      <div className="bg-gradient-to-r from-[#2E0854] via-[#3d0b6e] to-[#2E0854] border border-purple-800 rounded-2xl p-6 shadow-sm text-white relative overflow-hidden">
         <div className="flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
-            <Sparkles className="w-6 h-6 text-amber-300" />
+          <div className="w-12 h-12 rounded-xl bg-white/10 border border-white/20 flex items-center justify-center text-amber-300 shrink-0">
+            <Sparkles className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              Cross-Cohort Curriculum Intelligence & Diagnostics
+            <h3 className="text-base font-bold flex items-center gap-2">
+              Cross-Cohort Curriculum Intelligence &amp; Performance Diagnostics
             </h3>
-            <p className="text-xs text-slate-300 mt-1 leading-relaxed max-w-3xl">
-              Synthesized from {cohorts.length} training waves ({totalTrainees} total trainees).
-              Key finding: Across the {cohorts.length} waves, simulated roleplay competence evolved from {cFirst.avgRoleplayScore}% in {cFirst.code} to {cLast.avgRoleplayScore}% in {cLast.code}, driven primarily by targeted objection-handling drills and client-specific simulations.
+            <p className="text-xs text-purple-100 mt-1 leading-relaxed max-w-3xl">
+              Synthesized from {cohorts.length} training waves across {totalTrainees} total agents. Real-time diagnostic data evaluates variance across roleplay simulations, test mastery, facilitator execution, and graduation readiness.
             </p>
           </div>
         </div>
       </div>
 
-      {/* 4 Diagnostic Insight Cards */}
+      {/* 4 Dynamic Diagnostic Insight Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Insight 1: Objection Handling Evolution */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
+        {/* Diagnostic 1: Roleplay Scenario Uplift */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Zap className="w-4 h-4" />
-              Roleplay Drill Impact
+            <span className="text-xs font-bold text-[#2E0854] uppercase tracking-wider flex items-center gap-1.5">
+              <Zap className="w-4 h-4 text-amber-500" />
+              Scenario Progression Spread
             </span>
-            <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-              +{Math.max(0, (cLast.roleplayAverages?.rp2Objection || 0) - (cFirst.roleplayAverages?.rp2Objection || 0))}% Improvement
+            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+              +{scenarioStats.highestUplift.uplift}% Peak Spread
             </span>
           </div>
-          <h4 className="text-sm font-bold text-white">
-            Objection Handling Turned from Weakest to Strongest Asset
+
+          <h4 className="text-sm font-bold text-slate-900">
+            {scenarioStats.highestUplift.name} Shows Largest Trajectory Variance
           </h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            In {cFirst.code} ({cFirst.name}), RP 2 (Objection Handling) stood at <span className="text-rose-400 font-semibold">{cFirst.roleplayAverages?.rp2Objection || 0}%</span>, with {cFirst.atRiskCount} trainees flagged for support.
-            By {cLast.code} ({cLast.name}), introducing real-time pushback sparring elevated the wave average to <span className="text-emerald-400 font-semibold">{cLast.roleplayAverages?.rp2Objection || 0}%</span> with {cLast.atRiskCount} at-risk trainees.
+          <p className="text-xs text-slate-600 leading-relaxed">
+            Performance on <strong>{scenarioStats.highestUplift.name}</strong> ranges from {scenarioStats.highestUplift.min}% in earlier waves to {scenarioStats.highestUplift.max}% in mature waves (mean: {scenarioStats.highestUplift.avg}%). In contrast, <strong>{scenarioStats.lowestUplift.name}</strong> showed consistent baseline execution ({scenarioStats.lowestUplift.min}% to {scenarioStats.lowestUplift.max}%).
           </p>
-          <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Recommended Action: Continue mandating the 3-phase objection framework across future cohorts.</span>
+
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>Recommended: Prioritize structured objection sparring in pre-work to accelerate trajectory in new waves.</span>
           </div>
         </div>
 
-        {/* Insight 2: Theory vs Practice Alignment */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
+        {/* Diagnostic 2: Account Portfolio Leader & Bottleneck */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-              <GraduationCap className="w-4 h-4" />
-              Knowledge vs Simulation Gap
+            <span className="text-xs font-bold text-[#2E0854] uppercase tracking-wider flex items-center gap-1.5">
+              <Building2 className="w-4 h-4 text-blue-600" />
+              Account Portfolio Benchmark
             </span>
-            <span className="text-xs font-semibold text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">
-              High Correlation (0.84)
+            <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+              {accountInsights.leader.account} Leads at {accountInsights.leader.certRate}% Ready
             </span>
           </div>
-          <h4 className="text-sm font-bold text-white">
-            Technical Consultants Lead on Written Tests, AEs on Live Closing
+
+          <h4 className="text-sm font-bold text-slate-900">
+            {accountInsights.leader.account} Sets the Pace; {accountInsights.bottleneck.account} Concentrates Intervention Needs
           </h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Sales Engineers and Solutions Architects averaged 94% on Product Architecture tests (Module 1), but had higher monologue times during Discovery roleplays. In contrast, SDRs and Account Executives mastered call pacing (RP 1: 88%) while requiring supplemental study on compliance exams.
+          <p className="text-xs text-slate-600 leading-relaxed">
+            <strong>{accountInsights.leader.account}</strong> achieved the highest combined certification readiness ({accountInsights.leader.certRate}%) with an average score of {accountInsights.leader.avgOverall}%. <strong>{accountInsights.bottleneck.account}</strong> has {accountInsights.bottleneck.atRiskCount} trainees flagged for high-priority support.
           </p>
-          <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2">
-            <Compass className="w-4 h-4 text-cyan-400 shrink-0" />
-            <span>Recommended Action: Implement role-differentiated peer pairing (pair SEs with AEs during roleplay practice).</span>
+
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-700 flex items-center gap-2">
+            <Compass className="w-4 h-4 text-blue-600 shrink-0" />
+            <span>Recommended: Reallocate mentor hours toward {accountInsights.bottleneck.account} agents to resolve compliance test gaps.</span>
           </div>
         </div>
 
-        {/* Insight 3: Trainer Methodology Impact */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
+        {/* Diagnostic 3: Trainer Methodology Impact */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Users className="w-4 h-4" />
-              Trainer Effectiveness
+            <span className="text-xs font-bold text-[#2E0854] uppercase tracking-wider flex items-center gap-1.5">
+              <Users className="w-4 h-4 text-purple-600" />
+              Facilitator Effectiveness
             </span>
-            <span className="text-xs text-slate-400">
-              {Object.keys(trainerMap).length} Facilitators Tracked
+            <span className="text-xs text-slate-500 font-mono">
+              {Object.keys(trainerMap).length} Coaches Tracked
             </span>
           </div>
-          <h4 className="text-sm font-bold text-white">
+
+          <h4 className="text-sm font-bold text-slate-900">
             Cross-Facilitator Cohort Benchmarks
           </h4>
+
           <div className="space-y-2 pt-1">
-            {Object.entries(trainerMap).map(([trainerName, data]) => {
-              const avgScore = Math.round(data.totalScore / (data.count || 1));
-              return (
-                <div key={trainerName} className="p-2.5 bg-slate-950/80 rounded-lg border border-slate-800 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-semibold text-white block">{trainerName}</span>
-                    <span className="text-[10px] text-slate-500">Cohorts: {data.cohorts.join(', ')} ({data.count} trainees)</span>
+            {(Object.entries(trainerMap) as [string, { count: number; totalScore: number; cohorts: string[] }][]).map(
+              ([trainerName, data]) => {
+                const avgScore = Math.round(data.totalScore / (data.count || 1));
+                return (
+                  <div
+                    key={trainerName}
+                    className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between text-xs"
+                  >
+                    <div>
+                      <span className="font-semibold text-slate-900 block">{trainerName}</span>
+                      <span className="text-[11px] text-slate-500">
+                        Waves: {data.cohorts.join(', ')} · {data.count} trainees
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <span className="font-mono font-bold text-[#2E0854]">{avgScore}% Combined</span>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <span className="font-bold text-indigo-400">{avgScore}% Overall</span>
-                  </div>
-                </div>
-              );
-            })}
+                );
+              }
+            )}
           </div>
         </div>
 
-        {/* Insight 4: Final Certification Trajectory */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-3">
+        {/* Diagnostic 4: At-Risk Action Plan */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-              <Award className="w-4 h-4" />
-              Certification Velocity
+            <span className="text-xs font-bold text-rose-700 uppercase tracking-wider flex items-center gap-1.5">
+              <ShieldAlert className="w-4 h-4 text-rose-600" />
+              At-Risk Action Plan
             </span>
-            <span className="text-xs text-emerald-400 font-bold">
-              +{progressionGain}% Net Gain
+            <span className="text-xs font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200">
+              {atRiskTrainees.length} Agents Need Support
             </span>
           </div>
-          <h4 className="text-sm font-bold text-white">
-            Readiness For Live Customer Interaction
+
+          <h4 className="text-sm font-bold text-slate-900">
+            Targeted Remediation Protocol
           </h4>
-          <p className="text-xs text-slate-400 leading-relaxed">
-            By eliminating bottlenecks in Module 2 Compliance and integrating structured roleplay feedback rubrics into every session, graduation readiness reached {cLast.certificationRate}% in {cLast.code}.
+          <p className="text-xs text-slate-600 leading-relaxed">
+            {atRiskTrainees.length} out of {totalTrainees} agents are currently in "At Risk" or "Remediation Needed" status. Common drivers include Module 2 compliance retakes and pacing on objection handling.
           </p>
-          <div className="p-3 bg-slate-950/70 rounded-xl border border-slate-800 text-[11px] text-slate-300 flex items-center gap-2">
-            <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Target for Next Wave: Maintain &gt;90% readiness while compressing onboarding duration by 4 business days.</span>
+
+          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Target: Initiate 1:1 coach sessions and schedule retake examinations for flagged trainees prior to cohort graduation.</span>
           </div>
         </div>
       </div>
     </div>
   );
 };
+
+export default CohortInsights;
