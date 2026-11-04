@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   Building2,
   Users,
+  Radar,
+  Info,
 } from 'lucide-react';
 import { CohortSummary, BusinessAccount, Trainee } from '../types';
 
@@ -20,27 +22,48 @@ interface CrossCohortChartsProps {
   cohorts: CohortSummary[];
 }
 
-export type ChartView =
-  | 'account_comparison'
-  | 'wave_progression'
+export type ChartTab =
+  | 'account_wave_overview'
+  | 'competency_radar'
   | 'roleplay_scenarios'
   | 'test_modules'
-  | 'rubric_dimensions'
   | 'theory_vs_practice';
 
 export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts }) => {
-  const [activeView, setActiveView] = useState<ChartView>('account_comparison');
-  const [scaleMode, setScaleMode] = useState<'five_point' | 'percentage'>('five_point');
+  const [activeTab, setActiveTab] = useState<ChartTab>('account_wave_overview');
+  const [radarFilter, setRadarFilter] = useState<'accounts' | 'waves'>('accounts');
+  const [selectedRadarWaveId, setSelectedRadarWaveId] = useState<string>(cohorts[0]?.id || '');
   const [scatterMode, setScatterMode] = useState<'centroids' | 'trainees'>('centroids');
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState<'all' | BusinessAccount>('all');
   const [hoveredPoint, setHoveredPoint] = useState<any>(null);
 
-  const filteredCohorts = useMemo(() => {
-    if (selectedAccountFilter === 'all') return cohorts;
-    return cohorts.filter((c) => c.account === selectedAccountFilter);
-  }, [cohorts, selectedAccountFilter]);
+  // Refined account color tokens
+  const getAccountColor = (account: BusinessAccount): string => {
+    switch (account) {
+      case 'Mobility':
+        return '#059669';
+      case 'Teleco':
+        return '#2563EB';
+      case 'Travel':
+        return '#7C3AED';
+      default:
+        return '#059669';
+    }
+  };
 
-  // Account rollups
+  const getAccountBadge = (account: BusinessAccount) => {
+    switch (account) {
+      case 'Mobility':
+        return { bg: '#ECFDF5', border: '#A7F3D0', text: '#065F46' };
+      case 'Teleco':
+        return { bg: '#EFF6FF', border: '#BFDBFE', text: '#1E40AF' };
+      case 'Travel':
+        return { bg: '#F5F3FF', border: '#DDD6FE', text: '#5B21B6' };
+      default:
+        return { bg: '#ECFDF5', border: '#A7F3D0', text: '#065F46' };
+    }
+  };
+
+  // Rollups per business account
   const accountStats = useMemo(() => {
     const accounts: BusinessAccount[] = ['Mobility', 'Teleco', 'Travel'];
     return accounts.map((acc) => {
@@ -51,13 +74,24 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
       const initialRP = count > 0 ? trainees.reduce((s, t) => s + (t.initialRP || 0), 0) / count : 0;
       const finalRP = count > 0 ? trainees.reduce((s, t) => s + (t.finalRP || 0), 0) / count : 0;
       const rpGain = finalRP - initialRP;
+      const avgRP = count > 0 ? trainees.reduce((s, t) => s + (t.roleplays?.average || 0), 0) / count : 0;
       const avgTest = count > 0 ? trainees.reduce((s, t) => s + (t.tests?.average || 0), 0) / count : 0;
       const avgModule = count > 0 ? trainees.reduce((s, t) => s + (t.moduleComp || 0), 0) / count : 0;
+      const certRate = count > 0 ? (trainees.filter((t) => t.status === 'Ready').length / count) * 100 : 0;
 
       const readyCount = trainees.filter((t) => t.status === 'Ready').length;
       const onTrackCount = trainees.filter((t) => t.status === 'On Track').length;
       const atRiskCount = trainees.filter((t) => t.status === 'At Risk').length;
       const remediateCount = trainees.filter((t) => t.status === 'Remediation Needed').length;
+
+      // Rubrics
+      const rubric = {
+        communication: count > 0 ? Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.communication || 0), 0) / count) : 0,
+        productKnowledge: count > 0 ? Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.productKnowledge || 0), 0) / count) : 0,
+        activeListening: count > 0 ? Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.activeListening || 0), 0) / count) : 0,
+        objectionHandling: count > 0 ? Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.objectionHandling || 0), 0) / count) : 0,
+        callControl: count > 0 ? Math.round(trainees.reduce((s, t) => s + (t.roleplays?.rubric?.callControl || 0), 0) / count) : 0,
+      };
 
       return {
         account: acc,
@@ -66,13 +100,17 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
         initialRP: Number(initialRP.toFixed(2)),
         finalRP: Number(finalRP.toFixed(2)),
         rpGain: Number(rpGain.toFixed(2)),
+        avgRP: Math.round(avgRP),
         avgTest: Math.round(avgTest),
         avgModule: Math.round(avgModule),
+        certRate: Math.round(certRate),
         readyCount,
         onTrackCount,
         atRiskCount,
         remediateCount,
-        color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+        rubric,
+        color: getAccountColor(acc),
+        badge: getAccountBadge(acc),
       };
     });
   }, [cohorts]);
@@ -101,368 +139,361 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
     { key: 'callControl', label: 'Call Control & Pacing' },
   ] as const;
 
-  const getAccountColor = (account: BusinessAccount): string => {
-    switch (account) {
-      case 'Mobility':
-        return '#06C167';
-      case 'Teleco':
-        return '#3B82F6';
-      case 'Travel':
-        return '#8B5CF6';
-      default:
-        return '#06C167';
-    }
+  // Radar chart mathematical coordinates helper
+  // 5 dimensions arranged in a circle, top vertex at -90 deg
+  const radarDimensions = rubricDimensions.map((dim, i) => {
+    const angle = ((2 * Math.PI) / 5) * i - Math.PI / 2;
+    return { ...dim, angle };
+  });
+
+  const getRadarPoint = (value: number, angle: number, radius: number, cx: number, cy: number) => {
+    const r = (Math.max(0, Math.min(100, value)) / 100) * radius;
+    return {
+      x: cx + r * Math.cos(angle),
+      y: cy + r * Math.sin(angle),
+    };
+  };
+
+  const buildPolygonPoints = (scores: Record<string, number>, radius: number, cx: number, cy: number) => {
+    return radarDimensions
+      .map((dim) => {
+        const val = scores[dim.key] || 0;
+        const pt = getRadarPoint(val, dim.angle, radius, cx, cy);
+        return `${pt.x},${pt.y}`;
+      })
+      .join(' ');
   };
 
   return (
     <div className="bg-white border border-slate-200/90 rounded-2xl p-6 shadow-xs space-y-6">
-      {/* Chart Header & Tab Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-200 pb-5">
+      {/* Top Header & Tab Navigation */}
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 border-b border-slate-100 pb-5">
         <div>
-          <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <BarChart3 className="w-5 h-5 text-[#2E0854]" />
-            Multi-Tiered Cohort &amp; Account Analytics
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#2E0854]" />
+            <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#2E0854]">
+              Multi-Tiered Visual Analytics
+            </span>
+          </div>
+          <h3 className="text-base font-extrabold text-[#0A1128] mt-0.5">
+            Cross-Cohort &amp; Account Comparative Engine
           </h3>
           <p className="text-xs text-slate-500 mt-0.5">
-            Cross-referencing {cohorts.length} Waves across Mobility, Teleco, and Travel
+            Interactive benchmarking across {cohorts.length} Waves and 3 Business Accounts
           </p>
         </div>
 
-        {/* View Switcher Pills */}
-        <div className="flex items-center flex-wrap gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+        {/* View Switcher Tabs */}
+        <div className="flex items-center flex-wrap gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80">
           <button
-            onClick={() => setActiveView('account_comparison')}
+            onClick={() => setActiveTab('account_wave_overview')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'account_comparison'
+              activeTab === 'account_wave_overview'
                 ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            Account Benchmarks
+            Account &amp; Wave Overview
           </button>
+
           <button
-            onClick={() => setActiveView('wave_progression')}
+            onClick={() => setActiveTab('competency_radar')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'wave_progression'
+              activeTab === 'competency_radar'
                 ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            Wave RP Trajectory
+            Competency Radar &amp; Rubrics
           </button>
+
           <button
-            onClick={() => setActiveView('roleplay_scenarios')}
+            onClick={() => setActiveTab('roleplay_scenarios')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'roleplay_scenarios'
+              activeTab === 'roleplay_scenarios'
                 ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            Roleplay Scenarios
+            Roleplays (RP1–RP5)
           </button>
+
           <button
-            onClick={() => setActiveView('test_modules')}
+            onClick={() => setActiveTab('test_modules')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'test_modules'
+              activeTab === 'test_modules'
                 ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
             Test Modules
           </button>
+
           <button
-            onClick={() => setActiveView('rubric_dimensions')}
+            onClick={() => setActiveTab('theory_vs_practice')}
             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'rubric_dimensions'
+              activeTab === 'theory_vs_practice'
                 ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
             }`}
           >
-            Rubric Dimensions
-          </button>
-          <button
-            onClick={() => setActiveView('theory_vs_practice')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-              activeView === 'theory_vs_practice'
-                ? 'bg-[#2E0854] text-white shadow-xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Theory vs Practice Matrix
+            Theory vs Practice Quadrant
           </button>
         </div>
       </div>
 
-      {/* Cohort Legend Pills */}
-      <div className="flex items-center flex-wrap justify-between gap-3 pt-1 text-xs">
-        <div className="flex items-center flex-wrap gap-2">
-          <span className="font-bold text-slate-500">Waves:</span>
-          {cohorts.map((c) => {
-            const color = getAccountColor(c.account);
-            return (
-              <div
-                key={c.id}
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border bg-white border-slate-200 shadow-2xs"
-              >
-                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-                <span className="font-extrabold text-slate-900">{c.code}:</span>
-                <span className="text-slate-600 truncate max-w-[150px]">{c.name}</span>
-                <span className="text-slate-400 font-mono text-[10px]">({c.traineeCount})</span>
+      {/* ============================================================== */}
+      {/* TAB 1: ACCOUNT & WAVE OVERVIEW (VERTICAL COLUMNS + DUMBBELL + STACKED) */}
+      {/* ============================================================== */}
+      {activeTab === 'account_wave_overview' && (
+        <div className="space-y-8 pt-1">
+          {/* Section A: Grouped Vertical Column Chart comparing Accounts */}
+          <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <BarChart3 className="w-4 h-4 text-[#2E0854]" />
+                  Cross-Account Performance Benchmark (Grouped Vertical Columns)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Side-by-side comparison across Roleplays, Standardized Tests, Module Cadence, and Readiness
+                </p>
               </div>
-            );
-          })}
-        </div>
 
-        {/* Account Filter for deep dives */}
-        <div className="flex items-center gap-1.5">
-          <span className="text-slate-400 font-semibold text-[11px]">Filter:</span>
-          <select
-            value={selectedAccountFilter}
-            onChange={(e) => setSelectedAccountFilter(e.target.value as any)}
-            className="text-xs bg-slate-50 border border-slate-200 rounded-md px-2 py-1 font-semibold text-slate-700"
-          >
-            <option value="all">All Accounts</option>
-            <option value="Mobility">Mobility Only</option>
-            <option value="Teleco">Teleco Only</option>
-            <option value="Travel">Travel Only</option>
-          </select>
-        </div>
-      </div>
-
-      {/* VIEW 1: Account Benchmarks (Default View) */}
-      {activeView === 'account_comparison' && (
-        <div className="space-y-6 pt-2">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {accountStats.map((acc) => (
-              <div
-                key={acc.account}
-                className="bg-slate-50/70 border border-slate-200 rounded-2xl p-5 space-y-4 hover:shadow-xs transition-all"
-                style={{ borderTop: `4px solid ${acc.color}` }}
-              >
-                <div className="flex items-center justify-between">
-                  <h4 className="font-bold text-sm text-slate-900 flex items-center gap-2">
-                    <Building2 className="w-4 h-4" style={{ color: acc.color }} />
-                    {acc.account} Account
-                  </h4>
-                  <span className="text-xs font-mono font-bold text-slate-500">
-                    {acc.cohortsCount} {acc.cohortsCount === 1 ? 'Wave' : 'Waves'} · {acc.traineesCount} Agents
+              {/* Chart Legend */}
+              <div className="flex items-center gap-3 text-xs">
+                {accountStats.map((acc) => (
+                  <span key={acc.account} className="flex items-center gap-1.5 font-bold text-slate-700">
+                    <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: acc.color }} />
+                    {acc.account}
                   </span>
-                </div>
-
-                {/* Dumbbell Chart: RP Initial vs Final on 1.0 - 5.0 scale */}
-                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                    <span>Roleplay Progression (1.0 – 5.0)</span>
-                    <span className="text-emerald-700 font-mono">+{acc.rpGain} Net Gain</span>
-                  </div>
-                  <div className="relative pt-4 pb-2">
-                    {/* Scale background track */}
-                    <div className="h-2 bg-slate-100 rounded-full relative">
-                      {/* Gain connecting bar */}
-                      <div
-                        className="absolute h-2 rounded-full"
-                        style={{
-                          left: `${((acc.initialRP - 1.0) / 4.0) * 100}%`,
-                          width: `${(acc.rpGain / 4.0) * 100}%`,
-                          backgroundColor: `${acc.color}40`,
-                        }}
-                      />
-                      {/* Initial marker */}
-                      <div
-                        className="absolute w-4 h-4 rounded-full bg-slate-400 border-2 border-white shadow-sm -top-1 transform -translate-x-1/2 cursor-pointer"
-                        style={{ left: `${((acc.initialRP - 1.0) / 4.0) * 100}%` }}
-                        title={`Initial RP: ${acc.initialRP}`}
-                      />
-                      {/* Final marker */}
-                      <div
-                        className="absolute w-4 h-4 rounded-full border-2 border-white shadow-sm -top-1 transform -translate-x-1/2 cursor-pointer"
-                        style={{
-                          left: `${((acc.finalRP - 1.0) / 4.0) * 100}%`,
-                          backgroundColor: acc.color,
-                        }}
-                        title={`Final RP: ${acc.finalRP}`}
-                      />
-                    </div>
-                    {/* Scale Labels */}
-                    <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-2">
-                      <span>1.0</span>
-                      <span>2.0</span>
-                      <span>3.0</span>
-                      <span>4.0</span>
-                      <span>5.0</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between text-xs font-mono pt-1 text-slate-600">
-                    <span>Initial: <strong className="text-slate-900">{acc.initialRP}</strong></span>
-                    <span>Final: <strong className="text-slate-900">{acc.finalRP}</strong></span>
-                  </div>
-                </div>
-
-                {/* Readiness Stacked Bar */}
-                <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-2 text-xs">
-                  <div className="flex items-center justify-between font-bold text-slate-700">
-                    <span>Agent Readiness Distribution</span>
-                    <span className="text-slate-500 font-mono">{acc.traineesCount} Total</span>
-                  </div>
-                  <div className="h-4 bg-slate-100 rounded-full flex overflow-hidden">
-                    {acc.traineesCount > 0 && (
-                      <>
-                        <div
-                          style={{ width: `${(acc.readyCount / acc.traineesCount) * 100}%` }}
-                          className="bg-emerald-500 transition-all"
-                          title={`Ready: ${acc.readyCount}`}
-                        />
-                        <div
-                          style={{ width: `${(acc.onTrackCount / acc.traineesCount) * 100}%` }}
-                          className="bg-blue-500 transition-all"
-                          title={`On Track: ${acc.onTrackCount}`}
-                        />
-                        <div
-                          style={{ width: `${(acc.atRiskCount / acc.traineesCount) * 100}%` }}
-                          className="bg-amber-500 transition-all"
-                          title={`At Risk: ${acc.atRiskCount}`}
-                        />
-                        <div
-                          style={{ width: `${(acc.remediateCount / acc.traineesCount) * 100}%` }}
-                          className="bg-rose-500 transition-all"
-                          title={`Remediation Needed: ${acc.remediateCount}`}
-                        />
-                      </>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 gap-1 text-[11px] text-slate-600 pt-1">
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      Ready: <strong className="text-slate-900">{acc.readyCount}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-blue-500" />
-                      On Track: <strong className="text-slate-900">{acc.onTrackCount}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-amber-500" />
-                      At Risk: <strong className="text-slate-900">{acc.atRiskCount}</strong>
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <span className="w-2 h-2 rounded-full bg-rose-500" />
-                      Remediate: <strong className="text-slate-900">{acc.remediateCount}</strong>
-                    </span>
-                  </div>
-                </div>
-
-                {/* Modules & Tests Bar */}
-                <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                  <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                    <span className="text-slate-500 text-[11px] block">Test Average</span>
-                    <strong className="text-sm font-mono text-slate-900">{acc.avgTest}%</strong>
-                  </div>
-                  <div className="bg-white border border-slate-200 rounded-lg p-2.5">
-                    <span className="text-slate-500 text-[11px] block">Module Comp.</span>
-                    <strong className="text-sm font-mono text-slate-900">{acc.avgModule}%</strong>
-                  </div>
-                </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
 
-      {/* VIEW 2: Wave RP Progression Trajectory */}
-      {activeView === 'wave_progression' && (
-        <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">
-              Trajectory across RP1 (Discovery) to RP5 (Negotiation & Closing)
-            </span>
-            <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs">
-              <button
-                onClick={() => setScaleMode('five_point')}
-                className={`px-2.5 py-1 rounded font-bold transition-all cursor-pointer ${
-                  scaleMode === 'five_point' ? 'bg-[#2E0854] text-white shadow-2xs' : 'text-slate-600'
-                }`}
-              >
-                1.0 – 5.0 Scale
-              </button>
-              <button
-                onClick={() => setScaleMode('percentage')}
-                className={`px-2.5 py-1 rounded font-bold transition-all cursor-pointer ${
-                  scaleMode === 'percentage' ? 'bg-[#2E0854] text-white shadow-2xs' : 'text-slate-600'
-                }`}
-              >
-                0 – 100% Scale
-              </button>
+            {/* Vertical Columns Canvas */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pt-2">
+              {[
+                { title: 'Roleplay Simulation Avg', key: 'avgRP', suffix: '%' },
+                { title: 'Standardized Test Avg', key: 'avgTest', suffix: '%' },
+                { title: 'Module Completion', key: 'avgModule', suffix: '%' },
+                { title: 'Certification Readiness', key: 'certRate', suffix: '%' },
+              ].map((metric) => (
+                <div key={metric.key} className="bg-white border border-slate-200 rounded-xl p-4 flex flex-col justify-between shadow-2xs">
+                  <span className="text-xs font-bold text-slate-700 block mb-4 text-center">
+                    {metric.title}
+                  </span>
+
+                  {/* Vertical Column Group */}
+                  <div className="h-44 flex items-end justify-center gap-3 px-2 border-b border-slate-200 pb-1">
+                    {accountStats.map((acc) => {
+                      const val = (acc as any)[metric.key] || 0;
+                      const heightPct = Math.max(8, val);
+
+                      return (
+                        <div key={acc.account} className="flex-1 flex flex-col items-center group relative">
+                          {/* Value tooltip label on hover/top */}
+                          <span className="text-[11px] font-mono font-bold text-slate-800 mb-1">
+                            {val}{metric.suffix}
+                          </span>
+                          <div
+                            className="w-full max-w-[36px] rounded-t-md transition-all group-hover:brightness-110 shadow-2xs"
+                            style={{
+                              height: `${heightPct}%`,
+                              backgroundColor: acc.color,
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Column Labels */}
+                  <div className="flex justify-between items-center text-[10px] font-bold text-slate-500 pt-2 text-center">
+                    {accountStats.map((acc) => (
+                      <span key={acc.account} className="flex-1 truncate">
+                        {acc.account.slice(0, 3)}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
-          <div className="bg-slate-50/60 border border-slate-200 rounded-2xl p-6 overflow-x-auto">
-            <div className="min-w-[650px] space-y-6">
-              {filteredCohorts.map((cohort) => {
-                const color = getAccountColor(cohort.account);
-                const rps = [
-                  cohort.roleplayAverages.rp1Discovery,
-                  cohort.roleplayAverages.rp2Objection,
-                  cohort.roleplayAverages.rp3ValuePitch,
-                  cohort.roleplayAverages.rp4Deescalation,
-                  cohort.roleplayAverages.rp5Closing,
-                ];
+          {/* Section B: RP1 -> RP5 Uplift Dumbbell Chart for every Wave */}
+          <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4 text-[#059669]" />
+                  Wave RP Uplift Dumbbell Chart (1.0 to 5.0 Scale)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Visual track connecting Initial RP baseline to Final RP score with net gain
+                </p>
+              </div>
 
-                const formattedValues = rps.map((val) =>
-                  scaleMode === 'five_point' ? Number(((val / 100) * 4 + 1).toFixed(2)) : val
-                );
+              <div className="flex items-center gap-3 text-xs text-slate-500">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-400" />
+                  Initial RP
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-[#059669]" />
+                  Final RP
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-1">
+              {cohorts.map((cohort) => {
+                const color = getAccountColor(cohort.account);
+                const badge = getAccountBadge(cohort.account);
+                const initialPos = Math.max(0, Math.min(100, ((cohort.initialRP - 1.0) / 4.0) * 100));
+                const finalPos = Math.max(0, Math.min(100, ((cohort.finalRP - 1.0) / 4.0) * 100));
+                const widthPct = Math.max(2, finalPos - initialPos);
 
                 return (
-                  <div key={cohort.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-2xs">
-                    <div className="flex items-center justify-between mb-3 text-xs">
+                  <div key={cohort.id} className="bg-white border border-slate-200 rounded-xl p-3.5 shadow-2xs hover:shadow-xs transition-all">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-2 text-xs">
                       <div className="flex items-center gap-2">
                         <span
-                          className="px-2 py-0.5 rounded text-[11px] font-mono font-bold"
-                          style={{ backgroundColor: `${color}20`, color }}
+                          className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border font-mono"
+                          style={{
+                            backgroundColor: badge.bg,
+                            borderColor: badge.border,
+                            color: badge.text,
+                          }}
                         >
-                          {cohort.code}
+                          {cohort.account}
                         </span>
-                        <strong className="text-slate-900 font-semibold">{cohort.name}</strong>
-                        <span className="text-slate-400">({cohort.account})</span>
+                        <span className="font-mono font-bold text-slate-900">{cohort.code}:</span>
+                        <span className="font-semibold text-slate-800">{cohort.name}</span>
+                        <span className="text-slate-400 font-mono text-[11px]">({cohort.traineeCount} Agents)</span>
                       </div>
-                      <span className="font-mono text-slate-600">
-                        Avg: <strong className="text-slate-900">
-                          {scaleMode === 'five_point'
-                            ? ((cohort.avgRoleplayScore / 100) * 4 + 1).toFixed(2)
-                            : `${cohort.avgRoleplayScore}%`}
-                        </strong>
-                      </span>
+
+                      <div className="flex items-center gap-2 font-mono">
+                        <span className="text-slate-500 text-[11px]">
+                          {cohort.initialRP.toFixed(2)} → <strong className="text-slate-900">{cohort.finalRP.toFixed(2)}</strong>
+                        </span>
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[11px] font-bold border"
+                          style={{
+                            backgroundColor: badge.bg,
+                            borderColor: badge.border,
+                            color: badge.text,
+                          }}
+                        >
+                          +{cohort.rpGain.toFixed(2)} pts
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Step-by-Step RP Node Pipeline */}
-                    <div className="grid grid-cols-5 gap-2 relative">
-                      {roleplayScenarios.map((sc, sIdx) => {
-                        const score = formattedValues[sIdx];
-                        const rawScore = rps[sIdx];
-                        const isHigh = rawScore >= 80;
-                        const isLow = rawScore < 65;
+                    {/* Dumbbell Track */}
+                    <div className="relative pt-3 pb-1 px-2">
+                      <div className="h-2 bg-slate-100 rounded-full relative">
+                        {/* Connecting bar */}
+                        <div
+                          className="absolute h-2 rounded-full"
+                          style={{
+                            left: `${initialPos}%`,
+                            width: `${widthPct}%`,
+                            backgroundColor: `${color}40`,
+                          }}
+                        />
+                        {/* Initial marker */}
+                        <div
+                          className="absolute w-4 h-4 rounded-full bg-slate-400 border-2 border-white shadow-xs -top-1 transform -translate-x-1/2 cursor-pointer"
+                          style={{ left: `${initialPos}%` }}
+                          title={`Initial: ${cohort.initialRP}`}
+                        />
+                        {/* Final marker */}
+                        <div
+                          className="absolute w-4 h-4 rounded-full border-2 border-white shadow-xs -top-1 transform -translate-x-1/2 cursor-pointer"
+                          style={{
+                            left: `${finalPos}%`,
+                            backgroundColor: color,
+                          }}
+                          title={`Final: ${cohort.finalRP}`}
+                        />
+                      </div>
+                      <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-2">
+                        <span>1.0</span>
+                        <span>2.0</span>
+                        <span>3.0</span>
+                        <span>4.0</span>
+                        <span>5.0</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-                        return (
-                          <div
-                            key={sc.key}
-                            className={`p-2.5 rounded-lg border text-center transition-all ${
-                              isHigh
-                                ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                                : isLow
-                                ? 'bg-rose-50 border-rose-200 text-rose-900'
-                                : 'bg-slate-50 border-slate-200 text-slate-800'
-                            }`}
-                          >
-                            <span className="text-[11px] block font-medium truncate text-slate-500">
-                              {sc.label.split(':')[0]}
-                            </span>
-                            <strong className="text-base font-mono block mt-0.5">
-                              {score}{scaleMode === 'percentage' ? '%' : ''}
-                            </strong>
-                            <span className="text-[10px] text-slate-400 block mt-0.5">
-                              {sc.label.split(':')[1]}
-                            </span>
-                          </div>
-                        );
-                      })}
+          {/* Section C: 100% Stacked Readiness Bar per Wave & per Account */}
+          <div className="bg-slate-50/70 border border-slate-200/90 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+              <div>
+                <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  100% Stacked Readiness Distribution (Per Account &amp; Per Wave)
+                </h4>
+                <p className="text-xs text-slate-500">
+                  Exact distribution of Ready (Certified), On Track, At Risk, and Remediation Needed
+                </p>
+              </div>
+
+              <div className="flex items-center flex-wrap gap-3 text-xs">
+                <span className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  Ready
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+                  On Track
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  At Risk
+                </span>
+                <span className="flex items-center gap-1">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  Remediation
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-1">
+              {cohorts.map((c) => {
+                const total = c.traineeCount || 1;
+                const ready = c.trainees.filter((t) => t.status === 'Ready').length;
+                const onTrack = c.trainees.filter((t) => t.status === 'On Track').length;
+                const atRisk = c.trainees.filter((t) => t.status === 'At Risk').length;
+                const remediate = c.trainees.filter((t) => t.status === 'Remediation Needed').length;
+
+                return (
+                  <div key={c.id} className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="font-bold text-slate-800">
+                        {c.code}: {c.name}
+                      </span>
+                      <span className="font-mono text-slate-500">{total} Trainees</span>
+                    </div>
+
+                    <div className="h-3.5 bg-slate-100 rounded-full flex overflow-hidden">
+                      <div style={{ width: `${(ready / total) * 100}%` }} className="bg-emerald-500" title={`Ready: ${ready}`} />
+                      <div style={{ width: `${(onTrack / total) * 100}%` }} className="bg-blue-500" title={`On Track: ${onTrack}`} />
+                      <div style={{ width: `${(atRisk / total) * 100}%` }} className="bg-amber-500" title={`At Risk: ${atRisk}`} />
+                      <div style={{ width: `${(remediate / total) * 100}%` }} className="bg-rose-500" title={`Remediation Needed: ${remediate}`} />
+                    </div>
+
+                    <div className="flex justify-between text-[11px] font-mono text-slate-600 pt-0.5">
+                      <span className="text-emerald-700 font-semibold">{ready} Ready</span>
+                      <span className="text-blue-700 font-semibold">{onTrack} On Track</span>
+                      <span className="text-amber-700 font-semibold">{atRisk} At Risk</span>
+                      <span className="text-rose-700 font-semibold">{remediate} Remediate</span>
                     </div>
                   </div>
                 );
@@ -472,14 +503,225 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
         </div>
       )}
 
-      {/* VIEW 3: Roleplay Scenarios Comparison */}
-      {activeView === 'roleplay_scenarios' && (
-        <div className="space-y-6 pt-2">
+      {/* ============================================================== */}
+      {/* TAB 2: COMPETENCY RADAR & RUBRICS (5-AXIS SVG RADAR CHART) */}
+      {/* ============================================================== */}
+      {activeTab === 'competency_radar' && (
+        <div className="space-y-6 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Radar className="w-4 h-4 text-[#2E0854]" />
+                5-Axis Competency Radar &amp; Rubric Architecture
+              </h4>
+              <p className="text-xs text-slate-500">
+                Interactive spider chart evaluating Communication, Product Knowledge, Active Listening, Objection Handling, and Call Control
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs">
+              <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-200 shadow-2xs">
+                <button
+                  onClick={() => setRadarFilter('accounts')}
+                  className={`px-3 py-1 rounded font-bold transition-all cursor-pointer ${
+                    radarFilter === 'accounts' ? 'bg-[#2E0854] text-white' : 'text-slate-600'
+                  }`}
+                >
+                  Accounts (3)
+                </button>
+                <button
+                  onClick={() => setRadarFilter('waves')}
+                  className={`px-3 py-1 rounded font-bold transition-all cursor-pointer ${
+                    radarFilter === 'waves' ? 'bg-[#2E0854] text-white' : 'text-slate-600'
+                  }`}
+                >
+                  By Specific Wave
+                </button>
+              </div>
+
+              {radarFilter === 'waves' && (
+                <select
+                  value={selectedRadarWaveId}
+                  onChange={(e) => setSelectedRadarWaveId(e.target.value)}
+                  className="bg-white border border-slate-200 rounded px-2.5 py-1 text-xs font-semibold text-slate-700 cursor-pointer"
+                >
+                  {cohorts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.code}: {c.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+          </div>
+
+          {/* Radar Visualization + Breakdown Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+            {/* SVG Radar Chart (Left 7 Cols) */}
+            <div className="lg:col-span-7 bg-slate-50/60 border border-slate-200/90 rounded-2xl p-6 flex flex-col items-center justify-center relative shadow-2xs">
+              <svg width="360" height="340" viewBox="0 0 360 340" className="overflow-visible">
+                {/* Concentric rings at 20%, 40%, 60%, 80%, 100% */}
+                {[20, 40, 60, 80, 100].map((level) => {
+                  const pts = radarDimensions
+                    .map((dim) => {
+                      const pt = getRadarPoint(level, dim.angle, 130, 180, 170);
+                      return `${pt.x},${pt.y}`;
+                    })
+                    .join(' ');
+
+                  return (
+                    <g key={level}>
+                      <polygon points={pts} fill="none" stroke="#E2E8F0" strokeWidth="1" strokeDasharray={level === 100 ? 'none' : '3 3'} />
+                      <text x="184" y={170 - (level / 100) * 130 + 3} fontSize="9" fill="#94A3B8" fontFamily="monospace">
+                        {level}%
+                      </text>
+                    </g>
+                  );
+                })}
+
+                {/* 5 Spoke Axis Lines */}
+                {radarDimensions.map((dim) => {
+                  const pt = getRadarPoint(100, dim.angle, 130, 180, 170);
+                  return <line key={dim.key} x1="180" y1="170" x2={pt.x} y2={pt.y} stroke="#CBD5E1" strokeWidth="1" />;
+                })}
+
+                {/* Render Polygons for Accounts Mode */}
+                {radarFilter === 'accounts' &&
+                  accountStats.map((acc) => {
+                    const pts = buildPolygonPoints(acc.rubric, 130, 180, 170);
+                    return (
+                      <g key={acc.account}>
+                        <polygon
+                          points={pts}
+                          fill={`${acc.color}25`}
+                          stroke={acc.color}
+                          strokeWidth="2.5"
+                          className="transition-all hover:fill-opacity-40"
+                        />
+                        {radarDimensions.map((dim) => {
+                          const pt = getRadarPoint(acc.rubric[dim.key as keyof typeof acc.rubric] || 0, dim.angle, 130, 180, 170);
+                          return <circle key={dim.key} cx={pt.x} cy={pt.y} r="3.5" fill={acc.color} stroke="#FFFFFF" strokeWidth="1.5" />;
+                        })}
+                      </g>
+                    );
+                  })}
+
+                {/* Render Polygon for Selected Wave Mode */}
+                {radarFilter === 'waves' && (() => {
+                  const selectedCohort = cohorts.find((c) => c.id === selectedRadarWaveId) || cohorts[0];
+                  if (!selectedCohort) return null;
+                  const color = getAccountColor(selectedCohort.account);
+                  const pts = buildPolygonPoints(selectedCohort.rubricAverages as any, 130, 180, 170);
+
+                  return (
+                    <g key={selectedCohort.id}>
+                      <polygon points={pts} fill={`${color}30`} stroke={color} strokeWidth="3" />
+                      {radarDimensions.map((dim) => {
+                        const pt = getRadarPoint((selectedCohort.rubricAverages as any)[dim.key] || 0, dim.angle, 130, 180, 170);
+                        return <circle key={dim.key} cx={pt.x} cy={pt.y} r="4" fill={color} stroke="#FFFFFF" strokeWidth="2" />;
+                      })}
+                    </g>
+                  );
+                })()}
+
+                {/* Axis Labels at Vertices */}
+                {radarDimensions.map((dim) => {
+                  const pt = getRadarPoint(120, dim.angle, 130, 180, 170);
+                  let textAnchor: 'middle' | 'start' | 'end' = 'middle';
+                  if (pt.x > 195) textAnchor = 'start';
+                  if (pt.x < 165) textAnchor = 'end';
+
+                  return (
+                    <text
+                      key={dim.key}
+                      x={pt.x}
+                      y={pt.y}
+                      textAnchor={textAnchor}
+                      fontSize="10"
+                      fontWeight="bold"
+                      fill="#334155"
+                    >
+                      {dim.label}
+                    </text>
+                  );
+                })}
+              </svg>
+
+              {/* Radar Legend */}
+              <div className="flex items-center gap-4 mt-3 text-xs font-bold">
+                {radarFilter === 'accounts' ? (
+                  accountStats.map((acc) => (
+                    <span key={acc.account} className="flex items-center gap-1.5" style={{ color: acc.color }}>
+                      <span className="w-3 h-3 rounded-full" style={{ backgroundColor: acc.color }} />
+                      {acc.account} Account
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-slate-700 font-mono">
+                    Showing Rubric Shape for {cohorts.find((c) => c.id === selectedRadarWaveId)?.name || 'Wave'}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Rubrics Breakdown Table (Right 5 Cols) */}
+            <div className="lg:col-span-5 space-y-3">
+              <h5 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Dimension Score Matrix
+              </h5>
+              <div className="bg-slate-50/70 border border-slate-200/90 rounded-xl overflow-hidden text-xs">
+                <table className="w-full text-left">
+                  <thead className="bg-slate-100/80 text-slate-600 font-bold border-b border-slate-200">
+                    <tr>
+                      <th className="py-2.5 px-3">Rubric Dimension</th>
+                      <th className="py-2.5 px-2 text-center text-[#059669]">Mobility</th>
+                      <th className="py-2.5 px-2 text-center text-[#2563EB]">Teleco</th>
+                      <th className="py-2.5 px-2 text-center text-[#7C3AED]">Travel</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 font-medium">
+                    {rubricDimensions.map((dim) => {
+                      const mob = accountStats.find((a) => a.account === 'Mobility')?.rubric[dim.key] || 0;
+                      const tel = accountStats.find((a) => a.account === 'Teleco')?.rubric[dim.key] || 0;
+                      const tra = accountStats.find((a) => a.account === 'Travel')?.rubric[dim.key] || 0;
+
+                      return (
+                        <tr key={dim.key} className="hover:bg-white transition-colors">
+                          <td className="py-2.5 px-3 font-semibold text-slate-800">{dim.label}</td>
+                          <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-900">{mob}%</td>
+                          <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-900">{tel}%</td>
+                          <td className="py-2.5 px-2 text-center font-mono font-bold text-slate-900">{tra}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-3 bg-purple-50 rounded-xl border border-purple-200/80 text-[11px] text-purple-900 space-y-1">
+                <div className="font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-purple-700" />
+                  Key Rubric Observation
+                </div>
+                <p className="text-purple-800">
+                  Mobility leads in Product Knowledge depth, while Travel demonstrates highest Call Control and Pacing agility.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================== */}
+      {/* TAB 3: ROLEPLAY SCENARIOS RP1–RP5 (CLEAN COMPARATIVE CARDS + BENCHMARK) */}
+      {/* ============================================================== */}
+      {activeTab === 'roleplay_scenarios' && (
+        <div className="space-y-6 pt-1">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {roleplayScenarios.map((scenario) => {
-              const scenarioScores = filteredCohorts.map((c) => ({
+              const scenarioScores = cohorts.map((c) => ({
                 cohort: c,
-                score: c.roleplayAverages[scenario.key],
+                score: c.roleplayAverages[scenario.key] || 0,
               }));
               scenarioScores.sort((a, b) => b.score - a.score);
               const best = scenarioScores[0];
@@ -488,28 +730,43 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
               return (
                 <div
                   key={scenario.key}
-                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between"
+                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{scenario.icon}</span>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-base">{scenario.icon}</span>
                       <h4 className="font-bold text-xs text-slate-900 leading-tight">
                         {scenario.label}
                       </h4>
                     </div>
 
-                    <div className="space-y-2 mt-4">
+                    <div className="space-y-2.5">
                       {scenarioScores.map(({ cohort, score }) => {
                         const color = getAccountColor(cohort.account);
+                        const badge = getAccountBadge(cohort.account);
+                        const isPassing = score >= 75;
+
                         return (
                           <div key={cohort.id} className="text-xs">
                             <div className="flex justify-between items-center mb-1">
-                              <span className="font-mono text-[11px] font-bold text-slate-700">
+                              <span className="flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700">
+                                <span
+                                  className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase border"
+                                  style={{
+                                    backgroundColor: badge.bg,
+                                    borderColor: badge.border,
+                                    color: badge.text,
+                                  }}
+                                >
+                                  {cohort.account.slice(0, 3)}
+                                </span>
                                 {cohort.code}
                               </span>
                               <span className="font-mono font-bold text-slate-900">{score}%</span>
                             </div>
-                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+
+                            {/* Bar with 75% Benchmark Dashed Line */}
+                            <div className="h-2 bg-slate-200 rounded-full relative overflow-hidden">
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
@@ -524,22 +781,21 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
                     </div>
                   </div>
 
-                  {best && lowest && (
-                    <div className="mt-4 pt-3 border-t border-slate-200 text-[11px] space-y-1 text-slate-500">
-                      <div className="flex justify-between">
-                        <span>Top:</span>
-                        <strong className="text-emerald-700 font-mono">
+                  {/* Benchmark & Summary Footer */}
+                  <div className="pt-3 border-t border-slate-200 text-[11px] space-y-1 text-slate-500">
+                    <div className="flex justify-between font-mono">
+                      <span>Threshold:</span>
+                      <strong className="text-slate-700">75% Pass</strong>
+                    </div>
+                    {best && lowest && (
+                      <div className="flex justify-between font-mono">
+                        <span>Top Wave:</span>
+                        <strong className="text-emerald-700 font-bold">
                           {best.cohort.code} ({best.score}%)
                         </strong>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Gap:</span>
-                        <strong className="text-rose-700 font-mono">
-                          {best.score - lowest.score} pts
-                        </strong>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -547,14 +803,16 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
         </div>
       )}
 
-      {/* VIEW 4: Test Modules Benchmarks */}
-      {activeView === 'test_modules' && (
-        <div className="space-y-6 pt-2">
+      {/* ============================================================== */}
+      {/* TAB 4: TEST MODULES (CLEAN COMPARATIVE CARDS + BENCHMARK) */}
+      {/* ============================================================== */}
+      {activeTab === 'test_modules' && (
+        <div className="space-y-6 pt-1">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
             {testModules.map((test) => {
-              const testScores = filteredCohorts.map((c) => ({
+              const testScores = cohorts.map((c) => ({
                 cohort: c,
-                score: c.testAverages[test.key],
+                score: c.testAverages[test.key] || 0,
               }));
               testScores.sort((a, b) => b.score - a.score);
               const best = testScores[0];
@@ -563,28 +821,42 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
               return (
                 <div
                   key={test.key}
-                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between"
+                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between space-y-4"
                 >
                   <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-lg">{test.icon}</span>
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-base">{test.icon}</span>
                       <h4 className="font-bold text-xs text-slate-900 leading-tight">
                         {test.label}
                       </h4>
                     </div>
 
-                    <div className="space-y-2 mt-4">
+                    <div className="space-y-2.5">
                       {testScores.map(({ cohort, score }) => {
                         const color = getAccountColor(cohort.account);
+                        const badge = getAccountBadge(cohort.account);
+
                         return (
                           <div key={cohort.id} className="text-xs">
                             <div className="flex justify-between items-center mb-1">
-                              <span className="font-mono text-[11px] font-bold text-slate-700">
+                              <span className="flex items-center gap-1 font-mono text-[11px] font-bold text-slate-700">
+                                <span
+                                  className="px-1 py-0.2 rounded text-[9px] font-extrabold uppercase border"
+                                  style={{
+                                    backgroundColor: badge.bg,
+                                    borderColor: badge.border,
+                                    color: badge.text,
+                                  }}
+                                >
+                                  {cohort.account.slice(0, 3)}
+                                </span>
                                 {cohort.code}
                               </span>
                               <span className="font-mono font-bold text-slate-900">{score}%</span>
                             </div>
-                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+
+                            {/* Bar with 80% Benchmark Line */}
+                            <div className="h-2 bg-slate-200 rounded-full relative overflow-hidden">
                               <div
                                 className="h-full rounded-full transition-all"
                                 style={{
@@ -599,89 +871,20 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
                     </div>
                   </div>
 
-                  {best && lowest && (
-                    <div className="mt-4 pt-3 border-t border-slate-200 text-[11px] space-y-1 text-slate-500">
-                      <div className="flex justify-between">
-                        <span>Top:</span>
-                        <strong className="text-emerald-700 font-mono">
+                  <div className="pt-3 border-t border-slate-200 text-[11px] space-y-1 text-slate-500">
+                    <div className="flex justify-between font-mono">
+                      <span>Certification Line:</span>
+                      <strong className="text-slate-700">80% Pass</strong>
+                    </div>
+                    {best && lowest && (
+                      <div className="flex justify-between font-mono">
+                        <span>Top Wave:</span>
+                        <strong className="text-blue-700 font-bold">
                           {best.cohort.code} ({best.score}%)
                         </strong>
                       </div>
-                      <div className="flex justify-between">
-                        <span>Certification Delta:</span>
-                        <strong className="text-blue-700 font-mono">
-                          +{best.score - lowest.score}%
-                        </strong>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* VIEW 5: Rubric Dimensions Benchmarks */}
-      {activeView === 'rubric_dimensions' && (
-        <div className="space-y-4 pt-2">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-            {rubricDimensions.map((rubric) => {
-              const scores = filteredCohorts.map((c) => ({
-                cohort: c,
-                score: c.rubricAverages[rubric.key],
-              }));
-              scores.sort((a, b) => b.score - a.score);
-              const best = scores[0];
-              const lowest = scores[scores.length - 1];
-
-              return (
-                <div
-                  key={rubric.key}
-                  className="bg-slate-50/70 border border-slate-200 rounded-2xl p-4 flex flex-col justify-between"
-                >
-                  <div>
-                    <h4 className="font-bold text-xs text-slate-900 mb-3">{rubric.label}</h4>
-                    <div className="space-y-2">
-                      {scores.map(({ cohort, score }) => {
-                        const color = getAccountColor(cohort.account);
-                        return (
-                          <div key={cohort.id} className="text-xs">
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-mono text-[11px] font-bold text-slate-700">
-                                {cohort.code}
-                              </span>
-                              <span className="font-mono font-bold text-slate-900">{score}%</span>
-                            </div>
-                            <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                              <div
-                                className="h-full rounded-full transition-all"
-                                style={{
-                                  width: `${score}%`,
-                                  backgroundColor: color,
-                                }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    )}
                   </div>
-
-                  {best && lowest && (
-                    <div className="mt-4 pt-3 border-t border-slate-200 text-[11px] space-y-1 text-slate-500">
-                      <div className="flex justify-between">
-                        <span>Benchmark High:</span>
-                        <strong className="text-emerald-700 font-mono">{best.score}%</strong>
-                      </div>
-                      <div className="flex justify-between">
-                        <span>Variance:</span>
-                        <strong className="text-purple-700 font-mono">
-                          {best.score - lowest.score} pts
-                        </strong>
-                      </div>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -689,61 +892,75 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
         </div>
       )}
 
-      {/* VIEW 6: Theory vs Practice Quadrant Scatter Plot */}
-      {activeView === 'theory_vs_practice' && (
-        <div className="space-y-4 pt-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-600">
-              Correlating Standardized Test Performance (X-Axis) vs Live Roleplay Execution (Y-Axis)
-            </span>
-            <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs">
+      {/* ============================================================== */}
+      {/* TAB 5: THEORY VS PRACTICE QUADRANT (LIGHT-THEMED SCATTER PLOT) */}
+      {/* ============================================================== */}
+      {activeTab === 'theory_vs_practice' && (
+        <div className="space-y-4 pt-1">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Target className="w-4 h-4 text-[#2E0854]" />
+                Theory vs. Practice Correlation Quadrant
+              </h4>
+              <p className="text-xs text-slate-500">
+                Correlating Standardized Test Knowledge (X-Axis) vs. Live Roleplay Execution (Y-Axis)
+              </p>
+            </div>
+
+            <div className="inline-flex rounded-lg bg-white p-0.5 border border-slate-200 shadow-2xs text-xs">
               <button
                 onClick={() => setScatterMode('centroids')}
-                className={`px-2.5 py-1 rounded font-bold transition-all cursor-pointer ${
-                  scatterMode === 'centroids' ? 'bg-[#2E0854] text-white shadow-2xs' : 'text-slate-600'
+                className={`px-3 py-1 rounded font-bold transition-all cursor-pointer ${
+                  scatterMode === 'centroids' ? 'bg-[#2E0854] text-white' : 'text-slate-600'
                 }`}
               >
-                Wave Centroids ({filteredCohorts.length})
+                Wave Centroids ({cohorts.length})
               </button>
               <button
                 onClick={() => setScatterMode('trainees')}
-                className={`px-2.5 py-1 rounded font-bold transition-all cursor-pointer ${
-                  scatterMode === 'trainees' ? 'bg-[#2E0854] text-white shadow-2xs' : 'text-slate-600'
+                className={`px-3 py-1 rounded font-bold transition-all cursor-pointer ${
+                  scatterMode === 'trainees' ? 'bg-[#2E0854] text-white' : 'text-slate-600'
                 }`}
               >
-                Individual Trainees ({filteredCohorts.reduce((s, c) => s + c.traineeCount, 0)})
+                Individual Trainees ({cohorts.reduce((s, c) => s + c.traineeCount, 0)})
               </button>
             </div>
           </div>
 
           <div className="bg-slate-50/50 border border-slate-200 rounded-2xl p-6 relative">
             {/* Quadrant Canvas */}
-            <div className="relative w-full h-[400px] border border-slate-300 rounded-xl bg-white overflow-hidden shadow-2xs">
-              {/* Center dividing lines at 75% */}
-              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-200 border-dashed" />
-              <div className="absolute top-1/2 left-0 right-0 h-px bg-slate-200 border-dashed" />
+            <div className="relative w-full h-[420px] border border-slate-300 rounded-xl bg-white overflow-hidden shadow-2xs">
+              {/* Subtle Quadrant Shading */}
+              <div className="absolute top-0 right-0 w-1/2 h-1/2 bg-emerald-500/[0.04] pointer-events-none" />
+              <div className="absolute top-0 left-0 w-1/2 h-1/2 bg-blue-500/[0.03] pointer-events-none" />
+              <div className="absolute bottom-0 right-0 w-1/2 h-1/2 bg-amber-500/[0.03] pointer-events-none" />
+              <div className="absolute bottom-0 left-0 w-1/2 h-1/2 bg-rose-500/[0.04] pointer-events-none" />
 
-              {/* Quadrant Watermark Labels */}
-              <div className="absolute top-3 right-4 text-[11px] font-bold uppercase tracking-wider text-emerald-600/60 bg-emerald-50/80 px-2.5 py-1 rounded-md border border-emerald-200">
+              {/* Center dividing dashed lines at 75% */}
+              <div className="absolute left-1/2 top-0 bottom-0 w-px bg-slate-300 border-dashed" />
+              <div className="absolute top-1/2 left-0 right-0 h-px bg-slate-300 border-dashed" />
+
+              {/* Quadrant Labels */}
+              <div className="absolute top-3 right-4 text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50/90 px-2.5 py-1 rounded-md border border-emerald-200">
                 ⭐ Star Performers (Certified Ready)
               </div>
-              <div className="absolute top-3 left-4 text-[11px] font-bold uppercase tracking-wider text-blue-600/60 bg-blue-50/80 px-2.5 py-1 rounded-md border border-blue-200">
+              <div className="absolute top-3 left-4 text-[11px] font-bold uppercase tracking-wider text-blue-700 bg-blue-50/90 px-2.5 py-1 rounded-md border border-blue-200">
                 ⚡ Intuitive Practitioners (Needs Theory)
               </div>
-              <div className="absolute bottom-3 right-4 text-[11px] font-bold uppercase tracking-wider text-amber-600/60 bg-amber-50/80 px-2.5 py-1 rounded-md border border-amber-200">
+              <div className="absolute bottom-3 right-4 text-[11px] font-bold uppercase tracking-wider text-amber-700 bg-amber-50/90 px-2.5 py-1 rounded-md border border-amber-200">
                 📚 Knowledgeable but Hesitant (Needs RP Drill)
               </div>
-              <div className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-wider text-rose-600/60 bg-rose-50/80 px-2.5 py-1 rounded-md border border-rose-200">
+              <div className="absolute bottom-3 left-4 text-[11px] font-bold uppercase tracking-wider text-rose-700 bg-rose-50/90 px-2.5 py-1 rounded-md border border-rose-200">
                 ⚠️ Foundation Support Required (At Risk)
               </div>
 
-              {/* Centroids Mode Points */}
+              {/* Centroids Mode */}
               {scatterMode === 'centroids' &&
-                filteredCohorts.map((cohort) => {
+                cohorts.map((cohort) => {
                   const color = getAccountColor(cohort.account);
-                  // Map 50-100 score to 0-100% canvas position
-                  const xPct = Math.max(5, Math.min(95, ((cohort.avgTestScore - 50) / 50) * 100));
-                  const yPct = Math.max(5, Math.min(95, 100 - ((cohort.avgRoleplayScore - 50) / 50) * 100));
+                  const xPct = Math.max(6, Math.min(94, ((cohort.avgTestScore - 50) / 50) * 100));
+                  const yPct = Math.max(6, Math.min(94, 100 - ((cohort.avgRoleplayScore - 50) / 50) * 100));
 
                   return (
                     <div
@@ -770,9 +987,9 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
                   );
                 })}
 
-              {/* Trainees Mode Points */}
+              {/* Trainees Mode */}
               {scatterMode === 'trainees' &&
-                filteredCohorts
+                cohorts
                   .flatMap((c) => (c.trainees || []).map((t) => ({ ...t, waveCode: c.code, cohortColor: getAccountColor(c.account) })))
                   .map((t) => {
                     const testScore = t.tests?.average || t.moduleComp || 75;
@@ -796,7 +1013,7 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
                         onMouseLeave={() => setHoveredPoint(null)}
                       >
                         <div
-                          className="w-3 h-3 rounded-full border border-white shadow-xs"
+                          className="w-3.5 h-3.5 rounded-full border border-white shadow-xs"
                           style={{ backgroundColor: t.cohortColor }}
                         />
                       </div>
@@ -805,7 +1022,7 @@ export const CrossCohortCharts: React.FC<CrossCohortChartsProps> = ({ cohorts })
 
               {/* Hover Tooltip Box */}
               {hoveredPoint && (
-                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-slate-900 text-white px-3.5 py-2 rounded-xl shadow-xl text-xs space-y-0.5 border border-slate-700 pointer-events-none">
+                <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-slate-900 text-white px-3.5 py-2 rounded-xl shadow-xl text-xs space-y-0.5 border border-slate-700 pointer-events-none animate-fade-in">
                   <div className="font-bold">{hoveredPoint.title}</div>
                   <div className="text-[11px] text-slate-400">{hoveredPoint.sub}</div>
                   <div className="text-[11px] font-mono text-emerald-400 pt-0.5">

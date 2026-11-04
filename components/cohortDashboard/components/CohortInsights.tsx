@@ -66,7 +66,7 @@ export const CohortInsights: React.FC<CohortInsightsProps> = ({ cohorts }) => {
         certRate,
         atRiskCount,
         avgOverall,
-        color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+        color: acc === 'Mobility' ? '#059669' : acc === 'Teleco' ? '#2563EB' : '#7C3AED',
       };
     });
 

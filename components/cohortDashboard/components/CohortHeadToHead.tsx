@@ -66,7 +66,7 @@ export const CohortHeadToHead: React.FC<CohortHeadToHeadProps> = ({
         rpGain: Number((finalRP - initialRP).toFixed(2)),
         certificationRate: certRate,
         atRiskCount,
-        color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+        color: acc === 'Mobility' ? '#059669' : acc === 'Teleco' ? '#2563EB' : '#7C3AED',
       };
     };
 
@@ -94,7 +94,7 @@ export const CohortHeadToHead: React.FC<CohortHeadToHeadProps> = ({
           initialRP: cohortA.initialRP,
           finalRP: cohortA.finalRP,
           gain: cohortA.rpGain,
-          color: cohortA.account === 'Mobility' ? '#06C167' : cohortA.account === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+          color: cohortA.account === 'Mobility' ? '#059669' : cohortA.account === 'Teleco' ? '#2563EB' : '#7C3AED',
         }
       : {
           title: `${accountA} Account Portfolio`,
@@ -127,7 +127,7 @@ export const CohortHeadToHead: React.FC<CohortHeadToHeadProps> = ({
           initialRP: cohortB.initialRP,
           finalRP: cohortB.finalRP,
           gain: cohortB.rpGain,
-          color: cohortB.account === 'Mobility' ? '#06C167' : cohortB.account === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+          color: cohortB.account === 'Mobility' ? '#059669' : cohortB.account === 'Teleco' ? '#2563EB' : '#7C3AED',
         }
       : {
           title: `${accountB} Account Portfolio`,

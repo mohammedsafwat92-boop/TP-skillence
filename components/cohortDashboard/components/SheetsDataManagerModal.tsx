@@ -12,7 +12,7 @@ import {
   Link2,
   HelpCircle,
   Info,
-  Database
+  Database,
 } from 'lucide-react';
 import { CohortSummary, SheetConfig } from '../types';
 import {
@@ -20,7 +20,7 @@ import {
   fetchGoogleSheetTabCsv,
   parseCsvTextForTab,
   parseExcelWorkbook,
-  downloadSixSheetExcelTemplate
+  downloadSixSheetExcelTemplate,
 } from '../utils/sheetParser';
 import { INITIAL_COHORTS_DATA, DEFAULT_SHEET_NAMES } from '../data/mockCohortsData';
 
@@ -64,154 +64,137 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
   };
 
   const handleFetchAllGoogleSheets = async () => {
-    setGlobalError(null);
-    setGlobalSuccess(null);
     const sheetId = extractGoogleSheetId(googleSheetInput);
-
     if (!sheetId) {
-      setGlobalError('Please enter a valid Google Sheet URL or Spreadsheet ID.');
+      setGlobalError('Please enter a valid Google Spreadsheet URL or Sheet ID.');
       return;
     }
 
     setIsFetchingAll(true);
-    const newStatuses: typeof sheetStatuses = {};
-    const parsedCohorts: CohortSummary[] = [];
+    setGlobalError(null);
+    setGlobalSuccess(null);
+
+    const initialStatuses: Record<number, { status: 'idle' | 'loading' | 'success' | 'error'; message?: string }> = {};
+    for (let i = 1; i <= 6; i++) {
+      initialStatuses[i] = { status: 'loading' };
+    }
+    setSheetStatuses(initialStatuses);
+
+    const updatedCohorts: CohortSummary[] = [];
     const errors: string[] = [];
 
-    for (let i = 0; i < 6; i++) {
-      const sheetIndex = i + 1;
-      const tabName = tabNames[i] || `Cohort ${sheetIndex}`;
-      newStatuses[sheetIndex] = { status: 'loading' };
-      setSheetStatuses({ ...newStatuses });
+    for (let index = 0; index < 6; index++) {
+      const sheetNum = index + 1;
+      const tabName = tabNames[index] || `Cohort ${sheetNum}`;
 
       try {
         const csvText = await fetchGoogleSheetTabCsv(sheetId, tabName);
-        const cohort = parseCsvTextForTab(csvText, sheetIndex, tabName);
-        parsedCohorts.push(cohort);
-        newStatuses[sheetIndex] = {
-          status: 'success',
-          count: cohort.traineeCount,
-          message: `Successfully loaded ${cohort.traineeCount} trainees`
-        };
+        const parsedCohort = parseCsvTextForTab(csvText, sheetNum, tabName);
+        updatedCohorts.push(parsedCohort);
+
+        setSheetStatuses((prev) => ({
+          ...prev,
+          [sheetNum]: { status: 'success', count: parsedCohort.traineeCount },
+        }));
       } catch (err: any) {
-        console.warn(`Error fetching tab "${tabName}":`, err);
-        errors.push(`${tabName}: ${err.message || 'Failed to fetch'}`);
-        newStatuses[sheetIndex] = {
-          status: 'error',
-          message: err.message || 'Failed to fetch tab'
-        };
+        errors.push(`Tab "${tabName}" (Sheet ${sheetNum}): ${err.message}`);
+        setSheetStatuses((prev) => ({
+          ...prev,
+          [sheetNum]: { status: 'error', message: err.message },
+        }));
       }
-      setSheetStatuses({ ...newStatuses });
     }
 
     setIsFetchingAll(false);
 
-    if (parsedCohorts.length > 0) {
-      // If some succeeded and some failed, merge with existing or fallback
-      const fullList: CohortSummary[] = [];
-      for (let i = 0; i < 6; i++) {
-        const matched = parsedCohorts.find((c) => c.sheetIndex === i + 1);
-        if (matched) {
-          fullList.push(matched);
-        } else if (cohorts[i]) {
-          fullList.push(cohorts[i]);
-        } else {
-          fullList.push(INITIAL_COHORTS_DATA[i]);
-        }
-      }
+    if (updatedCohorts.length > 0) {
+      onUpdateCohorts(updatedCohorts, 'google_sheets');
+      const totalTrainees = updatedCohorts.reduce((s, c) => s + c.traineeCount, 0);
 
-      onUpdateCohorts(fullList, 'google_sheets');
       if (errors.length === 0) {
-        setGlobalSuccess(`Successfully grabbed data from all 6 sheets! Total trainees: ${fullList.reduce((acc, c) => acc + c.traineeCount, 0)}.`);
+        setGlobalSuccess(`Successfully synchronized all 6 cohort tabs (${totalTrainees} total trainees)!`);
       } else {
-        setGlobalSuccess(`Grabbed data from ${parsedCohorts.length} of 6 sheets. (Retained previous data for failed tabs).`);
-        setGlobalError(`Some tabs could not be read: ${errors.join(' | ')}`);
+        setGlobalSuccess(`Synchronized ${updatedCohorts.length} of 6 cohort tabs (${totalTrainees} total trainees).`);
+        setGlobalError(`Some tabs could not be read:\n${errors.join('\n')}`);
       }
     } else {
-      setGlobalError(`Could not grab data from the Google Sheet. Please verify that:
-1) The Google Sheet sharing is set to "Anyone with the link can view".
-2) The tab names match your sheet exactly (e.g. "Cohort 1", "Cohort 2", etc.).`);
+      setGlobalError(`Failed to fetch any cohort tabs:\n${errors.join('\n')}`);
     }
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    setGlobalError(null);
-    setGlobalSuccess(null);
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      const parsed = await parseExcelWorkbook(file);
-      if (parsed.length > 0) {
-        // Pad to 6 if workbook had fewer than 6 sheets
-        const fullList: CohortSummary[] = [];
-        for (let i = 0; i < 6; i++) {
-          if (parsed[i]) {
-            fullList.push(parsed[i]);
-          } else {
-            fullList.push(INITIAL_COHORTS_DATA[i]);
-          }
-        }
-        onUpdateCohorts(fullList, 'excel_file');
-        setTabNames(fullList.map((c) => c.tabName));
-        setGlobalSuccess(`Successfully imported ${parsed.length} cohort sheets from "${file.name}"!`);
+      setGlobalError(null);
+      setGlobalSuccess(null);
+      const parsedCohorts = await parseExcelWorkbook(file);
+
+      if (parsedCohorts.length === 0) {
+        throw new Error('No valid cohort sheets with trainee data could be found in the uploaded file.');
       }
+
+      onUpdateCohorts(parsedCohorts, 'excel_file');
+      const totalTrainees = parsedCohorts.reduce((s, c) => s + c.traineeCount, 0);
+      setGlobalSuccess(`Successfully imported ${parsedCohorts.length} cohort sheets with ${totalTrainees} trainees from "${file.name}"!`);
+
+      const statuses: Record<number, any> = {};
+      parsedCohorts.forEach((c) => {
+        statuses[c.sheetIndex] = { status: 'success', count: c.traineeCount };
+      });
+      setSheetStatuses(statuses);
     } catch (err: any) {
-      setGlobalError(err.message || 'Failed to parse Excel workbook.');
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
+      setGlobalError(`Excel Parse Error: ${err.message}`);
     }
   };
 
   const handleLoadSampleDataset = () => {
     onUpdateCohorts(INITIAL_COHORTS_DATA, 'sample_data');
     setTabNames(DEFAULT_SHEET_NAMES);
-    const newStatuses: typeof sheetStatuses = {};
+    const statuses: Record<number, any> = {};
     INITIAL_COHORTS_DATA.forEach((c) => {
-      newStatuses[c.sheetIndex] = {
-        status: 'success',
-        count: c.traineeCount,
-        message: 'Preloaded benchmark cohort data'
-      };
+      statuses[c.sheetIndex] = { status: 'success', count: c.traineeCount };
     });
-    setSheetStatuses(newStatuses);
-    setGlobalSuccess('Reset to standardized 6-cohort benchmark dataset.');
+    setSheetStatuses(statuses);
+    setGlobalSuccess('Reset to official TP Skillence 6-Cohort Training Benchmark Dataset.');
+    setGlobalError(null);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+      <div className="bg-white border border-slate-200 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/70">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-white">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 border border-purple-200 flex items-center justify-center text-[#2E0854]">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                6 Sheets Data Connector & Manager
+              <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                6 Sheets Data Connector &amp; Manager
               </h2>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-slate-500">
                 Synchronize roleplay simulations and test assessment scores across all 6 cohort sheets
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Modal Navigation */}
-        <div className="flex border-b border-slate-800 px-6 bg-slate-900/50">
+        <div className="flex border-b border-slate-200 px-6 bg-slate-50/50">
           <button
             onClick={() => setActiveTab('google_sheets')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
               activeTab === 'google_sheets'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[#2E0854] text-[#2E0854] bg-purple-50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Globe className="w-4 h-4" />
@@ -220,10 +203,10 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
 
           <button
             onClick={() => setActiveTab('excel_upload')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
               activeTab === 'excel_upload'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[#2E0854] text-[#2E0854] bg-purple-50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Upload className="w-4 h-4" />
@@ -232,45 +215,45 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
 
           <button
             onClick={() => setActiveTab('sample_data')}
-            className={`flex items-center gap-2 py-3 px-4 text-xs font-semibold border-b-2 transition-all cursor-pointer ${
+            className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition-all cursor-pointer ${
               activeTab === 'sample_data'
-                ? 'border-indigo-500 text-indigo-400 bg-indigo-500/5'
-                : 'border-transparent text-slate-400 hover:text-slate-200'
+                ? 'border-[#2E0854] text-[#2E0854] bg-purple-50'
+                : 'border-transparent text-slate-600 hover:text-slate-900'
             }`}
           >
             <Database className="w-4 h-4" />
-            <span>Benchmark Dataset & Templates</span>
+            <span>Benchmark Dataset &amp; Templates</span>
           </button>
         </div>
 
         {/* Modal Content */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-200">
+        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-slate-800">
           {globalError && (
-            <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 shrink-0 text-red-400 mt-0.5" />
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 shrink-0 text-rose-600 mt-0.5" />
               <div className="space-y-1">
-                <p className="font-semibold">Sync Notice</p>
-                <p className="text-red-300/90 whitespace-pre-line">{globalError}</p>
+                <p className="font-bold">Sync Notice</p>
+                <p className="whitespace-pre-line">{globalError}</p>
               </div>
             </div>
           )}
 
           {globalSuccess && (
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-3">
-              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
-              <p>{globalSuccess}</p>
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-3">
+              <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-600" />
+              <p className="font-semibold">{globalSuccess}</p>
             </div>
           )}
 
           {activeTab === 'google_sheets' && (
             <div className="space-y-6">
-              <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-800 space-y-3">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                    <Link2 className="w-4 h-4 text-indigo-400" />
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Link2 className="w-4 h-4 text-[#2E0854]" />
                     Google Spreadsheet URL or Sheet ID
                   </label>
-                  <span className="text-[11px] text-slate-500">
+                  <span className="text-[11px] text-slate-500 font-medium">
                     Must be set to "Anyone with link can view"
                   </span>
                 </div>
@@ -280,12 +263,12 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
                     value={googleSheetInput}
                     onChange={(e) => setGoogleSheetInput(e.target.value)}
                     placeholder="https://docs.google.com/spreadsheets/d/1BxiMVs.../edit or spreadsheet ID"
-                    className="flex-1 bg-slate-900 border border-slate-700 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 outline-none"
+                    className="flex-1 bg-white border border-slate-300 focus:border-[#2E0854] rounded-lg px-3 py-2 text-xs text-slate-900 placeholder-slate-400 outline-none"
                   />
                   <button
                     onClick={handleFetchAllGoogleSheets}
                     disabled={isFetchingAll}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-2 shadow-md transition-all cursor-pointer shrink-0"
+                    className="px-4 py-2 bg-[#2E0854] hover:bg-[#4B1D7C] disabled:opacity-50 text-white rounded-lg text-xs font-bold flex items-center gap-2 shadow-xs transition-all cursor-pointer shrink-0"
                   >
                     {isFetchingAll ? (
                       <>
@@ -305,15 +288,15 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
               {/* 6 Tabs Configuration Grid */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                    <span>Individual Sheet Tab Names & Status</span>
+                  <h3 className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                    <span>Individual Sheet Tab Names &amp; Status</span>
                     <span className="text-[11px] text-slate-500 font-normal">
                       (Each tab represents one of the 6 training cohorts)
                     </span>
                   </h3>
                   <button
                     onClick={() => setTabNames(DEFAULT_SHEET_NAMES)}
-                    className="text-[11px] text-indigo-400 hover:text-indigo-300 underline cursor-pointer"
+                    className="text-[11px] text-[#2E0854] hover:underline cursor-pointer font-bold"
                   >
                     Reset tab names to default
                   </button>
@@ -327,31 +310,31 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
                     return (
                       <div
                         key={sheetNum}
-                        className="bg-slate-950/40 border border-slate-800 rounded-xl p-3.5 space-y-2.5 relative group hover:border-slate-700 transition-all"
+                        className="bg-white border border-slate-200 rounded-xl p-3.5 space-y-2.5 relative group hover:border-slate-300 transition-all shadow-2xs"
                       >
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="w-6 h-6 rounded-md bg-indigo-500/10 text-indigo-400 text-xs font-bold flex items-center justify-center border border-indigo-500/20">
-                              S{sheetNum}
+                            <span className="w-6 h-6 rounded-md bg-purple-50 text-[#2E0854] text-xs font-bold flex items-center justify-center border border-purple-200 font-mono">
+                              W{sheetNum}
                             </span>
-                            <span className="text-xs font-bold text-white">
+                            <span className="text-xs font-bold text-slate-900">
                               Sheet {sheetNum}
                             </span>
                           </div>
                           {statusInfo.status === 'loading' && (
-                            <span className="flex items-center gap-1 text-[11px] text-amber-400">
+                            <span className="flex items-center gap-1 text-[11px] text-amber-600 font-medium">
                               <RefreshCw className="w-3 h-3 animate-spin" />
                               Fetching...
                             </span>
                           )}
                           {statusInfo.status === 'success' && (
-                            <span className="flex items-center gap-1 text-[11px] text-emerald-400">
+                            <span className="flex items-center gap-1 text-[11px] text-emerald-700 font-bold">
                               <CheckCircle2 className="w-3.5 h-3.5" />
                               Synced ({currentCohort?.traineeCount || statusInfo.count || 0})
                             </span>
                           )}
                           {statusInfo.status === 'error' && (
-                            <span className="flex items-center gap-1 text-[11px] text-red-400">
+                            <span className="flex items-center gap-1 text-[11px] text-rose-600 font-bold">
                               <AlertCircle className="w-3.5 h-3.5" />
                               Error
                             </span>
@@ -359,23 +342,23 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
                         </div>
 
                         <div>
-                          <label className="text-[10px] text-slate-400 font-medium block mb-1">
+                          <label className="text-[10px] text-slate-500 font-medium block mb-1">
                             Tab Name in Google Sheet:
                           </label>
                           <input
                             type="text"
                             value={tabNames[sheetNum - 1] || ''}
                             onChange={(e) => handleTabNameChange(sheetNum - 1, e.target.value)}
-                            className="w-full bg-slate-900 border border-slate-800 focus:border-indigo-500 rounded px-2.5 py-1.5 text-xs text-white outline-none"
+                            className="w-full bg-slate-50 border border-slate-300 focus:border-[#2E0854] rounded px-2.5 py-1.5 text-xs text-slate-900 outline-none font-medium"
                             placeholder={`Cohort ${sheetNum}`}
                           />
                         </div>
 
                         {currentCohort && (
-                          <div className="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
-                            <span>RP: <strong className="text-indigo-300">{currentCohort.avgRoleplayScore}%</strong></span>
-                            <span>Test: <strong className="text-cyan-300">{currentCohort.avgTestScore}%</strong></span>
-                            <span>Cert: <strong className="text-emerald-400">{currentCohort.certificationRate}%</strong></span>
+                          <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+                            <span>RP: <strong className="text-slate-900">{currentCohort.avgRoleplayScore}%</strong></span>
+                            <span>Test: <strong className="text-slate-900">{currentCohort.avgTestScore}%</strong></span>
+                            <span>Cert: <strong className="text-emerald-700">{currentCohort.certificationRate}%</strong></span>
                           </div>
                         )}
                       </div>
@@ -385,13 +368,13 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
               </div>
 
               {/* Troubleshooting note */}
-              <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800/90 text-xs text-slate-400 flex items-start gap-3">
-                <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-start gap-3">
+                <Info className="w-4 h-4 text-purple-700 shrink-0 mt-0.5" />
                 <div>
-                  <p className="font-semibold text-slate-300 mb-0.5">How Google Sheets Multi-Tab Grab Works</p>
-                  <p className="text-slate-400 leading-relaxed text-[11px]">
+                  <p className="font-bold text-slate-800 mb-0.5">How Google Sheets Multi-Tab Grab Works</p>
+                  <p className="text-slate-600 leading-relaxed text-[11px]">
                     The applet uses the Google Visualization API to query all 6 tabs in parallel directly from your browser.
-                    Your Google Sheet must have sharing permissions set to <strong className="text-slate-200">"Anyone with the link can view"</strong> (File → Share → Share with others → General access: Anyone with the link).
+                    Your Google Sheet must have sharing permissions set to <strong className="text-slate-900">"Anyone with the link can view"</strong> (File → Share → Share with others → General access: Anyone with the link).
                   </p>
                 </div>
               </div>
@@ -402,15 +385,15 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
             <div className="space-y-6">
               <div
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-700 hover:border-indigo-500 rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-950/40 hover:bg-indigo-950/10 transition-all group"
+                className="border-2 border-dashed border-slate-300 hover:border-[#2E0854] rounded-2xl p-8 flex flex-col items-center justify-center text-center cursor-pointer bg-slate-50/50 hover:bg-purple-50/30 transition-all group"
               >
-                <div className="w-14 h-14 rounded-2xl bg-indigo-500/10 group-hover:bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-3 transition-colors">
+                <div className="w-14 h-14 rounded-2xl bg-purple-50 group-hover:bg-purple-100 text-[#2E0854] flex items-center justify-center mb-3 transition-colors border border-purple-200">
                   <Upload className="w-7 h-7" />
                 </div>
-                <h3 className="text-sm font-bold text-white mb-1">
+                <h3 className="text-sm font-bold text-slate-900 mb-1">
                   Upload Multi-Sheet Excel Workbook (.xlsx)
                 </h3>
-                <p className="text-xs text-slate-400 max-w-md mb-4">
+                <p className="text-xs text-slate-500 max-w-md mb-4">
                   Drag and drop your spreadsheet here or click to browse. The parser will extract up to 6 cohort sheets automatically.
                 </p>
                 <input
@@ -422,42 +405,42 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
                 />
                 <button
                   type="button"
-                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 bg-[#2E0854] hover:bg-[#4B1D7C] text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer"
                 >
                   Choose Excel File (.xlsx)
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                  <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-1.5">
-                    <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+                    <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
                     Supported Column Headers
                   </h4>
-                  <p className="text-[11px] text-slate-400 mb-2">
+                  <p className="text-[11px] text-slate-600 mb-2">
                     The parser automatically detects flexible column variations:
                   </p>
-                  <ul className="text-[11px] text-slate-400 space-y-1 list-disc pl-4">
-                    <li><strong className="text-slate-200">Trainee Name:</strong> Name, Learner, Student, Participant</li>
-                    <li><strong className="text-slate-200">Roleplays:</strong> RP 1, RP 2, RP 3, RP 4, RP 5 (or Discovery, Objection, Pitch, Deescalation, Closing)</li>
-                    <li><strong className="text-slate-200">Tests:</strong> Baseline, Module 1, Module 2, Module 3, Final Exam</li>
-                    <li><strong className="text-slate-200">Rubrics:</strong> Communication, Product Knowledge, Active Listening, Objection Handling, Call Control</li>
+                  <ul className="text-[11px] text-slate-600 space-y-1 list-disc pl-4">
+                    <li><strong className="text-slate-800">Trainee Name:</strong> Name, Learner, Student, Participant</li>
+                    <li><strong className="text-slate-800">Roleplays:</strong> RP 1, RP 2, RP 3, RP 4, RP 5 (or Discovery, Objection, Pitch, Deescalation, Closing)</li>
+                    <li><strong className="text-slate-800">Tests:</strong> Baseline, Module 1, Module 2, Module 3, Final Exam</li>
+                    <li><strong className="text-slate-800">Rubrics:</strong> Communication, Product Knowledge, Active Listening, Objection Handling, Call Control</li>
                   </ul>
                 </div>
 
-                <div className="bg-slate-950/50 p-4 rounded-xl border border-slate-800">
-                  <h4 className="text-xs font-bold text-white mb-2 flex items-center gap-1.5">
-                    <FileDown className="w-4 h-4 text-cyan-400" />
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                  <h4 className="text-xs font-bold text-slate-900 mb-2 flex items-center gap-1.5">
+                    <FileDown className="w-4 h-4 text-purple-700" />
                     Need a Pre-Formatted Template?
                   </h4>
-                  <p className="text-[11px] text-slate-400 mb-3">
+                  <p className="text-[11px] text-slate-600 mb-3">
                     Download our official 6-sheet template workbook pre-configured with the exact columns and sample data.
                   </p>
                   <button
                     onClick={downloadSixSheetExcelTemplate}
-                    className="w-full py-2 px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                    className="w-full py-2 px-3 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
                   >
-                    <FileDown className="w-4 h-4 text-cyan-400" />
+                    <FileDown className="w-4 h-4 text-purple-700" />
                     <span>Download 6-Sheet Template (.xlsx)</span>
                   </button>
                 </div>
@@ -467,20 +450,20 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
 
           {activeTab === 'sample_data' && (
             <div className="space-y-6">
-              <div className="bg-slate-950/60 p-5 rounded-xl border border-slate-800 space-y-4">
+              <div className="bg-slate-50 p-5 rounded-xl border border-slate-200 space-y-4">
                 <div className="flex items-start justify-between">
                   <div>
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Sparkles className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-700" />
                       Official 6-Cohort Training Benchmark Dataset
                     </h3>
-                    <p className="text-xs text-slate-400 mt-1">
+                    <p className="text-xs text-slate-600 mt-1">
                       Includes {INITIAL_COHORTS_DATA.reduce((s, c) => s + c.traineeCount, 0)} fully detailed trainees across 6 official waves: Mobility [W1: {INITIAL_COHORTS_DATA.find(c => c.code === 'W1')?.traineeCount || 13}, W2: {INITIAL_COHORTS_DATA.find(c => c.code === 'W2')?.traineeCount || 17}], Teleco [W3: {INITIAL_COHORTS_DATA.find(c => c.code === 'W3')?.traineeCount || 16}], and Travel [W4: {INITIAL_COHORTS_DATA.find(c => c.code === 'W4')?.traineeCount || 18}, W5: {INITIAL_COHORTS_DATA.find(c => c.code === 'W5')?.traineeCount || 6}, W6: {INITIAL_COHORTS_DATA.find(c => c.code === 'W6')?.traineeCount || 12}] with comprehensive simulation scores, rubric breakdowns, test progression, and trainer evaluations.
                     </p>
                   </div>
                   <button
                     onClick={handleLoadSampleDataset}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
+                    className="px-4 py-2 bg-[#2E0854] hover:bg-[#4B1D7C] text-white rounded-lg text-xs font-bold shadow-xs transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
                   >
                     <RefreshCw className="w-3.5 h-3.5" />
                     <span>Load Benchmark Dataset</span>
@@ -489,30 +472,30 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
 
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
                   {INITIAL_COHORTS_DATA.map((c) => (
-                    <div key={c.id} className="bg-slate-900/80 p-3 rounded-lg border border-slate-800 text-xs">
-                      <div className="font-semibold text-white truncate">{c.name}</div>
-                      <div className="text-[11px] text-slate-400 mt-0.5">Trainer: {c.trainer}</div>
-                      <div className="flex justify-between items-center mt-2 text-[11px]">
-                        <span className="text-slate-400">{c.traineeCount} Trainees</span>
-                        <span className="font-bold text-indigo-400">{c.avgOverallScore}% Avg</span>
+                    <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 text-xs shadow-2xs">
+                      <div className="font-bold text-slate-900 truncate">{c.name}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">Trainer: {c.trainer}</div>
+                      <div className="flex justify-between items-center mt-2 text-[11px] font-mono">
+                        <span className="text-slate-600">{c.traineeCount} Trainees</span>
+                        <span className="font-bold text-[#2E0854]">{c.avgOverallScore}% Avg</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex items-center justify-between">
                 <div>
-                  <h4 className="text-xs font-bold text-white">Download Standard 6-Sheet Excel Template</h4>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <h4 className="text-xs font-bold text-slate-900">Download Standard 6-Sheet Excel Template</h4>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
                     Useful for distributing to trainers or importing into your team's Google Drive.
                   </p>
                 </div>
                 <button
                   onClick={downloadSixSheetExcelTemplate}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-medium flex items-center gap-2 transition-colors cursor-pointer"
+                  className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 rounded-lg text-xs font-bold flex items-center gap-2 transition-colors cursor-pointer"
                 >
-                  <FileDown className="w-4 h-4 text-emerald-400" />
+                  <FileDown className="w-4 h-4 text-[#2E0854]" />
                   <span>Download Template</span>
                 </button>
               </div>
@@ -521,19 +504,21 @@ export const SheetsDataManagerModal: React.FC<SheetsDataManagerModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-800 bg-slate-950 flex items-center justify-between">
-          <div className="text-xs text-slate-400 flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+          <div className="text-xs text-slate-600 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
             <span>Currently tracking {cohorts.length} cohorts ({cohorts.reduce((acc, c) => acc + c.traineeCount, 0)} total trainees)</span>
           </div>
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            className="px-5 py-2 bg-[#0A1128] hover:bg-slate-800 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer shadow-xs"
           >
-            Close & View Analytics
+            Close &amp; View Analytics
           </button>
         </div>
       </div>
     </div>
   );
 };
+
+export default SheetsDataManagerModal;

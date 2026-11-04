@@ -95,6 +95,11 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
               )
             : 0;
 
+        const color = acc === 'Mobility' ? '#059669' : acc === 'Teleco' ? '#2563EB' : '#7C3AED';
+        const bgFill = acc === 'Mobility' ? '#ECFDF5' : acc === 'Teleco' ? '#EFF6FF' : '#F5F3FF';
+        const border = acc === 'Mobility' ? '#A7F3D0' : acc === 'Teleco' ? '#BFDBFE' : '#DDD6FE';
+        const text = acc === 'Mobility' ? '#065F46' : acc === 'Teleco' ? '#1E40AF' : '#5B21B6';
+
         return {
           account: acc,
           cohorts: groupCohorts,
@@ -103,7 +108,10 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
           avgRP,
           avgTest,
           avgGain,
-          color: acc === 'Mobility' ? '#06C167' : acc === 'Teleco' ? '#3B82F6' : '#8B5CF6',
+          color,
+          bgFill,
+          border,
+          text,
         };
       })
       .filter((g) => g.cohorts.length > 0);
@@ -170,10 +178,11 @@ export const CohortComparisonMatrix: React.FC<CohortComparisonMatrixProps> = ({
           <div>
             <div className="flex items-center flex-wrap gap-1.5">
               <span
-                className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0"
+                className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0 border"
                 style={{
-                  backgroundColor: `${cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6')}18`,
-                  color: cohort.accountBadgeColor || (cohort.account === 'Mobility' ? '#06C167' : cohort.account === 'Teleco' ? '#3B82F6' : '#8B5CF6'),
+                  backgroundColor: cohort.account === 'Mobility' ? '#ECFDF5' : cohort.account === 'Teleco' ? '#EFF6FF' : '#F5F3FF',
+                  borderColor: cohort.account === 'Mobility' ? '#A7F3D0' : cohort.account === 'Teleco' ? '#BFDBFE' : '#DDD6FE',
+                  color: cohort.account === 'Mobility' ? '#065F46' : cohort.account === 'Teleco' ? '#1E40AF' : '#5B21B6',
                 }}
               >
                 {cohort.account}
