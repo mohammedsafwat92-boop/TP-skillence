@@ -399,10 +399,69 @@ function isReadAction(action: string): boolean {
   return action.startsWith('get_') || action.startsWith('fetch_');
 }
 
+export const SESSION_TOKEN_KEY = 'tp_skillence_session_token';
+
+const sessionExpiredListeners = new Set<() => void>();
+
+export function getSessionToken(): string | null {
+  try {
+    return localStorage.getItem(SESSION_TOKEN_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function setSessionToken(token: string | null): void {
+  try {
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    } else {
+      localStorage.removeItem(SESSION_TOKEN_KEY);
+    }
+  } catch (e) {
+    console.warn('[GoogleSheetService] Failed to persist session token:', e);
+  }
+}
+
+export function onSessionExpired(cb: () => void): () => void {
+  sessionExpiredListeners.add(cb);
+  return () => {
+    sessionExpiredListeners.delete(cb);
+  };
+}
+
+function notifySessionExpired(): void {
+  sessionExpiredListeners.forEach((cb) => {
+    try {
+      cb();
+    } catch (e) {
+      console.warn('[GoogleSheetService] Session expired listener error:', e);
+    }
+  });
+}
+
+function createClientId(prefix: string): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return `${prefix}_${crypto.randomUUID()}`;
+    }
+  } catch {
+    // Fallback below when crypto.randomUUID is unavailable
+  }
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 async function executeFetch(action: string, payload: any = {}): Promise<any> {
+  const token = getSessionToken();
+  const shouldAttachToken = action !== 'login' && action !== 'test_connection';
+  const requestPayload =
+    shouldAttachToken && token && !payload?.sessionToken
+      ? { ...payload, sessionToken: token }
+      : { ...payload };
+
   const requestBody = JSON.stringify({ 
     action, 
-    ...payload 
+    ...requestPayload 
   });
 
   const controller = new AbortController();
@@ -437,6 +496,11 @@ async function executeFetch(action: string, payload: any = {}): Promise<any> {
       if (json.message === "Invalid credentials") {
         throw new Error("AUTH_FAILED: Incorrect credentials.");
       }
+      if (String(json.message || '').includes('SESSION_EXPIRED')) {
+        setSessionToken(null);
+        notifySessionExpired();
+        throw new Error(String(json.message));
+      }
       throw new Error(json.message || 'GENERAL_BACKEND_FAULT');
     }
     
@@ -456,8 +520,12 @@ async function callApi(action: string, payload: any = {}) {
     try {
       return await executeFetch(action, payload);
     } catch (err: any) {
-      const isAuthError = err?.message?.includes('AUTH_FAILED');
-      const isAbortOrNetwork = err?.name === 'AbortError' || err?.message?.includes('NETWORK_ERROR') || err?.message?.includes('Failed to fetch');
+      const msg = String(err?.message || '');
+      const isAuthError =
+        msg.includes('AUTH_FAILED') ||
+        msg.includes('SESSION_EXPIRED') ||
+        msg.includes('FORBIDDEN');
+      const isAbortOrNetwork = err?.name === 'AbortError' || msg.includes('NETWORK_ERROR') || msg.includes('Failed to fetch');
       
       if (!isAuthError && isRead && attempt < maxRetries && isAbortOrNetwork) {
         attempt++;
@@ -632,6 +700,11 @@ export const googleSheetService = {
     }
   },
 
+  // Session Token Management
+  getSessionToken,
+  setSessionToken,
+  onSessionExpired,
+
   // SWR Exposure & Utility Methods
   swrFetch,
   getCached,
@@ -647,19 +720,11 @@ export const googleSheetService = {
   getCachedMyLessons: (userId: string) => getCached<any[]>(`swr_my_lessons_${userId}`),
 
   login: async (email: string, pass: string): Promise<UserProfile> => {
-    try {
-      return await callApi('login', { email, password: pass });
-    } catch (err: any) {
-      console.warn("[googleSheetService] Remote login failed, verifying local authentication:", err?.message);
-      const localUser = authenticateLocalUser(email, pass);
-      if (localUser) {
-        return localUser;
-      }
-      if (err?.message?.includes("AUTH_FAILED")) {
-        throw err;
-      }
-      throw new Error("Unable to connect to registry and account not found in local sandbox.");
+    const data = await callApi('login', { email, password: pass });
+    if (data?.sessionToken) {
+      setSessionToken(data.sessionToken);
     }
+    return data;
   },
     
   fetchUserPlan: async (uid: string, role: string, onUpdate?: (fresh: any) => void) => {
@@ -752,20 +817,30 @@ export const googleSheetService = {
   },
     
   submitQuizResult: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
+    const clientEventId = createClientId('evt');
     updateLocalProgress(uid, resourceId, passed, score, timeTaken);
     invalidateCache(`swr_user_plan_${uid}`);
     invalidateCache('swr_admin_stats');
-    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
+    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken, clientEventId }).catch((err) => {
+      const msg = String(err?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw err;
+      }
       console.warn("[googleSheetService] submitQuizResult remote failed, stored locally:", err?.message);
       return { success: true, offline: true };
     });
   },
 
   submitProgress: (uid: string, resourceId: string, passed: boolean, score: number, timeTaken?: number) => {
+    const clientEventId = createClientId('evt');
     updateLocalProgress(uid, resourceId, passed, score, timeTaken);
     invalidateCache(`swr_user_plan_${uid}`);
     invalidateCache('swr_admin_stats');
-    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken }).catch((err) => {
+    return callApi('submit_progress', { uid, resourceId, passed, score, timeTaken, clientEventId }).catch((err) => {
+      const msg = String(err?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw err;
+      }
       console.warn("[googleSheetService] submitProgress remote failed, stored locally:", err?.message);
       return { success: true, offline: true };
     });
@@ -980,13 +1055,17 @@ export const googleSheetService = {
     );
   },
 
-  setWaveConfig: async (waveNumber: string, goalType: 'default' | 'weekly', goalMinutes: number) => {
+  setWaveConfig: async (waveNumber: string, goalType: 'default' | 'weekly', goalMinutes: number | null) => {
     invalidateCache('swr_wave_configs');
     try {
       const res = await callApi('set_wave_config', { waveNumber, goalType, goalMinutes });
       invalidateCache('swr_wave_configs');
       return res;
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw e;
+      }
       console.warn("[googleSheetService] setWaveConfig Web App failed, utilizing localStorage fallback. Error:", e?.message);
       let local: Record<string, any> = {};
       try {
@@ -1005,12 +1084,12 @@ export const googleSheetService = {
       }
       
       if (goalType === 'default') {
-        local[waveNumber].defaultGoal = goalMinutes;
+        local[waveNumber].defaultGoal = goalMinutes ?? 180;
       } else {
-        local[waveNumber].currentWeekGoal = goalMinutes || null;
+        local[waveNumber].currentWeekGoal = goalMinutes === null ? null : goalMinutes;
       }
       
-      local[waveNumber].activeGoal = local[waveNumber].currentWeekGoal || local[waveNumber].defaultGoal || 180;
+      local[waveNumber].activeGoal = local[waveNumber].currentWeekGoal ?? local[waveNumber].defaultGoal ?? 180;
       
       localStorage.setItem("local_wave_configs", JSON.stringify(local));
       invalidateCache('swr_wave_configs');
@@ -1044,9 +1123,14 @@ export const googleSheetService = {
   },
 
   saveTranscript: async (userId: string, transcript: any): Promise<any> => {
+    const clientSubmissionId = createClientId('t');
     try {
-      return await callApi('save_transcript', { userId, transcript });
+      return await callApi('save_transcript', { userId, transcript, clientSubmissionId });
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw e;
+      }
       console.warn("[googleSheetService] saveTranscript Web App failed, utilizing localStorage fallback. Error:", e?.message);
       const key = `local_transcripts_${userId}`;
       let local: any[] = [];
@@ -1093,16 +1177,19 @@ export const googleSheetService = {
   proxyGeminiRequest: (payload: any): Promise<any> =>
     callApi('proxy_gemini_request', { payload }),
 
-  addSingleUser: async (userData: { name: string; email: string; waveNumber: string; role: 'agent' }): Promise<boolean> => {
+  addSingleUser: async (userData: { name: string; email: string; waveNumber: string; role: 'agent' }): Promise<{
+    id?: string;
+    name?: string;
+    email?: string;
+    accessCode?: string;
+    waveNumber?: string;
+    account?: string;
+    existing?: boolean;
+  }> => {
     invalidateCache('swr_admin_stats');
-    try {
-      await callApi('addSingleUser', userData);
-      invalidateCache('swr_admin_stats');
-      return true;
-    } catch (e) {
-      console.error("[googleSheetService] addSingleUser failed:", e);
-      return false;
-    }
+    const res = await callApi('addSingleUser', userData);
+    invalidateCache('swr_admin_stats');
+    return res;
   },
 
   saveLesson: async (title: string, lessonData: any): Promise<{ id: string; title: string }> => {
@@ -1127,11 +1214,12 @@ export const googleSheetService = {
   },
 
   saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ success: boolean; id?: string; message?: string }> => {
+    const clientSubmissionId = createClientId('sub');
     invalidateCache(`swr_my_lessons_${userId}`);
     invalidateCache(`swr_user_plan_${userId}`);
     invalidateCache('swr_admin_stats');
     try {
-      const data = await callApi('saveAnswers', { userId, lessonId, answers });
+      const data = await callApi('saveAnswers', { userId, lessonId, answers, clientSubmissionId });
       invalidateCache(`swr_my_lessons_${userId}`);
       invalidateCache(`swr_user_plan_${userId}`);
       invalidateCache('swr_admin_stats');
@@ -1140,6 +1228,10 @@ export const googleSheetService = {
         id: data?.id || ('ans_' + Date.now())
       };
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw e;
+      }
       console.warn("[googleSheetService] saveAnswers Web App failed:", e?.message);
       try {
         const id = 'ans_' + Date.now();

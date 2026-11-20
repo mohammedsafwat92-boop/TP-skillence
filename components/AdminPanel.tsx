@@ -266,12 +266,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     if (!selectedTargetUserId) return;
     setIsProcessing(true);
     try {
-      const selectedUser = userList.find(u => u.id === selectedTargetUserId);
-      const selectedWave = selectedUser?.wave || selectedUser?.waveNumber || 'All';
-      await googleSheetService.assignToWeek(targetWeek, [resourceId], selectedTargetUserId, selectedWave);
+      await googleSheetService.assignManualResource(selectedTargetUserId, resourceId, currentUser.id);
       setAssignmentSuccess("Module assigned successfully to student!");
       setTimeout(() => setAssignmentSuccess(null), 5000);
-      fetchWeeklyAssignments();
+      onUpdateContent();
+      await Promise.all([loadAdminStats(), fetchResources()]);
     } catch (err) {
       alert("Failed to manual assign module: " + (err as Error).message);
     } finally {
@@ -285,7 +284,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
     try {
       const selectedUser = userList.find(u => u.id === selectedTargetUserId);
       const selectedWave = selectedUser?.wave || selectedUser?.waveNumber || 'All';
-      await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, selectedTargetUserId, selectedWave);
+      await googleSheetService.assignToWeek(targetWeek, selectedResourceIds, currentUser.id, selectedWave);
       setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} modules to Week ${targetWeek}!`);
       setSelectedResourceIds([]);
       setTimeout(() => setAssignmentSuccess(null), 5000);
@@ -507,14 +506,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                   onClick={async () => {
                     setIsSavingGoal(true);
                     try {
-                      const goalNum = weeklyOverrideInput ? Number(weeklyOverrideInput) : 0;
+                      const goalNum = weeklyOverrideInput.trim() === '' ? null : Number(weeklyOverrideInput);
                       const updated = await googleSheetService.setWaveConfig(activeWave, 'weekly', goalNum);
                       setWaveConfigs(prev => ({
                         ...prev,
                         [activeWave]: updated?.[activeWave] || {
                           ...prev[activeWave],
-                          currentWeekGoal: goalNum || null,
-                          activeGoal: updated?.[activeWave]?.activeGoal || prev[activeWave]?.defaultGoal || 180
+                          currentWeekGoal: goalNum,
+                          activeGoal: updated?.[activeWave]?.activeGoal ?? (goalNum ?? prev[activeWave]?.defaultGoal ?? 180)
                         }
                       }));
                       await loadData();

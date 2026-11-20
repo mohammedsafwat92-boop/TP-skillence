@@ -92,8 +92,15 @@ const App: React.FC = () => {
     checkSession();
   }, []);
 
+  useEffect(() => {
+    return googleSheetService.onSessionExpired(() => {
+      handleLogout();
+    });
+  }, []);
+
   const handleLogin = async (user: any) => {
     const normalized = normalizeUser(user);
+    googleSheetService.setSessionToken(normalized?.sessionToken || null);
     setCurrentUser(normalized);
     localStorage.setItem('tp_skillence_user_session', JSON.stringify(normalized));
 
@@ -189,6 +196,7 @@ const App: React.FC = () => {
   };
 
   const handleLogout = () => {
+    googleSheetService.setSessionToken(null);
     localStorage.removeItem('tp_skillence_user_session');
     setCurrentUser(null);
     setOriginalUser(null);

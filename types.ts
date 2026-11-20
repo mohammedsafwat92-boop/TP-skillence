@@ -75,6 +75,7 @@ export interface UserProfile {
   assignedScenarioId?: string;
   waveNumber?: string;
   account?: 'Mobility' | 'Teleco' | 'Travel' | string;
+  sessionToken?: string;
 }
 
 export interface Roster {

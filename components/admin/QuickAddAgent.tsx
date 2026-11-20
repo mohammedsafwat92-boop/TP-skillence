@@ -26,24 +26,21 @@ export const QuickAddAgent: React.FC<QuickAddAgentProps> = ({ onAgentAdded }) =>
     setErrorMessage(null);
 
     try {
-      const success = await googleSheetService.addSingleUser({
+      const res = await googleSheetService.addSingleUser({
         name: name.trim(),
         email: email.trim().toLowerCase(),
         waveNumber: waveNumber.trim(),
         role: 'agent',
       });
 
-      if (success) {
-        setSuccessMessage(`Successfully onboarded Agent "${name.trim()}"!`);
-        setName('');
-        setEmail('');
-        setWaveNumber('');
-        onAgentAdded();
-      } else {
-        setErrorMessage('Failed to onboard agent. Please check your network or spreadsheet connection.');
-      }
+      const accessCodeSuffix = res?.accessCode ? ` Access Code: ${res.accessCode}` : '';
+      setSuccessMessage(`Successfully onboarded Agent "${res?.name || name.trim()}"!${accessCodeSuffix}`);
+      setName('');
+      setEmail('');
+      setWaveNumber('');
+      onAgentAdded();
     } catch (err: any) {
-      setErrorMessage(err?.message || 'A critical error occurred while onboarding.');
+      setErrorMessage(err?.message || 'Failed to onboard agent. Please check your network or spreadsheet connection.');
     } finally {
       setIsSubmitting(false);
     }
