@@ -244,22 +244,12 @@ function getLocalResources(): Resource[] {
   return [...INITIAL_FALLBACK_RESOURCES];
 }
 
-function isLevelMatch(resourceLevel: string, userLevel: string): boolean {
-  const r = String(resourceLevel || 'All').toUpperCase();
-  const u = String(userLevel || '').toUpperCase();
-  if (r === 'ALL') return true;
-  if (!u) return true;
-  if (r === u) return true;
-  if (r.includes(u)) return true;
-  return false;
+function isLevelMatch(_resourceLevel: string, _userLevel: string): boolean {
+  return true;
 }
 
-function getLocalUserPlan(uid: string, role?: string): { resources: Resource[]; weeklyMinutes: number; weeklyProgress: number } {
+function getLocalUserPlan(uid: string, _role?: string): { resources: Resource[]; weeklyMinutes: number; weeklyProgress: number } {
   const allRes = getLocalResources();
-  const users = getLocalUsers();
-  const user = users.find(u => String(u.id) === String(uid));
-  const userLevel = user?.languageLevel || 'B1';
-  const isAdminOrCoach = role === 'admin' || role === 'coach';
 
   let userProgressMap: Record<string, any> = {};
   try {
@@ -273,7 +263,7 @@ function getLocalUserPlan(uid: string, role?: string): { resources: Resource[]; 
   let weeklyMinutes = 0;
 
   for (const res of allRes) {
-    if (!isAdminOrCoach && !isLevelMatch(res.level, userLevel)) continue;
+    if (!isLevelMatch(res.level, '')) continue;
 
     const progOverride = userProgressMap[res.id];
     const progress = progOverride ? { ...res.progress, ...progOverride } : { ...res.progress };
@@ -323,6 +313,9 @@ function updateLocalAssignment(targetUid: string, resourceId: string, adminId: s
     const raw = localStorage.getItem(key);
     const map = raw ? JSON.parse(raw) : {};
     const existing = map[resourceId] || {};
+    if (String(existing.status || '').toLowerCase() === 'completed') {
+      return;
+    }
     map[resourceId] = {
       ...existing,
       status: 'assigned',
@@ -332,6 +325,84 @@ function updateLocalAssignment(targetUid: string, resourceId: string, adminId: s
   } catch (e) {
     console.warn("Failed to write local assignment:", e);
   }
+}
+
+function getCompletedResourceIdsFromLocalOrCache(uid: string): Set<string> {
+  const completed = new Set<string>();
+
+  try {
+    const cachedPlan = getCached<any>(`swr_user_plan_${uid}`);
+    const planResources: any[] = Array.isArray(cachedPlan)
+      ? cachedPlan
+      : Array.isArray(cachedPlan?.resources)
+        ? cachedPlan.resources
+        : [];
+    for (const r of planResources) {
+      if (String(r?.progress?.status || '').toLowerCase() === 'completed') {
+        completed.add(String(r.id));
+      }
+    }
+  } catch {
+    // Ignore cache parse issues
+  }
+
+  try {
+    const rawProg = localStorage.getItem(`local_progress_${uid}`);
+    if (rawProg) {
+      const progMap = JSON.parse(rawProg);
+      if (progMap && typeof progMap === 'object') {
+        for (const [resId, prog] of Object.entries(progMap)) {
+          if (String((prog as any)?.status || '').toLowerCase() === 'completed') {
+            completed.add(String(resId));
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore local progress parse issues
+  }
+
+  return completed;
+}
+
+function resolveWaveWeeklyGoalMinutes(targetWave?: string): number {
+  const DEFAULT_GOAL = 180;
+  let configs: Record<string, any> | null = getCached<Record<string, any>>('swr_wave_configs');
+  if (!configs || typeof configs !== 'object' || Object.keys(configs).length === 0) {
+    try {
+      const stored = localStorage.getItem('local_wave_configs');
+      configs = stored ? JSON.parse(stored) : {};
+    } catch {
+      configs = {};
+    }
+  }
+
+  if (!configs || typeof configs !== 'object') return DEFAULT_GOAL;
+
+  const normalizedWave = String(targetWave || '').trim();
+  let matchedConfig: any = null;
+
+  if (normalizedWave && normalizedWave.toLowerCase() !== 'all') {
+    if (configs[normalizedWave]) {
+      matchedConfig = configs[normalizedWave];
+    } else {
+      const lowerWave = normalizedWave.toLowerCase();
+      const foundKey = Object.keys(configs).find(k => String(k).trim().toLowerCase() === lowerWave);
+      if (foundKey) matchedConfig = configs[foundKey];
+    }
+  } else {
+    matchedConfig = configs['All'] || configs['all'] || null;
+  }
+
+  if (matchedConfig && typeof matchedConfig === 'object') {
+    const candidate = matchedConfig.activeGoal ?? matchedConfig.currentWeekGoal ?? matchedConfig.defaultGoal;
+    const numeric = Number(candidate);
+    if (Number.isFinite(numeric) && numeric > 0) {
+      return numeric;
+    }
+  }
+
+  return DEFAULT_GOAL;
 }
 
 function authenticateLocalUser(email: string, _pass: string): UserProfile | null {
@@ -808,7 +879,10 @@ export const googleSheetService = {
   fetchAllUsers: async (requesterEmail?: string, requesterRole?: string) => {
     try {
       const users = await callApi('admin_get_users', { requesterEmail, requesterRole });
-      if (Array.isArray(users) && users.length > 0) return users;
+      if (Array.isArray(users) && users.length > 0) {
+        setCached('swr_all_users', users);
+        return users;
+      }
       return getLocalUsers();
     } catch (err: any) {
       console.warn("[googleSheetService] fetchAllUsers remote error, utilizing local roster:", err?.message);
@@ -938,6 +1012,10 @@ export const googleSheetService = {
       invalidateCache('swr_admin_stats');
       return res;
     } catch (apiError: any) {
+      const errMsg = String(apiError?.message || '');
+      if (errMsg.includes('SESSION_EXPIRED') || errMsg.includes('FORBIDDEN')) {
+        throw apiError;
+      }
       console.warn("[googleSheetService] bulk_assign_roster backend action failed or is not deployed. Running client-side bulk assignment fallback...", apiError?.message);
       
       let adminEmail = undefined;
@@ -971,26 +1049,45 @@ export const googleSheetService = {
       if (resources.length === 0) {
         throw new Error("No resources found to assign");
       }
+
+      const isNetworkFailure =
+        apiError?.name === 'AbortError' ||
+        errMsg.includes('NETWORK_ERROR') ||
+        errMsg.includes('Failed to fetch');
+
+      const completedByAgent = new Map<string, Set<string>>();
+      for (const agent of targetAgents) {
+        const completed = getCompletedResourceIdsFromLocalOrCache(agent.id);
+        if (!isNetworkFailure && !getCached(`swr_user_plan_${agent.id}`)) {
+          try {
+            const plan = await callApi('get_user_plan', { uid: agent.id, role: 'agent' });
+            const planResources: any[] = Array.isArray(plan)
+              ? plan
+              : Array.isArray(plan?.resources)
+                ? plan.resources
+                : [];
+            for (const r of planResources) {
+              if (String(r?.progress?.status || '').toLowerCase() === 'completed') {
+                completed.add(String(r.id));
+              }
+            }
+          } catch {
+            // Fall back to local/cached progress only
+          }
+        }
+        completedByAgent.set(agent.id, completed);
+      }
       
-      const isLevelMatchLocal = (resLevel: string, userLevel: string) => {
-        const r = String(resLevel || 'All').toUpperCase();
-        const u = String(userLevel || '').toUpperCase();
-        if (r === 'ALL') return true;
-        if (r === u) return true;
-        if (u && r.indexOf(u) !== -1) return true;
-        return false;
-      };
-      
+      // Ignore CEFRLevel completely; skip only resources where progress.status === 'completed'
       const assignments: { targetUid: string; resourceId: string }[] = [];
       for (const agent of targetAgents) {
-        const userLevel = agent.languageLevel || 'B1';
+        const completedSet = completedByAgent.get(agent.id) || new Set<string>();
         for (const res of resources) {
-          if (isLevelMatchLocal(res.level, userLevel)) {
-            assignments.push({
-              targetUid: agent.id,
-              resourceId: res.id
-            });
-          }
+          if (completedSet.has(String(res.id))) continue;
+          assignments.push({
+            targetUid: agent.id,
+            resourceId: res.id
+          });
         }
       }
       
@@ -1100,12 +1197,74 @@ export const googleSheetService = {
   assignToWeek: async (weekNumber: number, resourceIds: string[], adminId: string, targetWave?: string): Promise<Record<number, string[]>> => {
     invalidateCache('swr_weekly_assignments');
     invalidateCache('swr_user_plan');
+    invalidateCache('swr_admin_stats');
+
+    const normalizedWave = String(targetWave || 'All').trim() || 'All';
+    const weeklyGoalMinutes = resolveWaveWeeklyGoalMinutes(normalizedWave);
+
+    // Resolve catalog durations (default 15 minutes)
+    const catalog = getCached<Resource[]>('swr_all_resources') || getLocalResources();
+    const resourceById = new Map<string, Resource>();
+    for (const r of catalog) {
+      resourceById.set(String(r.id), r);
+    }
+
+    // Resolve targeted agents for the wave to skip resources already completed by targeted agents
+    const allUsers = getCached<UserProfile[]>('swr_all_users') || getLocalUsers();
+    const isAllWaves = normalizedWave.toLowerCase() === 'all';
+    const targetAgents = allUsers.filter((u: any) =>
+      u?.role === 'agent' &&
+      (isAllWaves || String(u.wave || u.waveNumber || '').trim().toLowerCase() === normalizedWave.toLowerCase())
+    );
+    const completedByAgent = new Map<string, Set<string>>();
+    for (const agent of targetAgents) {
+      completedByAgent.set(agent.id, getCompletedResourceIdsFromLocalOrCache(agent.id));
+    }
+
+    const budgetedResourceIds: string[] = [];
+    const seen = new Set<string>();
+    let usedMinutes = 0;
+
+    for (const rawId of resourceIds) {
+      const resId = String(rawId);
+      if (seen.has(resId)) continue;
+      seen.add(resId);
+
+      // Skip if every targeted agent already has progress.status === 'completed' for this resource
+      if (
+        targetAgents.length > 0 &&
+        targetAgents.every((agent) => completedByAgent.get(agent.id)?.has(resId))
+      ) {
+        continue;
+      }
+
+      const res = resourceById.get(resId);
+      const rawDuration = Number(res?.duration);
+      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : 15;
+
+      if (usedMinutes + duration <= weeklyGoalMinutes) {
+        budgetedResourceIds.push(resId);
+        usedMinutes += duration;
+      }
+    }
+
     try {
-      const res = await callApi('assign_to_week', { weekNumber, resourceIds, adminId, targetWave: targetWave || 'All' });
+      const res = await callApi('assign_to_week', {
+        weekNumber,
+        resourceIds: budgetedResourceIds,
+        adminId,
+        targetWave: normalizedWave,
+        weeklyGoalMinutes
+      });
       invalidateCache('swr_weekly_assignments');
       invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
       return res;
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw e;
+      }
       console.warn("[googleSheetService] assignToWeek Web App failed, utilizing localStorage fallback. Error:", e?.message);
       let local: Record<number, string[]> = {};
       try {
@@ -1114,10 +1273,21 @@ export const googleSheetService = {
       } catch (parseErr) {
         local = {};
       }
-      local[weekNumber] = resourceIds;
+      local[weekNumber] = budgetedResourceIds;
       localStorage.setItem("local_weekly_assignments", JSON.stringify(local));
+
+      for (const agent of targetAgents) {
+        const completedSet = completedByAgent.get(agent.id) || new Set<string>();
+        for (const resId of budgetedResourceIds) {
+          if (!completedSet.has(resId)) {
+            updateLocalAssignment(agent.id, resId, adminId);
+          }
+        }
+      }
+
       invalidateCache('swr_weekly_assignments');
       invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
       return local;
     }
   },

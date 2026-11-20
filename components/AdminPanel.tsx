@@ -288,7 +288,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       setAssignmentSuccess(`Successfully assigned ${selectedResourceIds.length} modules to Week ${targetWeek}!`);
       setSelectedResourceIds([]);
       setTimeout(() => setAssignmentSuccess(null), 5000);
-      fetchWeeklyAssignments();
+      onUpdateContent();
+      await Promise.all([fetchWeeklyAssignments(), loadAdminStats(), fetchResources()]);
     } catch (err) {
       alert("Failed to complete assignment batch: " + (err as Error).message);
     } finally {
