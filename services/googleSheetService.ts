@@ -465,8 +465,8 @@ async function executeFetch(action: string, payload: any = {}): Promise<any> {
   });
 
   const controller = new AbortController();
-  // 60-second timeout for Google Apps Script cold starts
-  const timer = setTimeout(() => controller.abort(), 60000);
+  // 150-second timeout for Google Apps Script cold starts
+  const timer = setTimeout(() => controller.abort(), 150000);
 
   try {
     const response = await fetch(WEB_APP_URL, {
