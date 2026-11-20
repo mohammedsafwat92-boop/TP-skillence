@@ -66,6 +66,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
   const [assignmentSuccess, setAssignmentSuccess] = useState<string | null>(null);
   const [adminStats, setAdminStats] = useState<any>(() => googleSheetService.getCachedAdminStats(currentUser.email, currentUser.role));
   const [isBulkAssigning, setIsBulkAssigning] = useState(false);
+  const [isUnassigningWave, setIsUnassigningWave] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState<string>('overall');
   const [weeklyAssignments, setWeeklyAssignments] = useState<Record<number, string[]>>(() => googleSheetService.getCachedWeeklyAssignments() || {});
   const [selectedResourceIds, setSelectedResourceIds] = useState<string[]>([]);
@@ -260,6 +261,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       alert("Error during bulk curriculum assignment: " + (err as Error).message);
     } finally {
       setIsBulkAssigning(false);
+    }
+  };
+
+  const handleUnassignWaveRoster = async () => {
+    if (!currentUser) return;
+    const targetGroup = activeWave === 'all' ? 'ALL waves (every agent in the system)' : `${activeWave}`;
+    if (!window.confirm(`This will unassign ALL courses across all agents in ${targetGroup}. Existing progress (completed or in-progress courses, scores, attempts, and completion dates) will be preserved. Proceed?`)) return;
+
+    setIsUnassigningWave(true);
+    try {
+      const targetWaveParam = activeWave === 'all' ? undefined : activeWave;
+      const selectedWave = activeWave === 'all' ? 'all waves' : activeWave;
+      const response = await googleSheetService.unassignWaveRoster(targetWaveParam);
+
+      const removedCount = response?.removed ?? response?.unassigned ?? response?.removedCount ?? 0;
+      const preservedCount = response?.preserved ?? response?.skipped ?? response?.preservedCount ?? 0;
+      const msg = `Unassigned ${removedCount} course assignment${removedCount === 1 ? '' : 's'} for ${selectedWave} (${preservedCount} existing progress record${preservedCount === 1 ? '' : 's'} preserved).`;
+
+      setAssignmentSuccess(msg);
+      setTimeout(() => setAssignmentSuccess(null), 8000);
+      onUpdateContent();
+      await loadData();
+    } catch (err) {
+      alert("Error during wave unassignment: " + (err as Error).message);
+    } finally {
+      setIsUnassigningWave(false);
     }
   };
 
@@ -776,11 +803,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             )}
           </div>
 
-          <div className="flex justify-center pt-4">
+          <div className="flex flex-wrap justify-center items-center gap-3 pt-4">
             <button
               id="bulk-assign-roster-btn"
               onClick={handleBulkAssignRoster}
-              disabled={isBulkAssigning}
+              disabled={isBulkAssigning || isUnassigningWave}
               className="bg-tp-purple hover:bg-tp-purple-light text-white px-8 py-3.5 rounded-xl transition-all disabled:opacity-50 shadow-sm font-bold uppercase text-xs tracking-wider flex items-center gap-2.5 cursor-pointer"
             >
               {isBulkAssigning ? (
@@ -789,6 +816,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                 <ClipboardList className="w-4 h-4" />
               )}
               {isBulkAssigning ? 'Processing Roster...' : activeWave === 'all' ? 'Bulk Assign All to Roster' : `Bulk Assign ${activeWave} to Roster`}
+            </button>
+
+            <button
+              id="unassign-wave-roster-btn"
+              onClick={handleUnassignWaveRoster}
+              disabled={isBulkAssigning || isUnassigningWave}
+              className="bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-300 px-6 py-3.5 rounded-xl transition-all disabled:opacity-50 shadow-sm font-bold uppercase text-xs tracking-wider flex items-center gap-2.5 cursor-pointer"
+            >
+              {isUnassigningWave ? (
+                <div className="w-4 h-4 border-2 border-rose-300 border-t-rose-700 rounded-full animate-spin"></div>
+              ) : (
+                <Minus className="w-4 h-4" />
+              )}
+              {isUnassigningWave ? 'Unassigning Wave...' : 'Unassign Wave (All Courses)'}
             </button>
           </div>
         </div>

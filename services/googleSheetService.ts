@@ -351,6 +351,62 @@ function removeLocalAssignmentIfNoProgress(uid: string, resourceId: string) {
   }
 }
 
+function unassignLocalWaveProgress(wave?: string): { removed: number; preserved: number } {
+  let removed = 0;
+  let preserved = 0;
+  try {
+    const allUsers = getCached<UserProfile[]>('swr_all_users') || getLocalUsers();
+    const normalizedWave = String(wave || '').trim();
+    const isAllWaves = !normalizedWave || normalizedWave.toLowerCase() === 'all';
+    const targetAgents = allUsers.filter((u: any) =>
+      u?.role === 'agent' &&
+      (isAllWaves || String(u.wave || u.waveNumber || '').trim().toLowerCase() === normalizedWave.toLowerCase())
+    );
+
+    for (const agent of targetAgents) {
+      const key = `local_progress_${agent.id}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) continue;
+      let map: Record<string, any>;
+      try {
+        map = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+      if (!map || typeof map !== 'object') continue;
+
+      let changed = false;
+      for (const [resId, existing] of Object.entries(map)) {
+        if (!existing || typeof existing !== 'object') continue;
+        if (existing.status === 'assigned' && (existing.attempts || 0) === 0) {
+          const { assignedBy: _clearedAssignedBy, ...rest } = existing;
+          map[resId] = {
+            ...rest,
+            status: 'open'
+          };
+          removed++;
+          changed = true;
+        } else if (
+          existing.status === 'completed' ||
+          existing.status === 'in_progress' ||
+          (existing.attempts || 0) > 0 ||
+          existing.score !== undefined ||
+          existing.completedAt
+        ) {
+          preserved++;
+        }
+      }
+
+      if (changed) {
+        localStorage.setItem(key, JSON.stringify(map));
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to update local wave unassignment:", e);
+  }
+  return { removed, preserved };
+}
+
 function getCompletedResourceIdsFromLocalOrCache(uid: string): Set<string> {
   const completed = new Set<string>();
 
@@ -1153,6 +1209,42 @@ export const googleSheetService = {
       invalidateCache('swr_user_plan');
       invalidateCache('swr_admin_stats');
       return { success: true, count: assignments.length, newAssignments: assignments.length, updatedAssignments: 0 };
+    }
+  },
+
+  unassignWaveRoster: async (wave?: string): Promise<{
+    success?: boolean;
+    removed?: number;
+    preserved?: number;
+    unassigned?: number;
+    skipped?: number;
+    removedCount?: number;
+    preservedCount?: number;
+    offline?: boolean;
+  }> => {
+    invalidateCache('swr_user_plan');
+    invalidateCache('swr_admin_stats');
+    try {
+      const res = await callApi('unassign_wave_roster', { wave });
+      unassignLocalWaveProgress(wave);
+      invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
+      return res;
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw err;
+      }
+      console.warn("[googleSheetService] unassignWaveRoster remote failed, applied locally:", err?.message);
+      const localResult = unassignLocalWaveProgress(wave);
+      invalidateCache('swr_user_plan');
+      invalidateCache('swr_admin_stats');
+      return {
+        success: true,
+        removed: localResult.removed,
+        preserved: localResult.preserved,
+        offline: true
+      };
     }
   },
 
