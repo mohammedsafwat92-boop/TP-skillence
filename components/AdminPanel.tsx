@@ -21,6 +21,7 @@ import {
   MoreHorizontal,
   Brain,
   Plus,
+  Minus,
   CheckCircle,
   ClipboardList,
   Layers
@@ -273,6 +274,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
       await Promise.all([loadAdminStats(), fetchResources()]);
     } catch (err) {
       alert("Failed to manual assign module: " + (err as Error).message);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleUnassignResource = async (resourceId: string) => {
+    if (!selectedTargetUserId) return;
+    setIsProcessing(true);
+    try {
+      await googleSheetService.unassignResource(selectedTargetUserId, resourceId);
+      setAssignmentSuccess("Module unassigned successfully (existing progress preserved).");
+      setTimeout(() => setAssignmentSuccess(null), 5000);
+      onUpdateContent();
+      await Promise.all([
+        googleSheetService.fetchUserPlan(selectedTargetUserId, 'agent').catch(() => {}),
+        loadAdminStats(),
+        fetchResources()
+      ]);
+    } catch (err) {
+      alert("Failed to unassign module: " + (err as Error).message);
     } finally {
       setIsProcessing(false);
     }
@@ -899,14 +920,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
                           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">{res.type}</span>
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <button 
-                            onClick={() => handleManualAssign(res.id)}
-                            disabled={isProcessing || !selectedTargetUserId}
-                            className={`inline-flex items-center gap-1.5 bg-tp-navy text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm hover:bg-tp-red disabled:opacity-30 active:scale-95 ml-auto cursor-pointer`}
-                            title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
-                          >
-                            <Plus className="w-3.5 h-3.5" /> Assign
-                          </button>
+                          <div className="inline-flex items-center justify-end gap-2">
+                            <button 
+                              onClick={() => handleManualAssign(res.id)}
+                              disabled={isProcessing || !selectedTargetUserId}
+                              className={`inline-flex items-center gap-1.5 bg-tp-navy text-white px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-sm hover:bg-tp-red disabled:opacity-30 active:scale-95 cursor-pointer`}
+                              title={selectedTargetUserId ? "Assign to selected student" : "Select a student first"}
+                            >
+                              <Plus className="w-3.5 h-3.5" /> Assign
+                            </button>
+                            <button 
+                              onClick={() => handleUnassignResource(res.id)}
+                              disabled={isProcessing || !selectedTargetUserId}
+                              className="inline-flex items-center gap-1.5 bg-white text-slate-700 border border-slate-200 px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-xs hover:bg-rose-50 hover:text-rose-700 hover:border-rose-200 disabled:opacity-30 active:scale-95 cursor-pointer"
+                              title={selectedTargetUserId ? "Unassign from selected student (preserves existing progress)" : "Select a student first"}
+                            >
+                              <Minus className="w-3.5 h-3.5" /> Unassign
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     );

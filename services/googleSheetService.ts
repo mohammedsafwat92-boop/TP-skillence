@@ -327,6 +327,30 @@ function updateLocalAssignment(targetUid: string, resourceId: string, adminId: s
   }
 }
 
+function removeLocalAssignmentIfNoProgress(uid: string, resourceId: string) {
+  try {
+    const key = `local_progress_${uid}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const map = JSON.parse(raw);
+    const existing = map?.[resourceId];
+    if (!existing) return;
+
+    // Only unassign locally if the record has no progress (status === 'assigned' and attempts === 0)
+    // Never delete or clear completed, in_progress, score, attempts, completedAt, or timeTaken
+    if (existing.status === 'assigned' && (existing.attempts || 0) === 0) {
+      const { assignedBy: _clearedAssignedBy, ...rest } = existing;
+      map[resourceId] = {
+        ...rest,
+        status: 'open'
+      };
+      localStorage.setItem(key, JSON.stringify(map));
+    }
+  } catch (e) {
+    console.warn("Failed to update local unassignment:", e);
+  }
+}
+
 function getCompletedResourceIdsFromLocalOrCache(uid: string): Set<string> {
   const completed = new Set<string>();
 
@@ -986,6 +1010,28 @@ export const googleSheetService = {
       console.warn("[googleSheetService] assignManualResource remote failed, applied locally:", err?.message);
       return { status: 'assigned', offline: true };
     });
+  },
+
+  unassignResource: async (uid: string, resourceId: string) => {
+    invalidateCache(`swr_user_plan_${uid}`);
+    invalidateCache('swr_admin_stats');
+    try {
+      const res = await callApi('unassign_resource', { uid, resourceId });
+      removeLocalAssignmentIfNoProgress(uid, resourceId);
+      invalidateCache(`swr_user_plan_${uid}`);
+      invalidateCache('swr_admin_stats');
+      return res;
+    } catch (err: any) {
+      const msg = String(err?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw err;
+      }
+      console.warn("[googleSheetService] unassignResource remote failed, applied locally:", err?.message);
+      removeLocalAssignmentIfNoProgress(uid, resourceId);
+      invalidateCache(`swr_user_plan_${uid}`);
+      invalidateCache('swr_admin_stats');
+      return { status: 'unassigned', offline: true };
+    }
   },
 
   getAdminStats: async (requesterEmail?: string, requesterRole?: string, onUpdate?: (fresh: any) => void) => {
