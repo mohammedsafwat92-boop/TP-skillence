@@ -138,7 +138,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, resources, onNavigate, onOp
     });
 
     return {
-      activeCourses: filtered.filter(r => r.progress?.status !== 'completed'),
+      activeCourses: filtered.filter(r => r.progress?.status === 'assigned' || r.progress?.status === 'in_progress'),
       completedCourses: filtered.filter(r => r.progress?.status === 'completed')
     };
   }, [resources, activeSkill]);
