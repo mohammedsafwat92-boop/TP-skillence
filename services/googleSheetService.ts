@@ -2,7 +2,7 @@
 /// <reference types="vite/client" />
 
 import { ResourceType } from '../types';
-import type { UserProfile, Resource } from '../types';
+import type { UserProfile, Resource, LessonBlock, LessonEvaluationResult, QuestionEvaluation } from '../types';
 
 const WEB_APP_URL = 
   (import.meta.env as any).VITE_GOOGLE_SHEET_URL || 
@@ -1500,40 +1500,276 @@ export const googleSheetService = {
     return res;
   },
 
-  saveLesson: async (title: string, lessonData: any): Promise<{ id: string; title: string }> => {
+  saveLesson: async (title: string, lessonData: any, id?: string): Promise<{ id: string; title: string }> => {
     invalidateCache('swr_interactive_lessons');
     invalidateCache('swr_all_resources');
+    invalidateCache('swr_my_lessons');
     try {
-      const res = await callApi('saveLesson', { title, lessonData });
+      const payload = id ? { id, title, lessonData } : { title, lessonData };
+      const res = await callApi('saveLesson', payload);
       invalidateCache('swr_interactive_lessons');
       invalidateCache('swr_all_resources');
+      invalidateCache('swr_my_lessons');
       return res;
     } catch (e: any) {
+      const msg = String(e?.message || '');
+      if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+        throw e;
+      }
       console.warn("[googleSheetService] saveLesson Web App failed, saving to localStorage fallback:", e?.message);
-      const id = 'les_' + Date.now();
-      const existing = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
-      const newLesson = { id, title, createdAt: new Date().toISOString(), lessonData };
-      existing.unshift(newLesson);
+      const resolvedId = id || ('les_' + Date.now());
+      const existing: any[] = JSON.parse(localStorage.getItem('local_interactive_lessons') || '[]');
+      const existingIdx = existing.findIndex((item: any) => String(item.id) === String(resolvedId));
+      if (existingIdx >= 0) {
+        existing[existingIdx] = {
+          ...existing[existingIdx],
+          id: resolvedId,
+          title,
+          lessonData: {
+            ...lessonData,
+            id: resolvedId
+          }
+        };
+      } else {
+        existing.unshift({
+          id: resolvedId,
+          title,
+          createdAt: new Date().toISOString(),
+          lessonData: {
+            ...lessonData,
+            id: resolvedId
+          }
+        });
+      }
       localStorage.setItem('local_interactive_lessons', JSON.stringify(existing));
       invalidateCache('swr_interactive_lessons');
       invalidateCache('swr_all_resources');
-      return { id, title };
+      invalidateCache('swr_my_lessons');
+      return { id: resolvedId, title };
     }
   },
 
-  saveAnswers: async (userId: string, lessonId: string, answers: Record<string, string>): Promise<{ success: boolean; id?: string; message?: string }> => {
+  evaluateLessonAnswers: async (params: {
+    lessonTitle: string;
+    blocks: LessonBlock[];
+    answers: Record<string, string>;
+    answerKey?: string;
+    evaluationGuidelines?: string;
+  }): Promise<LessonEvaluationResult> => {
+    const stripHtml = (html: string): string =>
+      String(html || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const answeredEntries = Object.entries(params.answers || {}).filter(
+      ([, val]) => String(val || '').trim().length > 0
+    );
+
+    if (answeredEntries.length === 0) {
+      return {
+        overallScore: 0,
+        summary: 'No answers were submitted for evaluation.',
+        perQuestion: [],
+        evaluatedAt: new Date().toISOString()
+      };
+    }
+
+    const lessonContext = (params.blocks || [])
+      .map((block, idx) => {
+        if (block.type === 'text') {
+          return `[Text Block ${idx + 1}]: ${stripHtml(block.content || '')}`;
+        }
+        if (block.type === 'smallfreetext') {
+          return `[Question ${block.questionId || `q_${idx}`} - Inline Short Text]: ${stripHtml(block.content || '')}`;
+        }
+        if (block.type === 'freetext') {
+          return `[Question ${block.questionId || `q_${idx}`} - Free Text]: ${block.label || 'Free Text Entry'}`;
+        }
+        if (block.type === 'audio') {
+          return `[Audio Track]: ${block.audioFilename || `Audio ${idx + 1}`}`;
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+
+    const submittedAnswersObject: Record<string, string> = {};
+    for (const [qId, val] of answeredEntries) {
+      submittedAnswersObject[qId] = String(val).trim();
+    }
+
+    const defaultGuidelines =
+      'Grade each learner response fairly against the official answer key. Accept valid paraphrases and multiple grammatically correct answers that convey the same meaning. Ignore minor punctuation, capitalization, or contraction differences unless critical to the language point. Use verdict "correct" (85-100), "partial" (40-84), or "incorrect" (0-39). Provide concise, encouraging feedback and a clear sampleAnswer for each evaluated question.';
+
+    const gradingPrompt = [
+      'You are an expert English language and corporate training evaluator.',
+      'Evaluate the learner responses below strictly against the provided Official Answer Key and Evaluation Guidelines.',
+      '',
+      `LESSON TITLE: ${params.lessonTitle}`,
+      '',
+      'LESSON CONTENT & QUESTION PROMPTS:',
+      lessonContext || '(No additional lesson context provided)',
+      '',
+      'OFFICIAL ANSWER KEY:',
+      params.answerKey?.trim() || '(No explicit answer key provided; evaluate using lesson context and standard English accuracy.)',
+      '',
+      'EVALUATION GUIDELINES:',
+      params.evaluationGuidelines?.trim() || defaultGuidelines,
+      '',
+      'LEARNER SUBMITTED ANSWERS (JSON map of questionId -> learner answer):',
+      JSON.stringify(submittedAnswersObject, null, 2),
+      '',
+      'Return ONLY a valid JSON object matching this exact schema (no markdown fences, no extra prose):',
+      '{',
+      '  "overallScore": <integer 0-100>,',
+      '  "summary": "<2-3 sentence overall evaluation summary>",',
+      '  "perQuestion": [',
+      '    {',
+      '      "questionId": "<exact questionId key from learner answers>",',
+      '      "verdict": "correct" | "partial" | "incorrect",',
+      '      "score": <integer 0-100>,',
+      '      "feedback": "<concise specific feedback for this answer>",',
+      '      "sampleAnswer": "<model/correct answer from the answer key>"',
+      '    }',
+      '  ]',
+      '}'
+    ].join('\n');
+
+    const rawResponse = await googleSheetService.proxyGemini('gemini-3.1-flash-lite', {
+      contents: [{ role: 'user', parts: [{ text: gradingPrompt }] }],
+      expectJson: true,
+      generationConfig: {
+        responseMimeType: 'application/json',
+        temperature: 0.2
+      }
+    });
+
+    const extractResponseText = (resp: any): string => {
+      if (!resp) return '';
+      if (typeof resp === 'string') return resp;
+      if (resp?.candidates?.[0]?.content?.parts?.[0]?.text) {
+        return String(resp.candidates[0].content.parts[0].text);
+      }
+      if (typeof resp?.text === 'string') return resp.text;
+      if (typeof resp?.overallScore === 'number' || Array.isArray(resp?.perQuestion)) {
+        return JSON.stringify(resp);
+      }
+      return '';
+    };
+
+    const rawText = extractResponseText(rawResponse).trim();
+    if (!rawText) {
+      throw new Error('Evaluation service returned an empty response.');
+    }
+
+    const cleanedJson = rawText
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(cleanedJson);
+    } catch {
+      const jsonMatch = cleanedJson.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error('Evaluation service returned invalid JSON.');
+      }
+      parsed = JSON.parse(jsonMatch[0]);
+    }
+
+    const clampScore = (val: any, fallback: number): number => {
+      const n = Number(val);
+      if (!Number.isFinite(n)) return fallback;
+      return Math.max(0, Math.min(100, Math.round(n)));
+    };
+
+    const normalizeVerdict = (val: any, score: number): 'correct' | 'partial' | 'incorrect' => {
+      const v = String(val || '').trim().toLowerCase();
+      if (v === 'correct' || v === 'partial' || v === 'incorrect') return v;
+      if (score >= 85) return 'correct';
+      if (score >= 40) return 'partial';
+      return 'incorrect';
+    };
+
+    const rawItems: any[] = Array.isArray(parsed?.perQuestion) ? parsed.perQuestion : [];
+    const byId = new Map<string, QuestionEvaluation>();
+
+    for (const item of rawItems) {
+      const qId = String(item?.questionId || '').trim();
+      if (!qId) continue;
+      const defaultScore =
+        String(item?.verdict || '').toLowerCase() === 'correct'
+          ? 100
+          : String(item?.verdict || '').toLowerCase() === 'partial'
+            ? 60
+            : 0;
+      const score = clampScore(item?.score, defaultScore);
+      const verdict = normalizeVerdict(item?.verdict, score);
+      byId.set(qId.toLowerCase(), {
+        questionId: qId,
+        verdict,
+        score,
+        feedback: String(item?.feedback || 'Evaluated against the official answer key.'),
+        ...(item?.sampleAnswer ? { sampleAnswer: String(item.sampleAnswer) } : {})
+      });
+    }
+
+    const perQuestion: QuestionEvaluation[] = answeredEntries.map(([qId]) => {
+      const matched = byId.get(qId.toLowerCase());
+      if (matched) {
+        return { ...matched, questionId: qId };
+      }
+      return {
+        questionId: qId,
+        verdict: 'partial',
+        score: 50,
+        feedback: 'Answer recorded; please review against the lesson answer key.'
+      };
+    });
+
+    const computedAvg =
+      perQuestion.length > 0
+        ? Math.round(perQuestion.reduce((acc, q) => acc + q.score, 0) / perQuestion.length)
+        : 0;
+
+    return {
+      overallScore: clampScore(parsed?.overallScore, computedAvg),
+      summary: String(
+        parsed?.summary ||
+          `Evaluated ${perQuestion.length} submitted response${perQuestion.length === 1 ? '' : 's'} with an overall score of ${computedAvg}%.`
+      ),
+      perQuestion,
+      evaluatedAt: new Date().toISOString()
+    };
+  },
+
+  saveAnswers: async (
+    userId: string,
+    lessonId: string,
+    answers: Record<string, string>,
+    evaluation?: LessonEvaluationResult
+  ): Promise<{ success: boolean; id?: string; message?: string; evaluation?: LessonEvaluationResult }> => {
     const clientSubmissionId = createClientId('sub');
     invalidateCache(`swr_my_lessons_${userId}`);
     invalidateCache(`swr_user_plan_${userId}`);
     invalidateCache('swr_admin_stats');
     try {
-      const data = await callApi('saveAnswers', { userId, lessonId, answers, clientSubmissionId });
+      const data = await callApi('saveAnswers', {
+        userId,
+        lessonId,
+        answers,
+        clientSubmissionId,
+        ...(evaluation ? { evaluation } : {})
+      });
       invalidateCache(`swr_my_lessons_${userId}`);
       invalidateCache(`swr_user_plan_${userId}`);
       invalidateCache('swr_admin_stats');
       return {
         success: true,
-        id: data?.id || ('ans_' + Date.now())
+        id: data?.id || ('ans_' + Date.now()),
+        ...(data?.evaluation || evaluation ? { evaluation: data?.evaluation || evaluation } : {})
       };
     } catch (e: any) {
       const msg = String(e?.message || '');
@@ -1545,12 +1781,24 @@ export const googleSheetService = {
         const id = 'ans_' + Date.now();
         const key = `local_freetext_answers_${userId}`;
         const existing = JSON.parse(localStorage.getItem(key) || '[]');
-        existing.push({ id, userId, lessonId, submittedAt: new Date().toISOString(), answers });
+        existing.push({
+          id,
+          userId,
+          lessonId,
+          submittedAt: new Date().toISOString(),
+          answers,
+          ...(evaluation ? { evaluation } : {})
+        });
         localStorage.setItem(key, JSON.stringify(existing));
         invalidateCache(`swr_my_lessons_${userId}`);
         invalidateCache(`swr_user_plan_${userId}`);
         invalidateCache('swr_admin_stats');
-        return { success: true, id, message: "Saved locally" };
+        return {
+          success: true,
+          id,
+          message: "Saved locally",
+          ...(evaluation ? { evaluation } : {})
+        };
       } catch (fallbackErr: any) {
         return {
           success: false,

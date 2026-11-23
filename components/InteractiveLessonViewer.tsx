@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { googleSheetService } from '../services/googleSheetService';
-import type { InteractiveLessonData } from '../types';
-import { Play, Volume2, Send, CheckCircle2, AlertCircle, Loader2, FileText, HelpCircle, User, ShieldAlert } from 'lucide-react';
+import type { InteractiveLessonData, LessonEvaluationResult } from '../types';
+import { Play, Volume2, Send, CheckCircle2, AlertCircle, Loader2, FileText, HelpCircle, User, ShieldAlert, Sparkles, Award, XCircle, MinusCircle } from 'lucide-react';
 
 interface InteractiveLessonViewerProps {
   lessonData: InteractiveLessonData;
@@ -16,12 +16,20 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
 }) => {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEvaluating, setIsEvaluating] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState<boolean>(false);
   const [submissionId, setSubmissionId] = useState<string | null>(null);
+  const [evaluation, setEvaluation] = useState<LessonEvaluationResult | null>(null);
+  const [evaluationError, setEvaluationError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [isCheckingAuth, setIsCheckingAuth] = useState<boolean>(true);
   const [isAuthorized, setIsAuthorized] = useState<boolean>(false);
+
+  const isAutoGraded = Boolean(
+    lessonData.autoGraded ||
+    (lessonData.answerKey && lessonData.answerKey.trim().length > 0)
+  );
 
   useEffect(() => {
     const verifyAccess = async () => {
@@ -79,19 +87,49 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
 
     setIsSubmitting(true);
     setErrorMessage(null);
+    setEvaluationError(null);
 
     try {
       const lessonId = lessonData.id || `les_${lessonData.title.replace(/\s+/g, '_')}`;
+      let evalResult: LessonEvaluationResult | undefined;
+
+      if (isAutoGraded) {
+        setIsEvaluating(true);
+        try {
+          evalResult = await googleSheetService.evaluateLessonAnswers({
+            lessonTitle: lessonData.title,
+            blocks: lessonData.blocks || [],
+            answers,
+            answerKey: lessonData.answerKey,
+            evaluationGuidelines: lessonData.evaluationGuidelines
+          });
+          setEvaluation(evalResult);
+        } catch (evalErr: any) {
+          const msg = String(evalErr?.message || '');
+          if (msg.includes('SESSION_EXPIRED') || msg.includes('FORBIDDEN')) {
+            throw evalErr;
+          }
+          console.error("Automated evaluation failed (saving answers anyway):", evalErr);
+          setEvaluationError(evalErr?.message || "Automatic grading could not be completed right now.");
+        } finally {
+          setIsEvaluating(false);
+        }
+      }
+
       const result = await googleSheetService.saveAnswers(
         currentUser.id,
         lessonId,
-        answers
+        answers,
+        evalResult
       );
 
       // Validate explicit success boolean from backend response
       if (result && result.success) {
         const subId = result.id || 'ans_' + Date.now();
         setSubmissionId(subId);
+        if (result.evaluation) {
+          setEvaluation(result.evaluation);
+        }
         setSubmitSuccess(true);
         if (onSubmitted) onSubmitted(subId);
       } else {
@@ -106,6 +144,7 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
       alert(`Submission failed: ${failureMsg}`);
     } finally {
       setIsSubmitting(false);
+      setIsEvaluating(false);
     }
   };
 
@@ -210,9 +249,16 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
       {/* Header */}
       <div className="border-b border-slate-100 pb-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-tp-purple bg-purple-50 border border-purple-100 px-3 py-1 rounded-full">
-            Interactive Lesson
-          </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-tp-purple bg-purple-50 border border-purple-100 px-3 py-1 rounded-full">
+              Interactive Lesson
+            </span>
+            {isAutoGraded && (
+              <span className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                <Sparkles className="w-3.5 h-3.5" /> Auto-Graded
+              </span>
+            )}
+          </div>
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-2">
             {lessonData.title}
           </h1>
@@ -243,7 +289,7 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
       )}
 
       {submitSuccess ? (
-        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-8 text-center space-y-4">
+        <div className="bg-emerald-50/70 border border-emerald-200 rounded-2xl p-6 sm:p-8 text-center space-y-5">
           <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-xl flex items-center justify-center mx-auto shadow-sm">
             <CheckCircle2 className="w-8 h-8" />
           </div>
@@ -257,14 +303,97 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
             </div>
           )}
 
+          {evaluation && (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-6 text-left shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-xl bg-purple-50 border border-purple-100 text-tp-purple flex items-center justify-center flex-shrink-0">
+                    <Award className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-tp-purple">
+                      Automated Evaluation Results
+                    </p>
+                    <h3 className="text-base font-extrabold text-slate-900">
+                      Overall Performance Summary
+                    </h3>
+                  </div>
+                </div>
+                <div
+                  className={`inline-flex items-baseline gap-1 px-4 py-2 rounded-xl border font-extrabold tabular-nums self-start sm:self-auto ${
+                    evaluation.overallScore >= 80
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : evaluation.overallScore >= 50
+                        ? 'bg-amber-50 text-amber-700 border-amber-200'
+                        : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}
+                >
+                  <span className="text-2xl">{evaluation.overallScore}%</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider opacity-80">Score</span>
+                </div>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-700 font-medium leading-relaxed">
+                {evaluation.summary}
+              </p>
+            </div>
+          )}
+
+          {evaluationError && !evaluation && (
+            <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl flex items-start gap-2.5 text-left text-xs font-semibold">
+              <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <div>
+                Your answers were saved, but automatic evaluation could not finish: {evaluationError}
+              </div>
+            </div>
+          )}
+
           <div className="pt-4 border-t border-emerald-200 text-left space-y-3">
             <h3 className="text-xs font-bold uppercase text-emerald-900 tracking-wider">Your Submitted Responses:</h3>
-            {Object.entries(answers).map(([qId, ansText]) => (
-              <div key={qId} className="bg-white border border-emerald-200 p-4 rounded-xl text-xs space-y-1">
-                <span className="font-bold text-emerald-800 uppercase tracking-wider">{qId.toUpperCase()}:</span>
-                <p className="text-slate-700 whitespace-pre-wrap font-medium">{ansText}</p>
-              </div>
-            ))}
+            {Object.entries(answers).map(([qId, ansText]) => {
+              const qEval = evaluation?.perQuestion?.find(
+                (item) => item.questionId.toLowerCase() === qId.toLowerCase()
+              );
+
+              const verdictBadge = qEval ? (
+                qEval.verdict === 'correct' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Correct • {qEval.score}%
+                  </span>
+                ) : qEval.verdict === 'partial' ? (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200">
+                    <MinusCircle className="w-3.5 h-3.5" /> Partial • {qEval.score}%
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                    <XCircle className="w-3.5 h-3.5" /> Incorrect • {qEval.score}%
+                  </span>
+                )
+              ) : null;
+
+              return (
+                <div key={qId} className="bg-white border border-emerald-200 p-4 rounded-xl text-xs space-y-2.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-bold text-emerald-800 uppercase tracking-wider">{qId.toUpperCase()}:</span>
+                    {verdictBadge}
+                  </div>
+                  <p className="text-slate-700 whitespace-pre-wrap font-medium">{ansText}</p>
+                  {qEval && (
+                    <div className="pt-2.5 border-t border-slate-100 space-y-1.5">
+                      <p className="text-slate-700 leading-relaxed">
+                        <span className="font-bold text-slate-900">Feedback: </span>
+                        {qEval.feedback}
+                      </p>
+                      {qEval.sampleAnswer && (
+                        <p className="text-tp-purple bg-purple-50/60 border border-purple-100 rounded-lg px-3 py-2 leading-relaxed">
+                          <span className="font-bold uppercase tracking-wider text-[10px] block mb-0.5">Sample Answer</span>
+                          <span className="font-medium text-slate-800">{qEval.sampleAnswer}</span>
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : (
@@ -369,11 +498,11 @@ export const InteractiveLessonViewer: React.FC<InteractiveLessonViewerProps> = (
               >
                 {isSubmitting ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Submitting to Google Sheets...
+                    <Loader2 className="w-4 h-4 animate-spin" /> {isEvaluating ? 'Auto-Grading Your Answers...' : 'Submitting to Google Sheets...'}
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" /> Submit Answers
+                    <Send className="w-4 h-4" /> {isAutoGraded ? 'Submit & Grade Answers' : 'Submit Answers'}
                   </>
                 )}
               </button>

@@ -6,6 +6,7 @@ import ResourceUploader from './admin/ResourceUploader';
 import UserUploader from './admin/UserUploader';
 import QuickAddAgent from './admin/QuickAddAgent';
 import InteractiveLessonUploader from './admin/InteractiveLessonUploader';
+import AnswerKeyUploader from './admin/AnswerKeyUploader';
 import LessonAssigner from './admin/LessonAssigner';
 import { MetricsDrillDown } from './admin/MetricsDrillDown';
 import CohortAnalyticsDashboard from './cohortDashboard/CohortAnalyticsDashboard';
@@ -48,12 +49,12 @@ export const LIVE_COACH_SCENARIOS = [
 const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, onFileProcessed, onImpersonate, initialTab }) => {
   if (currentUser.role !== 'admin' && currentUser.role !== 'coach') return null;
 
-  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'cohort-analytics' | 'library' | 'content' | 'interactive' | 'assigner'>(
+  const [activeTab, setActiveTab] = useState<'onboarding' | 'users' | 'cohort-analytics' | 'library' | 'content' | 'interactive' | 'answer-keys' | 'assigner'>(
     () => (initialTab as any) || 'users'
   );
 
   useEffect(() => {
-    if (initialTab && (initialTab === 'cohort-analytics' || initialTab === 'users' || initialTab === 'library' || initialTab === 'interactive' || initialTab === 'assigner' || initialTab === 'onboarding' || initialTab === 'content')) {
+    if (initialTab && (initialTab === 'cohort-analytics' || initialTab === 'users' || initialTab === 'library' || initialTab === 'interactive' || initialTab === 'answer-keys' || initialTab === 'assigner' || initialTab === 'onboarding' || initialTab === 'content')) {
       setActiveTab(initialTab as any);
     }
   }, [initialTab]);
@@ -442,6 +443,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
             ...(currentUser.role === 'admin' ? [{ id: 'cohort-analytics', label: 'Cohort Analytics', badge: availableWaves.length > 0 ? `${availableWaves.length} Waves` : 'Live Waves' }] : []),
             { id: 'library', label: 'Resource Library' },
             { id: 'interactive', label: 'Interactive .DOCX' },
+            { id: 'answer-keys', label: 'Answer Keys' },
             { id: 'assigner', label: 'Assign Lessons' },
             { id: 'onboarding', label: 'Onboarding' },
             { id: 'content', label: 'Import' }
@@ -1011,6 +1013,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onUpdateContent, currentUser, o
         <div className="space-y-6">
           <InteractiveLessonUploader onSuccess={onUpdateContent} />
           <LessonAssigner currentAdminId={currentUser.id || currentUser.email} />
+        </div>
+      )}
+
+      {activeTab === 'answer-keys' && (
+        <div className="space-y-6">
+          <AnswerKeyUploader onUpdated={onUpdateContent} />
         </div>
       )}
 

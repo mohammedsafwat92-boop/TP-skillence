@@ -173,6 +173,9 @@ export interface InteractiveLessonData {
   createdAt?: string;
   blocks: LessonBlock[];
   audioFilesMapped?: Record<string, string>;
+  autoGraded?: boolean;
+  answerKey?: string;
+  evaluationGuidelines?: string;
 }
 
 export interface StoredInteractiveLesson {
@@ -182,10 +185,26 @@ export interface StoredInteractiveLesson {
   lessonData: InteractiveLessonData;
 }
 
+export interface QuestionEvaluation {
+  questionId: string;
+  verdict: 'correct' | 'partial' | 'incorrect';
+  score: number;
+  feedback: string;
+  sampleAnswer?: string;
+}
+
+export interface LessonEvaluationResult {
+  overallScore: number;
+  summary: string;
+  perQuestion: QuestionEvaluation[];
+  evaluatedAt: string;
+}
+
 export interface FreeTextAnswerSubmission {
   id?: string;
   userId: string;
   lessonId: string;
   submittedAt?: string;
   answers: Record<string, string>;
+  evaluation?: LessonEvaluationResult;
 }
