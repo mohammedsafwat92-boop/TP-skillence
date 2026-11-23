@@ -26,7 +26,18 @@ export const getAlternateGeminiModel = (failedModel: string): string => {
     : 'gemini-3.5-flash-lite';
 };
 
+export const resolveAllowedGeminiModel = (modelNameOverride?: string): string => {
+  if (
+    modelNameOverride &&
+    (FLASH_LITE_MODELS as readonly string[]).includes(modelNameOverride)
+  ) {
+    return modelNameOverride;
+  }
+  return getNextGeminiModel();
+};
+
 const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promise<any> => {
+  const safeModelName = resolveAllowedGeminiModel(modelName);
   // Destructure out expectJson
   const { expectJson, ...cleanPayload } = rawPayload || {};
   const isJsonExpected = Boolean(expectJson || rawPayload?.config?.expectJson || rawPayload?.generationConfig?.expectJson);
@@ -42,7 +53,7 @@ const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promi
   try {
     // Securely delegate entirely to our Google Web App endpoint
     const fullPayload = {
-      model: modelName,
+      model: safeModelName,
       contents: cleanPayload.contents,
       systemInstruction: cleanPayload.systemInstruction || "",
       config: config
@@ -50,7 +61,7 @@ const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promi
     return await googleSheetService.proxyGeminiRequest(fullPayload);
   } catch (proxyError: any) {
     const errorStr = String(proxyError?.message || proxyError);
-    console.warn(`[geminiService] proxy_gemini_request failed for ${modelName}, trying legacy proxy_gemini fallback. Error details:`, errorStr);
+    console.warn(`[geminiService] proxy_gemini_request failed for ${safeModelName}, trying legacy proxy_gemini fallback. Error details:`, errorStr);
     try {
       // Legacy Web App proxy call format (pass clean generationConfig)
       const legacyPayload = {
@@ -58,10 +69,10 @@ const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promi
         systemInstruction: cleanPayload.systemInstruction,
         generationConfig: config
       };
-      return await googleSheetService.proxyGemini(modelName, legacyPayload);
+      return await googleSheetService.proxyGemini(safeModelName, legacyPayload);
     } catch (legacyError: any) {
       const legacyErrorStr = String(legacyError?.message || legacyError);
-      console.warn(`[geminiService] Both primary and legacy proxy actions failed for ${modelName}. Error:`, legacyErrorStr);
+      console.warn(`[geminiService] Both primary and legacy proxy actions failed for ${safeModelName}. Error:`, legacyErrorStr);
       
       const apiKey = getApiKey();
       if (!apiKey) {
@@ -70,14 +81,14 @@ const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promi
       }
 
       try {
-        console.log(`[geminiService] Activating direct client fallback using modern GoogleGenAI SDK with model ${modelName}.`);
+        console.log(`[geminiService] Activating direct client fallback using modern GoogleGenAI SDK with model ${safeModelName}.`);
         const ai = new GoogleGenAI({ apiKey });
         
         const contents = cleanPayload.contents;
         const systemInstructionText = cleanPayload.systemInstruction || "";
 
         const response = await ai.models.generateContent({
-          model: modelName,
+          model: safeModelName,
           contents: contents,
           config: {
             systemInstruction: systemInstructionText || undefined,
@@ -99,15 +110,15 @@ const executeSingleProxyCall = async (modelName: string, rawPayload: any): Promi
           ]
         };
       } catch (directError: any) {
-        console.error(`[geminiService] Direct client fallback call failed for ${modelName}:`, directError);
-        throw new Error(`AI Integration Failure for ${modelName}: Secure spreadsheet proxy and direct fallbacks failed. Error: ${directError.message || directError}`);
+        console.error(`[geminiService] Direct client fallback call failed for ${safeModelName}:`, directError);
+        throw new Error(`AI Integration Failure for ${safeModelName}: Secure spreadsheet proxy and direct fallbacks failed. Error: ${directError.message || directError}`);
       }
     }
   }
 };
 
 export const proxyGeminiSafe = async (modelNameOverride?: string, payload?: any): Promise<any> => {
-  const primaryModel = modelNameOverride || getNextGeminiModel();
+  const primaryModel = resolveAllowedGeminiModel(modelNameOverride);
   console.log(`▶️ Sending payload to ${primaryModel}...`);
 
   try {

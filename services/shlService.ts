@@ -3,7 +3,7 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { googleSheetService } from './googleSheetService';
-import { getApiKey, getNextGeminiModel, getAlternateGeminiModel } from './geminiService';
+import { getApiKey, getNextGeminiModel, getAlternateGeminiModel, resolveAllowedGeminiModel } from './geminiService';
 
 export const shlService = {
   /**
@@ -57,10 +57,11 @@ export const shlService = {
     });
 
     const executeAnalysis = async (model: string) => {
+      const safeModel = resolveAllowedGeminiModel(model);
       // 1. First attempt to route via secure backend proxy (GEMINI_API_KEY kept private on server/Config sheet)
       try {
         const proxyRes = await googleSheetService.proxyGeminiRequest({
-          model: model,
+          model: safeModel,
           contents: [
             {
               role: 'user',
@@ -76,7 +77,7 @@ export const shlService = {
           return { text };
         }
       } catch (proxyErr) {
-        console.warn(`[shlService] Backend proxy analysis attempt failed for ${model}, checking direct fallback:`, proxyErr);
+        console.warn(`[shlService] Backend proxy analysis attempt failed for ${safeModel}, checking direct fallback:`, proxyErr);
       }
 
       // 2. Direct client SDK fallback if an API key is available
@@ -84,7 +85,7 @@ export const shlService = {
       if (apiKey) {
         const ai = new GoogleGenAI({ apiKey });
         return await ai.models.generateContent({
-          model: model,
+          model: safeModel,
           contents: {
             parts: [
               { inlineData: { data: base64Data, mimeType: 'application/pdf' } },

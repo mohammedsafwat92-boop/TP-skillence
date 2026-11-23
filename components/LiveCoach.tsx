@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality, Blob } from '@google/genai';
 import { XIcon, SpeakingIcon, BrainIcon, UserIcon } from './Icons';
 import { googleSheetService } from '../services/googleSheetService';
-import { getApiKey, getNextGeminiModel } from '../services/geminiService';
+import { getApiKey, getNextGeminiModel, getAlternateGeminiModel } from '../services/geminiService';
 import type { UserProfile } from '../types';
 
 export interface RoleplayScenario {
@@ -36,7 +36,28 @@ interface LiveCoachProps {
 }
 
 const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersonate, initialScenario, scenarioId, onComplete }) => {
-  // Hard Failsafe: Only Coaches, Admins, or Agents can access this view
+  // Hard Failsafe: Block agents from opening standalone Live AI Coach view
+  if (currentUser?.role === 'agent' && !initialScenario && !scenarioId) {
+    return (
+      <div className="max-w-lg mx-auto my-12 p-8 bg-white border border-slate-200 rounded-2xl shadow-sm text-center space-y-4">
+        <div className="w-12 h-12 bg-rose-50 text-tp-red border border-rose-200 rounded-xl flex items-center justify-center mx-auto">
+          <SpeakingIcon className="w-6 h-6" />
+        </div>
+        <h2 className="text-lg font-bold text-slate-900">Live AI Coach Restricted</h2>
+        <p className="text-sm text-slate-500">
+          Live AI Coach is only available for Coaches and Administrators.
+        </p>
+        <button
+          onClick={onClose}
+          className="px-5 py-2.5 bg-tp-purple hover:bg-tp-purple-light text-white text-xs font-bold uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+        >
+          Return to Dashboard
+        </button>
+      </div>
+    );
+  }
+
+  // Hard Failsafe: Only Coaches, Admins, or assigned Simulation sessions can access this view
   if (currentUser.role !== 'coach' && currentUser.role !== 'admin' && currentUser.role !== 'agent') return null;
 
   const [activeMode, setActiveMode] = useState<'ai' | 'directory'>(currentUser.role === 'agent' ? 'ai' : 'directory');
@@ -320,7 +341,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       });
 
       const sessionPromise = ai.live.connect({
-        model: 'gemini-3.8-live',
+        model: getNextGeminiModel(),
         callbacks: {
           onopen: async () => {
             setIsConnected(true);
@@ -501,6 +522,7 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
       // Generate evaluation report using secure backend proxy first (keeps GEMINI_API_KEY private on backend/Config)
       let reportText = "";
       const evalModel = getNextGeminiModel();
+      const altEvalModel = getAlternateGeminiModel(evalModel);
       try {
         const proxyRes = await googleSheetService.proxyGeminiRequest({
           model: evalModel,
@@ -522,7 +544,17 @@ const LiveCoach: React.FC<LiveCoachProps> = ({ onClose, currentUser, onImpersona
             });
             reportText = response.text || "";
           } catch (directErr) {
-            console.error("[LiveCoach] Direct AI evaluation failed:", directErr);
+            console.warn(`[LiveCoach] Direct AI evaluation failed on ${evalModel}, retrying with ${altEvalModel}:`, directErr);
+            try {
+              const ai = new GoogleGenAI({ apiKey: directKey });
+              const retryResponse = await ai.models.generateContent({
+                model: altEvalModel,
+                contents: prompt
+              });
+              reportText = retryResponse.text || "";
+            } catch (retryErr) {
+              console.error("[LiveCoach] Direct AI evaluation failed on both flash-lite models:", retryErr);
+            }
           }
         } else {
           console.error("[LiveCoach] Direct evaluation skipped: Gemini API key is missing or empty.");

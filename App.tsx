@@ -206,6 +206,11 @@ const App: React.FC = () => {
   };
 
   const handleNavigate = (newView: View) => {
+    if (newView.type === 'live-ai-coach' && currentUser?.role === 'agent') {
+      setView({ type: 'dashboard' });
+      setIsSidebarOpen(false);
+      return;
+    }
     setView(newView);
     setIsSidebarOpen(false);
   };
@@ -245,9 +250,16 @@ const App: React.FC = () => {
     }
 
     if (view.type === 'live-ai-coach') {
-      if (currentUser.role !== 'admin' && currentUser.role !== 'coach' && currentUser.role !== 'agent') {
+      if (currentUser.role !== 'admin' && currentUser.role !== 'coach') {
         setTimeout(() => setView({ type: 'dashboard' }), 0);
-        return null;
+        return (
+          <Dashboard
+            user={currentUser}
+            resources={userPlan}
+            onNavigate={handleNavigate}
+            onOpenResource={(res) => setView({ type: 'lesson', resource: res })}
+          />
+        );
       }
       return (
         <LiveCoach 

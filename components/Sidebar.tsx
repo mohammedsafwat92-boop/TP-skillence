@@ -81,13 +81,6 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, currentUser,
               </NavItem>
             </>
           )}
-
-          {currentUser?.role === 'agent' && (
-            <NavItem view={{ type: 'live-ai-coach' }} currentView={currentView} onNavigate={onNavigate}>
-              <PhoneIcon className="w-5 h-5" />
-              <span className="ml-3">Live AI Coach</span>
-            </NavItem>
-          )}
         </ul>
 
         <div className="mt-10 mb-4 px-6"><h2 className="text-xs font-bold text-white/50 uppercase tracking-wider">Core Skills</h2></div>
